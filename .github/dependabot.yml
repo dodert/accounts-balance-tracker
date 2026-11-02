@@ -1,0 +1,22 @@
+# Weekly PRs to keep Python packages, GitHub Actions and the Docker base image up to date.
+# One grouped PR per ecosystem, so updates don't pile up as separate PRs that conflict.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-packages:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

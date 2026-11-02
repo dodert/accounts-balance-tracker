@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ASSET_VERSION}}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/static/icons/manifest.webmanifest">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
+</head>
+<body>
+  <!-- Texts are translated from /static/i18n/<lang>.json: data-i18n sets the text,
+       data-i18n-placeholder / -title / -aria-label set those attributes. -->
+  <header>
+    <h1 data-i18n="header.title">💰 My balances</h1>
+    <span class="spacer"></span>
+    <details class="menu" id="data-menu">
+      <summary class="button" data-i18n="header.data_menu">Import / export</summary>
+      <div class="menu-items">
+        <button id="csv-import-btn" data-i18n="header.import_csv">Import CSV</button>
+        <a id="csv-export-btn" class="button" href="/api/export/csv" download data-i18n="header.export_csv">Export CSV</a>
+      </div>
+    </details>
+    <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
+    <button id="add-account-btn" data-i18n="header.add_account">+ Account</button>
+    <button id="update-btn" class="primary" data-i18n="header.update">Update balances</button>
+    <form id="logout-btn" method="post" action="/logout" hidden><button type="submit" data-i18n="header.logout">Log out</button></form>
+  </header>
+
+  <main>
+    <section id="totals" class="tiles" aria-live="polite"></section>
+
+    <section class="panel" id="chart-panel">
+      <div class="panel-head">
+        <h2 data-i18n="chart.title">Evolution</h2>
+        <span class="spacer"></span>
+        <div class="views" role="group" data-i18n-aria-label="chart.mode" aria-label="Chart">
+          <button type="button" data-mode="total" aria-pressed="true" data-i18n="chart.total">Total</button>
+          <button type="button" data-mode="accounts" aria-pressed="false" data-i18n="chart.by_account">By account</button>
+        </div>
+        <select id="chart-currency" data-i18n-aria-label="chart.currency" aria-label="Currency" hidden></select>
+        <select id="chart-range" data-i18n-aria-label="chart.range" aria-label="Range">
+          <option value="all" data-i18n="range.all">All</option>
+          <option value="60" data-i18n="range.5y">5 years</option>
+          <option value="12" data-i18n="range.1y">1 year</option>
+          <option value="6" data-i18n="range.6m">6 months</option>
+          <option value="3" data-i18n="range.3m">3 months</option>
+        </select>
+      </div>
+      <div id="chart" class="chart"></div>
+      <div id="chart-legend" class="legend"></div>
+      <details id="chart-table-wrap">
+        <summary data-i18n="chart.show_table">Show as a table</summary>
+        <div class="table-wrap"><table id="chart-table" class="data"></table></div>
+      </details>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-i18n="accounts.title">Accounts</h2>
+        <span class="spacer"></span>
+        <label class="radio"><input type="checkbox" id="show-archived"> <span data-i18n="accounts.show_archived">Show archived</span></label>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="accounts-table">
+          <thead>
+            <tr>
+              <th data-i18n="column.name">Account</th>
+              <th data-i18n="column.type">Type</th>
+              <th class="num" data-i18n="column.balance">Balance</th>
+              <th class="num" data-i18n="column.change">Change</th>
+              <th data-i18n="column.updated">Updated</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="empty" class="hint" hidden data-i18n="accounts.empty">No accounts yet. Add one with "+ Account", or import a CSV.</p>
+    </section>
+  </main>
+
+  <footer><span id="version"></span> · <a href="https://github.com/dodert/accounts-balance-tracker" target="_blank" rel="noopener">GitHub</a></footer>
+
+  <div id="tooltip" class="tooltip" role="status" hidden></div>
+
+  <!-- Update balances: every active account on one date -->
+  <dialog id="update-dlg">
+    <form method="dialog" id="update-form">
+      <h2 data-i18n="update.title">Update balances</h2>
+      <label><span data-i18n="update.date">Date</span> <input type="date" name="date" required></label>
+      <p class="hint" data-i18n="update.hint">Fill in the balance of each account on that date. Leave one empty to skip it.</p>
+      <div id="update-rows"></div>
+      <p class="error" id="update-error" hidden></p>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- Account: details and balance history -->
+  <dialog id="account-dlg">
+    <form method="dialog" id="account-form">
+      <h2 id="account-dlg-title" data-i18n="account.new">New account</h2>
+      <div class="row">
+        <label><span data-i18n="column.name">Account</span> <input name="name" required maxlength="100"></label>
+        <label><span data-i18n="account.institution">Institution</span> <input name="institution" maxlength="100"></label>
+      </div>
+      <div class="row">
+        <label><span data-i18n="column.type">Type</span> <select name="type" id="account-type"></select></label>
+        <label><span data-i18n="account.currency">Currency</span> <input name="currency" required maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters"></label>
+      </div>
+      <label><span data-i18n="account.notes">Notes</span> <textarea name="notes" rows="2"></textarea></label>
+      <label class="radio"><input type="checkbox" name="archived"> <span data-i18n="account.archived">Archived (closed account: record a 0 balance first)</span></label>
+      <p class="hint" data-i18n="account.loan_hint">For loans and credit cards, record the debt as a negative balance.</p>
+
+      <div id="balances-section" hidden>
+        <h3 data-i18n="account.balances">Balances</h3>
+        <div class="row add-balance">
+          <label><span data-i18n="update.date">Date</span> <input type="date" id="nb-date"></label>
+          <label><span data-i18n="column.balance">Balance</span> <input type="text" inputmode="decimal" id="nb-amount"></label>
+          <label><span data-i18n="account.note">Note</span> <input id="nb-note" maxlength="300"></label>
+          <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
+        </div>
+        <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><tbody></tbody></table></div>
+      </div>
+      <p class="error" id="account-error" hidden></p>
+      <menu>
+        <button type="button" id="account-delete" class="danger" hidden data-i18n="common.delete">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="csv-dlg">
+    <form method="dialog" id="csv-form">
+      <h2 data-i18n="csv.title">Import CSV</h2>
+      <p class="hint" data-i18n="csv.hint">One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is replaced.</p>
+      <input type="file" name="file" accept=".csv,text/csv" required>
+      <pre id="csv-result" class="hint" hidden></pre>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.close">Close</button>
+        <button type="submit" class="primary" data-i18n="csv.import">Import</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dlg">
+    <form method="dialog" id="settings-form">
+      <h2 data-i18n="settings.title">Settings</h2>
+      <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
+      <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
+  <script src="/static/app.js?v={{ASSET_VERSION}}"></script>
+</body>
+</html>

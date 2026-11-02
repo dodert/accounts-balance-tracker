@@ -1,0 +1,55 @@
+import enum
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .db import Base
+
+
+class AccountType(str, enum.Enum):
+    bank = "bank"
+    savings = "savings"
+    investment = "investment"
+    pension = "pension"
+    crypto = "crypto"
+    cash = "cash"
+    loan = "loan"
+    other = "other"
+
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    type: Mapped[AccountType] = mapped_column(
+        Enum(AccountType, native_enum=False, length=10, values_callable=lambda e: [m.value for m in e]),
+        default=AccountType.bank,
+    )
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    institution: Mapped[str | None] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    balances: Mapped[list["Balance"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan", passive_deletes=True, order_by="Balance.date",
+    )
+
+
+class Balance(Base):
+    """The balance of an account on a day. One per account and day."""
+    __tablename__ = "balances"
+    __table_args__ = (UniqueConstraint("account_id", "date", name="uq_balance_account_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    account: Mapped[Account] = relationship(back_populates="balances")

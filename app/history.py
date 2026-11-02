@@ -1,0 +1,60 @@
+"""Totals and history built from the recorded balances.
+
+An account's balance on a day is the last one recorded on or before that day (it stays the same
+until a new one is recorded). The total of a currency on a day is the sum of those balances for
+every account in that currency, archived ones included: close an account by recording a 0
+balance, then archive it, and the history stays right.
+"""
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from .models import Account
+
+
+def accounts_with_balances(db: Session, currency: str | None = None) -> list[Account]:
+    stmt = select(Account).options(selectinload(Account.balances)).order_by(Account.name)
+    if currency:
+        stmt = stmt.where(Account.currency == currency)
+    return list(db.scalars(stmt))
+
+
+def history(accounts: list[Account], since: date | None = None) -> tuple[list[date], list[Decimal], dict[int, list[Decimal | None]]]:
+    """(dates, total per date, values per account id) over every date with a recorded balance.
+
+    With `since`, dates before it are dropped, but balances recorded before it still count
+    (an account last updated before `since` keeps its balance)."""
+    all_dates = sorted({b.date for a in accounts for b in a.balances})
+    dates = [d for d in all_dates if since is None or d >= since]
+    if since is not None and (not dates or dates[0] > since) and any(d < since for d in all_dates):
+        dates.insert(0, since)  # the starting point of the range
+    per_account: dict[int, list[Decimal | None]] = {}
+    for account in accounts:
+        values, current, balances, i = [], None, account.balances, 0
+        for day in dates:
+            while i < len(balances) and balances[i].date <= day:
+                current = balances[i].amount
+                i += 1
+            values.append(current)
+        per_account[account.id] = values
+    totals = [sum((v[n] for v in per_account.values() if v[n] is not None), Decimal(0)) for n in range(len(dates))]
+    return dates, totals, per_account
+
+
+def currency_totals(accounts: list[Account]) -> list[dict]:
+    """Current total per currency, and the total on the previous recorded date."""
+    out = []
+    for currency in sorted({a.currency for a in accounts}):
+        group = [a for a in accounts if a.currency == currency]
+        dates, totals, _ = history(group)
+        out.append({
+            "currency": currency,
+            "accounts": sum(1 for a in group if not a.archived),
+            "total": float(totals[-1]) if totals else 0.0,
+            "date": dates[-1] if dates else None,
+            "previous_total": float(totals[-2]) if len(totals) > 1 else None,
+            "previous_date": dates[-2] if len(dates) > 1 else None,
+        })
+    return out

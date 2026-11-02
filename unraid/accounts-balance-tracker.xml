@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>accounts-balance-tracker</Name>
+  <Repository>ghcr.io/dodert/accounts-balance-tracker:latest</Repository>
+  <Registry>https://github.com/dodert/accounts-balance-tracker/pkgs/container/accounts-balance-tracker</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/dodert/accounts-balance-tracker/issues</Support>
+  <Project>https://github.com/dodert/accounts-balance-tracker</Project>
+  <Overview>Self-hosted tracker of your accounts balances over time: bank, savings, investment, pension, crypto, cash and loans. Record each account's balance whenever you want and see the total and its evolution in charts. CSV import/export, optional login with one-time codes. SQLite by default, PostgreSQL optional.</Overview>
+  <Category>Productivity: Tools:Utilities</Category>
+  <Icon>https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.png</Icon>
+  <DonateLink>https://ko-fi.com/dodert</DonateLink>
+  <DonateText>Support development on Ko-fi</DonateText>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml</TemplateURL>
+  <Config Name="WebUI port" Target="8000" Default="8000" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/accounts-balance-tracker" Mode="rw" Description="Database" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/accounts-balance-tracker</Config>
+  <Config Name="Default currency" Target="DEFAULT_CURRENCY" Default="EUR" Mode="" Description="Currency for new accounts (ISO 4217 code: EUR, USD, GBP...)" Type="Variable" Display="always" Required="false" Mask="false">EUR</Config>
+  <Config Name="Login user" Target="AUTH_USERNAME" Default="" Mode="" Description="User for the login screen. Set it together with the password; leave both empty for no login" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Login password" Target="AUTH_PASSWORD" Default="" Mode="" Description="Password for the login screen. Changing it logs everyone out" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Login one-time code (OTP)" Target="AUTH_TOTP" Default="false" Mode="" Description="true = also ask for a code from an authenticator app. The first login shows a QR code to add it; to show a new one, delete .totp_secret in the Data folder" Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User id the app runs as" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group id the app runs as" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="TZ" Target="TZ" Default="Europe/Madrid" Mode="" Description="Time zone" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Madrid</Config>
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="" Mode="" Description="Optional. Empty = SQLite in /data. PostgreSQL: postgresql+psycopg://user:pass@host:5432/balances" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+</Container>
