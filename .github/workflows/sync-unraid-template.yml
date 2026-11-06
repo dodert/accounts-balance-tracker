@@ -1,0 +1,53 @@
+name: Sync Unraid template
+
+# Copies this app's template XML and icon from unraid/ to the public templates repo that
+# Community Applications reads. Only these two files: the repo's README, ca_profile.xml, LICENSE
+# and icon.png are shared with other apps and come from dodert/game-library-manager.
+# Needs the secret TEMPLATES_TOKEN: a fine-grained token with "Contents: Read and write"
+# on the templates repo only.
+
+on:
+  push:
+    branches: [main]
+    paths: ["unraid/**"]
+  workflow_dispatch:
+
+# Read-only GITHUB_TOKEN; the push to the templates repo uses TEMPLATES_TOKEN
+permissions:
+  contents: read
+
+env:
+  TEMPLATES_REPO: dodert/unraid-templates
+  TEMPLATES_BRANCH: main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Push template
+        env:
+          TOKEN: ${{ secrets.TEMPLATES_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Secret TEMPLATES_TOKEN is not set"
+            exit 1
+          fi
+          git clone "https://x-access-token:${TOKEN}@github.com/${TEMPLATES_REPO}.git" templates
+          cd templates
+          # Start from the remote branch if it exists (the repo may still be empty)
+          if git ls-remote --exit-code --heads origin "$TEMPLATES_BRANCH" >/dev/null; then
+            git checkout -B "$TEMPLATES_BRANCH" "origin/$TEMPLATES_BRANCH"
+          else
+            git checkout --orphan "$TEMPLATES_BRANCH"
+          fi
+          cp ../unraid/accounts-balance-tracker.xml ../unraid/accounts-balance-tracker.png .
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Template unchanged"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Update accounts-balance-tracker template from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push origin "HEAD:${TEMPLATES_BRANCH}"

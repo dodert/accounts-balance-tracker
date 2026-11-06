@@ -1,0 +1,127 @@
+from datetime import date as Date
+from decimal import Decimal
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+
+from .models import AccountType
+
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+Currency = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")]
+Amount = Annotated[Decimal, Field(max_digits=14, decimal_places=2)]
+Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
+
+
+def _blank_is_none(value):
+    return None if isinstance(value, str) and not value.strip() else value
+
+
+class AccountIn(BaseModel):
+    name: Name
+    type: AccountType = AccountType.bank
+    currency: Currency | None = None  # None -> DEFAULT_CURRENCY
+    institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+    notes: str | None = None
+    archived: bool = False
+
+    _blanks = field_validator("institution", "notes", "currency", mode="before")(_blank_is_none)
+
+
+class AccountUpdate(BaseModel):
+    name: Name | None = None
+    type: AccountType | None = None
+    currency: Currency | None = None
+    institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+    notes: str | None = None
+    archived: bool | None = None
+
+    _blanks = field_validator("institution", "notes", mode="before")(_blank_is_none)
+
+
+class AccountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: AccountType
+    currency: str
+    institution: str | None
+    notes: str | None
+    archived: bool
+    balance: float | None = None
+    balance_date: Date | None = None
+    previous_balance: float | None = None
+    previous_date: Date | None = None
+
+
+class BalanceIn(BaseModel):
+    date: Date
+    amount: Amount
+    note: Note | None = None
+
+    _blanks = field_validator("note", mode="before")(_blank_is_none)
+
+
+class BalanceUpdate(BaseModel):
+    date: Date | None = None
+    amount: Amount | None = None
+    note: Note | None = None
+
+    _blanks = field_validator("note", mode="before")(_blank_is_none)
+
+
+class BalanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    account_id: int
+    date: Date
+    amount: float
+    note: str | None
+
+
+class BulkItem(BaseModel):
+    account_id: int
+    amount: Amount
+
+
+class BulkBalancesIn(BaseModel):
+    date: Date
+    items: list[BulkItem] = Field(max_length=1000)
+
+
+class BulkBalancesOut(BaseModel):
+    created: int
+    updated: int
+
+
+class CurrencyTotal(BaseModel):
+    currency: str
+    total: float
+    accounts: int
+    # Total on the previous date with a recorded balance, to show the change
+    previous_total: float | None
+    previous_date: Date | None
+    date: Date | None
+
+
+class Series(BaseModel):
+    account_id: int
+    name: str
+    archived: bool
+    # One value per entry of HistoryOut.dates: the last balance known on that day, None before the first
+    values: list[float | None]
+
+
+class HistoryOut(BaseModel):
+    currency: str
+    dates: list[Date]
+    total: list[float]
+    accounts: list[Series]
+
+
+class CsvImportOut(BaseModel):
+    accounts_created: int
+    balances_created: int
+    balances_updated: int
+    errors: list[str]

@@ -1,0 +1,51 @@
+name: Clean up old images
+
+# Deletes old versions of ghcr.io/dodert/accounts-balance-tracker. Manual only (Actions → Run
+# workflow); it runs as a dry run unless "dry-run" is unticked, so the first runs only list what
+# would be deleted. To run it on a schedule, uncomment "schedule" below.
+#
+# A version is deleted only when it is BOTH older than "cut-off" AND not among the "keep" most
+# recent tagged versions. Untagged leftovers (old builds whose tag moved to a newer one) older than
+# the cut-off are deleted too. The platform images (amd64/arm64) inside a kept multi-arch image
+# are protected automatically by the action (v3.1.0+), so kept tags keep working on both.
+#
+# It uses the workflow token, so this repository needs the Admin role on the package:
+# package settings → "Manage Actions access" → accounts-balance-tracker → Admin.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cut-off:
+        description: "Only delete versions older than this (e.g. 4w, 30d, 2w 3d)"
+        default: "4w"
+        required: true
+      keep:
+        description: "Always keep this many of the most recent tagged versions"
+        default: "10"
+        required: true
+      dry-run:
+        description: "Dry run: only list what would be deleted"
+        type: boolean
+        default: true
+  # schedule:
+  #   - cron: "0 4 * * 1"  # Mondays 04:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: accounts-balance-tracker
+          cut-off: ${{ inputs.cut-off || '4w' }}
+          keep-n-most-recent: ${{ inputs.keep || '10' }}
+          timestamp-to-use: created_at
+          # A scheduled run has no inputs: it deletes for real
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || false }}

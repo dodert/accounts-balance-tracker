@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ASSET_VERSION}}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
+</head>
+<body class="login-page">
+  <form method="post" action="/login" class="login-box">
+    <h1 data-i18n="header.title">💰 My balances</h1>
+    <label><span data-i18n="login.username">User</span> <input name="username" autocomplete="username" autocapitalize="none" required autofocus></label>
+    <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="current-password" required></label>
+    <p id="login-error" class="login-error" hidden data-i18n="login.error">Wrong user or password.</p>
+    <button type="submit" class="primary" data-i18n="login.submit">Log in</button>
+  </form>
+  <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
+  <script>
+    document.getElementById("login-error").hidden = !new URLSearchParams(location.search).has("error");
+    initI18n();
+  </script>
+</body>
+</html>

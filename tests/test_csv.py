@@ -1,0 +1,55 @@
+from app.csv_io import parse_amount
+
+
+def test_parse_amount():
+    assert str(parse_amount("1.234,56")) == "1234.56"
+    assert str(parse_amount("1,234.56")) == "1234.56"
+    assert str(parse_amount("-50")) == "-50.00"
+    assert str(parse_amount("12,5 €")) == "12.50"
+
+
+def test_import_creates_accounts_and_replaces_balances(client):
+    csv = (
+        "cuenta;tipo;moneda;fecha;saldo;nota\n"
+        "ING;savings;EUR;31/01/2026;1.000,50;\n"
+        "ING;savings;EUR;2026-02-28;1200;nómina\n"
+        "Broker;investment;;2026-02-28;300;\n"
+        ";;;2026-02-28;1;\n"
+        "ING;;;2026-13-01;5;\n"
+        "Bad;weird;;2026-02-01;5;\n"
+        "\n"
+    ).encode("cp1252")
+    res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
+    assert (res["accounts_created"], res["balances_created"], res["balances_updated"]) == (2, 3, 0)
+    assert len(res["errors"]) == 3 and res["errors"][0].startswith("Line 5:")
+
+    again = client.post("/api/import/csv", files={"file": ("b.csv", b"account,date,amount\ning,2026-02-28,1300\n", "text/csv")}).json()
+    assert (again["accounts_created"], again["balances_created"], again["balances_updated"]) == (0, 0, 1)
+
+    accounts = {a["name"]: a for a in client.get("/api/accounts").json()}
+    assert accounts["ING"]["type"] == "savings" and accounts["ING"]["balance"] == 1300
+    assert accounts["Broker"]["currency"] == "EUR"
+    notes = [b["note"] for b in client.get(f"/api/accounts/{accounts['ING']['id']}/balances").json()]
+    assert notes == [None, None]  # the second import had no note column
+
+
+def test_export_round_trip(client, tmp_path):
+    a = client.post("/api/accounts", json={"name": "Cash, wallet", "type": "cash"}).json()
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 12.5, "note": "x"})
+    res = client.get("/api/export/csv")
+    assert res.headers["content-disposition"].startswith("attachment")
+    assert res.text.splitlines() == ["account,type,currency,institution,date,amount,note", '"Cash, wallet",cash,EUR,,2026-01-01,12.50,x']
+
+    from fastapi.testclient import TestClient
+
+    from app.config import Settings
+    from app.main import create_app
+    other = TestClient(create_app(Settings(data_dir=tmp_path / "other")))
+    out = other.post("/api/import/csv", files={"file": ("e.csv", res.content, "text/csv")}).json()
+    assert (out["accounts_created"], out["balances_created"], out["errors"]) == (1, 1, [])
+    assert other.get("/api/accounts").json()[0]["type"] == "cash"
+
+
+def test_import_rejects_files_without_required_columns(client):
+    res = client.post("/api/import/csv", files={"file": ("x.csv", b"foo,bar\n1,2\n", "text/csv")})
+    assert res.status_code == 422 and "account" in res.json()["detail"]

@@ -1,0 +1,41 @@
+name: Delete untagged images
+
+# Deletes every untagged version of ghcr.io/dodert/accounts-balance-tracker: old builds whose tags
+# (latest, pre-release, a branch name...) moved on to a newer build. Tagged versions are never
+# touched, and the platform images (amd64/arm64) inside them, which GHCR also lists as untagged,
+# are protected automatically by the action (v3.1.0+), so every tag keeps working.
+#
+# Manual only (Actions → Run workflow) and a dry run unless "dry-run" is unticked.
+# The 1-hour default cut-off leaves alone a build that is still being pushed.
+# Needs the repository to have the Admin role in the package's "Manage Actions access".
+
+on:
+  workflow_dispatch:
+    inputs:
+      cut-off:
+        description: "Only delete versions older than this (e.g. 1h, 1d)"
+        default: "1h"
+        required: true
+      dry-run:
+        description: "Dry run: only list what would be deleted"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: accounts-balance-tracker
+          tag-selection: untagged
+          cut-off: ${{ inputs.cut-off }}
+          timestamp-to-use: created_at
+          dry-run: ${{ inputs.dry-run }}

@@ -1,0 +1,21 @@
+services:
+  accounts-balance-tracker:
+    image: ghcr.io/dodert/accounts-balance-tracker:latest
+    container_name: accounts-balance-tracker
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Madrid
+      # Currency for new accounts
+      - DEFAULT_CURRENCY=EUR
+      # Optional: use PostgreSQL instead of SQLite
+      # - DATABASE_URL=postgresql+psycopg://balances:balances@postgres:5432/balances
+      # Login: set both to turn it on (recommended: this app holds financial data)
+      - AUTH_USERNAME=
+      - AUTH_PASSWORD=
+      - AUTH_TOTP=false
+    restart: unless-stopped

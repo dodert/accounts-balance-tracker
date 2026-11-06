@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ASSET_VERSION}}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
+</head>
+<body class="login-page">
+  <form method="post" action="/login/totp" class="login-box" data-mode="{{MODE}}">
+    <h1 data-i18n="header.title">💰 My balances</h1>
+    <p class="totp-help setup-only" data-i18n="totp.setup_help">Add this account to your authenticator app: scan the QR code, or type the code below. Then enter the 6-digit code it shows.</p>
+    {{SETUP}}
+    <label><span data-i18n="totp.code">One-time code</span> <input name="code" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" autocomplete="one-time-code" required autofocus></label>
+    <p id="login-error" class="login-error" hidden data-i18n="totp.error">Wrong or expired code.</p>
+    <button type="submit" class="primary" data-i18n="login.submit">Log in</button>
+    <a class="totp-back" href="/login" data-i18n="totp.back">Back</a>
+  </form>
+  <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
+  <script>
+    document.getElementById("login-error").hidden = !new URLSearchParams(location.search).has("error");
+    document.querySelectorAll(".setup-only").forEach((el) => { el.hidden = document.forms[0].dataset.mode !== "setup"; });
+    initI18n();
+  </script>
+</body>
+</html>
