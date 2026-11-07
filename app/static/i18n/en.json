@@ -102,6 +102,8 @@
   "totals.available_now": "Available now",
   "totals.with_locked": "Including what is not available yet ({locked})",
   "chart.with_locked": "Including what is not available yet",
+  "accounts.search": "Search: account, institution, type",
+  "accounts.search_count": "{n} of {total}",
   "totals.combined": "Total in {currency}, all currencies",
   "fx.rate": "1 {base} = {rate} {quote}",
   "fx.from": "(ECB, {date})",
