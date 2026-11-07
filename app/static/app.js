@@ -23,7 +23,9 @@ const api = async (path, opts = {}) => {
   return res.status === 204 ? null : res.json();
 };
 
-const state = { about: null, accounts: [], history: null, mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
+// ALL_CURRENCIES: the charts of every currency, one after the other, each in its own currency
+const ALL_CURRENCIES = "*";
+const state = { about: null, accounts: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
 
 // Chart grouping (by account or by institution), remembered in this browser
 function savedGroup() {
@@ -175,10 +177,14 @@ async function loadTotals() {
     </div>`).join("");
   $("#totals").innerHTML = tiles;
   const currencies = totals.map((c) => c.currency);
+  state.currencies = currencies;
   const select = $("#chart-currency");
-  select.innerHTML = currencies.map((c) => `<option>${esc(c)}</option>`).join("");
-  select.hidden = currencies.length < 2;
-  if (!currencies.includes(state.currency)) state.currency = currencies[0] ?? null;
+  const multi = currencies.length > 1;
+  select.innerHTML = (multi ? `<option value="${ALL_CURRENCIES}">${esc(t("chart.all_currencies"))}</option>` : "") +
+    currencies.map((c) => `<option>${esc(c)}</option>`).join("");
+  select.hidden = !multi;
+  // With more than one currency, all of them are shown until one is picked
+  if (!currencies.includes(state.currency) && !(multi && state.currency === ALL_CURRENCIES)) state.currency = multi ? ALL_CURRENCIES : currencies[0] ?? null;
   select.value = state.currency ?? "";
   // All currencies in the default one, only with more than one currency. Not awaited: fetching the
   // rate can take a while (or fail), and the other boxes and the charts must not wait for it
@@ -290,9 +296,10 @@ function sinceDate() {
 }
 
 async function loadHistory() {
-  if (!state.currency) { state.history = null; renderChart(); return; }
   const since = sinceDate();
-  state.history = await api(`/api/history?currency=${encodeURIComponent(state.currency)}${since ? `&since=${since}` : ""}`);
+  const currencies = state.currency === ALL_CURRENCIES ? state.currencies : state.currency ? [state.currency] : [];
+  state.histories = await Promise.all(currencies.map((c) =>
+    api(`/api/history?currency=${encodeURIComponent(c)}${since ? `&since=${since}` : ""}`)));
   renderChart();
 }
 
@@ -307,7 +314,7 @@ function totalSeries(h) {
 }
 
 function accountSeries(h) {
-  const ids = state.accounts.filter((a) => a.currency === h.currency).map((a) => a.id).sort((a, b) => a - b);
+  const ids = state.accounts.map((a) => a.id).sort((a, b) => a - b);
   return h.accounts.filter((a) => a.values.some((v) => v !== null)).map((a) => {
     const account = state.accounts.find((x) => x.id === a.account_id);
     const slot = ids.indexOf(a.account_id) + 1;
@@ -406,13 +413,15 @@ function drawChart(box, opts) {
   if (ref) values.push(ref.value);
   if (!values.length) return;
   const ticks = niceTicks(Math.min(...values), Math.max(...values), opts.small ? 3 : 5);
+  const labels = opts.axis(ticks);
+  // Room for the longest axis label (about 6.5px a character at 11px), e.g. "5,4 mil US$"
+  pad.left = Math.max(pad.left, Math.ceil(Math.max(...labels.map((l) => String(l).length)) * 6.5) + 12);
   const y0 = ticks[0], y1 = ticks[ticks.length - 1];
   const t0 = times[0], t1 = times[times.length - 1];
   const x = (time) => pad.left + (t1 === t0 ? (width - pad.left - pad.right) / 2 : ((time - t0) / (t1 - t0)) * (width - pad.left - pad.right));
   const y = (v) => pad.top + (1 - (v - y0) / (y1 - y0)) * (height - pad.top - pad.bottom);
 
   const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": opts.label ?? t("chart.title") }, box);
-  const labels = opts.axis(ticks);
   ticks.forEach((tick, i) => {
     svg("line", { x1: pad.left, x2: width - pad.right, y1: y(tick), y2: y(tick), class: "grid" }, root);
     svg("text", { x: pad.left - 8, y: y(tick), class: "axis", "text-anchor": "end", "dominant-baseline": "middle" }, root).textContent = labels[i];
@@ -502,20 +511,40 @@ const ttRow = (s, value, sub = "") =>
   (sub ? `<div class="tt-since">${sub}</div>` : "");
 const sinceText = (s, v, currency) => (s.start !== null && s.start !== undefined ? `${changeCell(v, s.start, currency, true)} ${esc(t("chart.since_start"))}` : "");
 
+// One block of charts per currency shown: the first in the panel's own elements, the others below it
 function renderChart() {
-  const box = $("#chart"), grid = $("#multiples");
+  const hs = state.histories;
+  const multi = hs.length > 1;
+  const head = $("#chart-cur-head");
+  head.hidden = !multi;
+  head.textContent = multi ? hs[0].currency : "";
+  const more = $("#chart-more");
+  more.innerHTML = "";
+  renderBlock(hs[0] ?? null, { box: $("#chart"), legend: $("#chart-legend"), grid: $("#multiples"), table: $("#chart-table"), tableWrap: $("#chart-table-wrap") });
+  for (const h of hs.slice(1)) {
+    const block = document.createElement("div");
+    block.className = "chart-block";
+    block.innerHTML = `<h3 class="chart-cur-head">${esc(h.currency)}</h3><div class="chart"></div><div class="legend"></div>` +
+      `<div class="multiples" hidden></div><details><summary>${esc(t("chart.show_table"))}</summary><div class="table-wrap"><table class="data"></table></div></details>`;
+    more.appendChild(block);
+    renderBlock(h, { box: $(".chart", block), legend: $(".legend", block), grid: $(".multiples", block), table: $("table", block), tableWrap: $("details", block) });
+  }
+  if ($("#chart-dlg").open) drawMaximized();
+}
+
+function renderBlock(h, el) {
+  const { box, grid } = el;
   box.innerHTML = "";
   grid.innerHTML = "";
-  $("#chart-legend").innerHTML = "";
-  $("#chart-table").innerHTML = "";
-  const h = state.history;
+  el.legend.innerHTML = "";
+  el.table.innerHTML = "";
   if (!h || h.dates.length === 0) {
     box.innerHTML = `<p class="hint chart-empty">${esc(t("chart.empty"))}</p>`;
-    $("#chart-table-wrap").hidden = true;
+    el.tableWrap.hidden = true;
     grid.hidden = true;
     return;
   }
-  $("#chart-table-wrap").hidden = false;
+  el.tableWrap.hidden = false;
   const total = totalSeries(h);
   const accounts = chartSeries(h);
   const cur = h.currency;
@@ -530,7 +559,7 @@ function renderChart() {
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
     });
-    $("#chart-legend").innerHTML = series.map((s) =>
+    el.legend.innerHTML = series.map((s) =>
       `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${seriesName(s)}</span>`).join("");
   } else {
     // The total on its own chart, then one small chart per account with its own scale and start
@@ -548,7 +577,7 @@ function renderChart() {
         accounts.filter((a) => a.values[idx] !== null).map((a) => ttRow(a, money(a.values[idx], cur))).join(""),
     });
     if (locked) {
-      $("#chart-legend").innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.available"))}</span>` +
+      el.legend.innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.available"))}</span>` +
         `<span class="legend-item"><span class="swatch dashed-swatch" style="border-top-color: var(--muted)"></span>${esc(t("chart.with_locked"))}</span>`;
     }
     grid.hidden = accounts.length === 0;
@@ -558,17 +587,16 @@ function renderChart() {
       const max = `<button type="button" class="icon mini-max" title="${esc(t("chart.maximize"))}" aria-label="${esc(t("chart.maximize"))}: ${esc(a.name)}">⤢</button>`;
       card.innerHTML = accountHead(a, cur, max) + `<div class="chart mini-chart"></div>`;
       grid.appendChild(card);
-      $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id));
+      $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id, cur));
       drawAccountChart($(".mini-chart", card), a, h, true);
     }
   }
-  if ($("#chart-dlg").open) drawMaximized();
 
   // The amounts as a table: total and every account
   const cols = h.available.some((v, i) => v !== h.total[i])
     ? [{ name: t("chart.available"), values: h.available }, { name: t("chart.with_locked"), values: h.total }, ...accounts]
     : [total, ...accounts];
-  $("#chart-table").innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}${s.detail ? `<span class="sub">${esc(s.detail)}</span>` : ""}</th>`).join("")}</tr></thead><tbody>` +
+  el.table.innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}${s.detail ? `<span class="sub">${esc(s.detail)}</span>` : ""}</th>`).join("")}</tr></thead><tbody>` +
     h.dates.map((d, i) => `<tr><td>${esc(fmtDate(d))}</td>${cols.map((s) => `<td class="num">${esc(money(s.values[i], cur))}</td>`).join("")}</tr>`).reverse().join("") + "</tbody>";
 }
 
@@ -622,8 +650,8 @@ function drawAccountChart(box, a, h, small) {
 }
 
 // One account's chart, big, in a dialog (the tooltip moves into the dialog so it shows above it)
-function openMaximized(accountId) {
-  state.maximized = accountId;
+function openMaximized(accountId, currency) {
+  state.maximized = { id: accountId, currency };
   const dlg = $("#chart-dlg");
   dlg.appendChild($("#tooltip"));
   dlg.showModal();
@@ -631,8 +659,8 @@ function openMaximized(accountId) {
 }
 
 function drawMaximized() {
-  const h = state.history;
-  const a = h && chartSeries(h).find((s) => s.account_id === state.maximized);
+  const h = state.histories.find((x) => x.currency === state.maximized?.currency);
+  const a = h && chartSeries(h).find((s) => s.account_id === state.maximized.id);
   if (!a) { $("#chart-dlg").close(); return; }
   $("#chart-dlg-head").innerHTML = accountHead(a, h.currency);
   const box = $("#chart-dlg-chart");

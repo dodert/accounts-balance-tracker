@@ -116,5 +116,6 @@
   "demo.exit": "Salir de la demo",
   "demo.try": "Probar con datos de ejemplo",
   "demo.reset": "Restablecer datos de ejemplo",
-  "demo.banner": "Modo demo: datos de ejemplo inventados. Tus datos reales no se muestran ni se modifican."
+  "demo.banner": "Modo demo: datos de ejemplo inventados. Tus datos reales no se muestran ni se modifican.",
+  "chart.all_currencies": "Todas las monedas"
 }

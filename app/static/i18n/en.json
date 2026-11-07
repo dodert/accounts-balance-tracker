@@ -116,5 +116,6 @@
   "demo.exit": "Leave the demo",
   "demo.try": "Try it with sample data",
   "demo.reset": "Reset sample data",
-  "demo.banner": "Demo mode: made-up sample data. Your real data is not shown or changed."
+  "demo.banner": "Demo mode: made-up sample data. Your real data is not shown or changed.",
+  "chart.all_currencies": "All currencies"
 }
