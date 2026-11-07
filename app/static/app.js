@@ -475,6 +475,11 @@ function drawMaximized() {
   drawAccountChart(box, a, h, false);
 }
 
+// A click outside the dialog box (on the backdrop) closes it too
+$("#chart-dlg").addEventListener("click", (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
+});
 $("#chart-dlg").addEventListener("close", () => {
   state.maximized = null;
   $("#tooltip").hidden = true;
