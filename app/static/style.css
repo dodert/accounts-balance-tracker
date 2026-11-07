@@ -51,6 +51,12 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .tile-figures { display: flex; flex-wrap: wrap; gap: .2rem 2.5rem; margin-bottom: .3rem; }
 .tile-caption { font-size: .8rem; color: var(--muted); margin-top: -.2rem; }
 .tile-locked .tile-value { color: var(--muted); }
+.tile-combined { border-color: var(--accent); }
+.tile-combined .tile-label { display: flex; align-items: center; gap: .4rem; }
+.fx-refresh { margin-left: auto; }
+.fx-refresh.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.fx-date { font-size: .78rem; }
 .panel-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
 
 /* Chart */

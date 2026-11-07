@@ -1,4 +1,4 @@
-from datetime import date as Date
+from datetime import date as Date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -116,6 +116,26 @@ class CurrencyTotal(BaseModel):
     available: float
     # Available part on the first date with a recorded balance
     first_available: float | None = None
+
+
+class FxRateOut(BaseModel):
+    base: str
+    quote: str
+    day: Date
+    rate: float
+    rate_date: Date
+    fetched_at: datetime
+    stale: bool
+
+
+class CombinedTotal(BaseModel):
+    """Every currency added up in the default currency, at today's rates."""
+    currency: str
+    total: float
+    available: float
+    rates: list[FxRateOut]
+    # Currencies left out: no rate stored and the service could not be reached
+    missing: list[str]
 
 
 class Series(BaseModel):
