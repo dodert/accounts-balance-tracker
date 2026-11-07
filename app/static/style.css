@@ -82,6 +82,7 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .mini-sub { font-size: .78rem; color: var(--muted); margin: .1rem 0 .2rem 1.05rem; min-height: 1em; }
 .mini-chart { width: 100%; }
 .mini-max { margin-left: .2rem; line-height: 1.2; }
+.detail { color: var(--muted); font-weight: normal; }
 dialog.chart-dlg { width: min(1000px, 95vw); }
 .chart-dlg .mini-head { font-size: 1.1rem; }
 .chart-dlg .mini-name, .chart-dlg .mini-value { font-size: 1.1rem; }

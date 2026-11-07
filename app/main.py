@@ -39,6 +39,9 @@ def account_out(account: Account) -> AccountOut:
     return out
 
 
+DUPLICATE_NAME = "An account with that name already exists in that institution"
+
+
 def create_app(settings: Settings = default_settings) -> FastAPI:
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
@@ -130,7 +133,7 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
         values["currency"] = values["currency"] or settings.default_currency
         account = Account(**values)
         db.add(account)
-        commit(db, "An account with that name already exists")
+        commit(db, DUPLICATE_NAME)
         db.refresh(account)
         return account_out(account)
 
@@ -145,7 +148,7 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
             if value is None and key in ("name", "type", "currency", "archived"):
                 continue
             setattr(account, key, value)
-        commit(db, "An account with that name already exists")
+        commit(db, DUPLICATE_NAME)
         db.refresh(account)
         return account_out(account)
 

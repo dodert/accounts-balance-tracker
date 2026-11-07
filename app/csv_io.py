@@ -4,6 +4,10 @@ Columns: account, type, currency, institution, date, amount, note. The import al
 Spanish names (cuenta, tipo, moneda, entidad, fecha, saldo, nota) and only needs account, date and
 amount. Amounts may use a decimal point or comma ("1234.56", "1.234,56", "1,234.56"); dates
 YYYY-MM-DD or DD/MM/YYYY.
+
+An account is found by its name and institution (names are unique per institution). Without an
+institution in the row, an account with that name is used if there is only one, or the one without
+an institution.
 """
 import csv
 import io
@@ -90,9 +94,20 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
     if missing:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
 
-    accounts = {a.name.lower(): a for a in db.scalars(select(Account))}
+    accounts = list(db.scalars(select(Account)))
+
+    def find(name: str, institution: str) -> Account | None:
+        same = [a for a in accounts if a.name.lower() == name.lower()]
+        if institution:
+            return next((a for a in same if (a.institution or "").lower() == institution.lower()), None)
+        if len(same) > 1:
+            same = [a for a in same if not a.institution]
+            if not same:
+                raise ValueError(f"there are several accounts named '{name}': add the institution")
+        return same[0] if same else None
+
     result = {"accounts_created": 0, "balances_created": 0, "balances_updated": 0, "errors": []}
-    seen: dict[tuple[str, date], Balance] = {}
+    seen: dict[tuple[int, date], Balance] = {}
     for line, row in enumerate(reader, start=2):
         if not any(cell.strip() for cell in row):
             continue
@@ -103,7 +118,8 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 raise ValueError("missing or too long account name")
             day = parse_date(cell("date"))
             amount = parse_amount(cell("amount"))
-            account = accounts.get(name.lower())
+            institution = cell("institution")[:100]
+            account = find(name, institution)
             if account is None:
                 kind = cell("type").lower() or "bank"
                 currency = (cell("currency") or default_currency).upper()
@@ -112,13 +128,13 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 if not re.fullmatch(r"[A-Z]{3}", currency):
                     raise ValueError(f"invalid currency '{currency}'")
                 account = Account(name=name, type=AccountType(kind), currency=currency,
-                                  institution=cell("institution")[:100] or None, archived=False)
+                                  institution=institution or None, archived=False)
                 db.add(account)
                 db.flush()
-                accounts[name.lower()] = account
+                accounts.append(account)
                 result["accounts_created"] += 1
             note = cell("note")[:300] or None
-            key = (name.lower(), day)
+            key = (account.id, day)
             balance = seen.get(key) or db.scalar(select(Balance).where(Balance.account_id == account.id, Balance.date == day))
             if balance is None:
                 balance = Balance(account_id=account.id, date=day, amount=amount, note=note)

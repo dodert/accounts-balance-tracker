@@ -10,15 +10,17 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 ## Features
 
-- **Accounts** with a type, institution, currency and notes. Archive the ones you close (record a 0 balance first so the history stays right).
+- **Accounts** with a type, institution, currency and notes. An institution can have several accounts, and the same name can be used in different institutions (e.g. "Payroll" at two banks). Archive the ones you close (record a 0 balance first so the history stays right).
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
   - *Amounts*: the total, then one small chart per account with its own scale. Each one has a dashed line at its first recorded balance (its start) and shows the change since then. The ⤢ button on an account opens its chart maximized (close it with Close, Esc or a click outside).
   - *% since the start*: every account and the total on one chart, as the % change since each one's own start, so they can be compared.
 
+  *Group by*: by account (each one shown with its institution) or by institution (one series per institution, the sum of its accounts; its start is its total on the first date any of them had a balance). The choice is saved in the browser.
+
   Each account keeps its colour in every chart (the first 8; the rest are grey) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
-- **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note` (optional); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. Missing accounts are created, and a balance already recorded on that date is replaced.
+- **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note` (optional); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. An account is found by its name and institution (without an institution in the row, by its name when only one account has it). Missing accounts are created, and a balance already recorded on that date is replaced.
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.
 - English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Both are saved in the browser. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
 
@@ -36,7 +38,9 @@ docker run -d --name accounts-balance-tracker -p 8000:8000 \
   ghcr.io/dodert/accounts-balance-tracker:latest
 ```
 
-Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (SQLite database and login secrets). The container runs as `PUID`:`PGID` (default `99:100`, Unraid's `nobody:users`). The database schema is migrated automatically on start.
+Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (SQLite database and login secrets). The container runs as `PUID`:`PGID` (default `99:100`, Unraid's `nobody:users`). The database schema is migrated automatically on start, keeping all the data.
+
+**Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. With PostgreSQL the app cannot copy the database: run `pg_dump` before updating. Exporting a CSV now and then (**Import / export → Export CSV**) is also a good copy of everything.
 
 | Variable | Default | |
 |---|---|---|

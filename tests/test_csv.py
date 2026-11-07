@@ -53,3 +53,23 @@ def test_export_round_trip(client, tmp_path):
 def test_import_rejects_files_without_required_columns(client):
     res = client.post("/api/import/csv", files={"file": ("x.csv", b"foo,bar\n1,2\n", "text/csv")})
     assert res.status_code == 422 and "account" in res.json()["detail"]
+
+
+def test_import_finds_accounts_by_name_and_institution(client):
+    csv = (
+        "account,institution,date,amount\n"
+        "Payroll,ING,2026-01-31,100\n"
+        "Payroll,BBVA,2026-01-31,200\n"
+        "payroll,bbva,2026-02-28,250\n"
+        "Payroll,,2026-02-28,1\n"
+    ).encode()
+    res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
+    assert (res["accounts_created"], res["balances_created"]) == (2, 3)
+    assert len(res["errors"]) == 1 and "add the institution" in res["errors"][0]
+    balances = {a["institution"]: a["balance"] for a in client.get("/api/accounts").json()}
+    assert balances == {"ING": 100, "BBVA": 250}
+
+    # Without an institution column, a name that is unique still matches its account
+    res = client.post("/api/import/csv", files={"file": ("c.csv", b"account,date,amount\nSolo,2026-01-31,5\nSolo,2026-02-28,6\n", "text/csv")}).json()
+    assert (res["accounts_created"], res["balances_created"], res["errors"]) == (1, 2, [])
+

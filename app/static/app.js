@@ -22,7 +22,12 @@ const api = async (path, opts = {}) => {
   return res.status === 204 ? null : res.json();
 };
 
-const state = { about: null, accounts: [], history: null, mode: "amounts", currency: null, editing: null, maximized: null };
+const state = { about: null, accounts: [], history: null, mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
+
+// Chart grouping (by account or by institution), remembered in this browser
+function savedGroup() {
+  try { return localStorage.getItem("abt-group") === "institution" ? "institution" : "account"; } catch { return "account"; }
+}
 
 // --- Formatting ---
 
@@ -217,12 +222,45 @@ function accountSeries(h) {
     const account = state.accounts.find((x) => x.id === a.account_id);
     const slot = ids.indexOf(a.account_id) + 1;
     return {
-      account_id: a.account_id, name: a.name, values: a.values, slot, archived: a.archived,
+      account_id: a.account_id, name: a.name, detail: account?.institution ?? "", values: a.values, slot, archived: a.archived,
       color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
       start: account?.first_balance ?? firstValue(a.values),
     };
   }).sort((a, b) => a.slot - b.slot);
 }
+
+// One series per institution: the sum of its accounts (accounts without one are grouped together).
+// Its start is its total on the first date any of its accounts had a balance.
+function institutionSeries(h) {
+  const groups = new Map();
+  for (const a of accountSeries(h)) {
+    const key = a.detail;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+  const keys = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
+  return keys.map((key, i) => {
+    const members = groups.get(key);
+    const values = h.dates.map((_, n) => {
+      const present = members.map((a) => a.values[n]).filter((v) => v !== null);
+      return present.length ? present.reduce((sum, v) => sum + v, 0) : null;
+    });
+    const firsts = members.map((a) => state.accounts.find((x) => x.id === a.account_id)).filter((a) => a?.first_date);
+    const day = firsts.map((a) => a.first_date).sort()[0];
+    const start = day ? firsts.filter((a) => a.first_date === day).reduce((sum, a) => sum + a.first_balance, 0) : firstValue(values);
+    const slot = i + 1;
+    return {
+      account_id: `i:${key}`, name: key || t("chart.no_institution"), values, slot, start,
+      detail: t(members.length === 1 ? "chart.one_account" : "chart.n_accounts", { n: members.length }),
+      archived: members.every((a) => a.archived),
+      color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
+    };
+  });
+}
+
+const chartSeries = (h) => (state.group === "institution" ? institutionSeries(h) : accountSeries(h));
+// The series name, with its institution (or its number of accounts) after it
+const seriesName = (s) => esc(s.name) + (s.detail ? ` <span class="detail">· ${esc(s.detail)}</span>` : "");
 
 // Change since the start in % (0 at the start); null where there is no value or the start is 0
 const pctSeries = (s) => ({
@@ -289,11 +327,19 @@ function drawChart(box, opts) {
     svg("text", { x: pad.left - 8, y: y(tick), class: "axis", "text-anchor": "end", "dominant-baseline": "middle" }, root).textContent = labels[i];
   });
   const labelCount = Math.min(times.length, Math.max(2, Math.floor((width - pad.left) / (opts.small ? 90 : 110))));
-  const shown = new Set();
+  // Labels evenly spread in time (dates can be unevenly spaced), never closer than `gap` px nor repeated
+  const gap = opts.small ? 70 : 80, nearest = (time) => times.reduce((best, tm, i) => (Math.abs(tm - time) < Math.abs(times[best] - time) ? i : best), 0);
+  const picked = [];
   for (let i = 0; i < labelCount; i++) {
-    const idx = labelCount === 1 ? 0 : Math.round((i * (times.length - 1)) / (labelCount - 1));
-    if (shown.has(idx)) continue;
-    shown.add(idx);
+    const idx = labelCount === 1 ? 0 : nearest(t0 + ((t1 - t0) * i) / (labelCount - 1));
+    const prev = picked[picked.length - 1];
+    if (prev !== undefined && (x(times[idx]) - x(times[prev]) < gap || fmtDate(dates[idx], { month: "short", year: "2-digit" }) === fmtDate(dates[prev], { month: "short", year: "2-digit" }))) {
+      if (i === labelCount - 1 && picked.length > 1) picked[picked.length - 1] = idx; // keep the last date
+      continue;
+    }
+    picked.push(idx);
+  }
+  for (const idx of picked) {
     const anchor = times.length === 1 ? "middle" : idx === 0 ? "start" : idx === times.length - 1 ? "end" : "middle";
     svg("text", { x: x(times[idx]), y: height - 6, class: "axis", "text-anchor": anchor }, root).textContent = fmtDate(dates[idx], { month: "short", year: "2-digit" });
   }
@@ -352,7 +398,7 @@ function drawChart(box, opts) {
 }
 
 const ttRow = (s, value, sub = "") =>
-  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch" style="background: ${s.color}"></span><span class="tt-name">${esc(s.name)}</span><span class="tt-value">${esc(value)}</span></div>` +
+  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch" style="background: ${s.color}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
   (sub ? `<div class="tt-since">${sub}</div>` : "");
 const sinceText = (s, v, currency) => (s.start !== null && s.start !== undefined ? `${changeCell(v, s.start, currency, true)} ${esc(t("chart.since_start"))}` : "");
 
@@ -371,7 +417,7 @@ function renderChart() {
   }
   $("#chart-table-wrap").hidden = false;
   const total = totalSeries(h);
-  const accounts = accountSeries(h);
+  const accounts = chartSeries(h);
   const cur = h.currency;
   const big = box.clientWidth < 500 ? 220 : 300;
 
@@ -385,7 +431,7 @@ function renderChart() {
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
     });
     $("#chart-legend").innerHTML = series.map((s) =>
-      `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${esc(s.name)}</span>`).join("");
+      `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${seriesName(s)}</span>`).join("");
   } else {
     // The total on its own chart, then one small chart per account with its own scale and start
     drawChart(box, {
@@ -410,7 +456,7 @@ function renderChart() {
 
   // The amounts as a table: total and every account
   const cols = [total, ...accounts];
-  $("#chart-table").innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}</th>`).join("")}</tr></thead><tbody>` +
+  $("#chart-table").innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}${s.detail ? `<span class="sub">${esc(s.detail)}</span>` : ""}</th>`).join("")}</tr></thead><tbody>` +
     h.dates.map((d, i) => `<tr><td>${esc(fmtDate(d))}</td>${cols.map((s) => `<td class="num">${esc(money(s.values[i], cur))}</td>`).join("")}</tr>`).reverse().join("") + "</tbody>";
 }
 
@@ -421,6 +467,12 @@ $$("#chart-panel .views button").forEach((btn) => btn.addEventListener("click", 
 }));
 $("#chart-currency").addEventListener("change", (e) => { state.currency = e.target.value; loadHistory().catch(showError); });
 $("#chart-range").addEventListener("change", () => loadHistory().catch(showError));
+$("#chart-group").value = state.group;
+$("#chart-group").addEventListener("change", (e) => {
+  state.group = e.target.value;
+  try { localStorage.setItem("abt-group", state.group); } catch {}
+  renderChart();
+});
 let resizeTimer;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
 
@@ -439,7 +491,7 @@ function accountHead(a, cur, extra = "") {
   return `
     <div class="mini-head">
       <span class="swatch" style="background: ${a.color}"></span>
-      <span class="mini-name">${esc(a.name)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
+      <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
       <span class="mini-value">${esc(money(last, cur))}</span>${extra}
     </div>
     <div class="mini-sub">${sinceText(a, last, cur)}</div>`;
@@ -467,7 +519,7 @@ function openMaximized(accountId) {
 
 function drawMaximized() {
   const h = state.history;
-  const a = h && accountSeries(h).find((s) => s.account_id === state.maximized);
+  const a = h && chartSeries(h).find((s) => s.account_id === state.maximized);
   if (!a) { $("#chart-dlg").close(); return; }
   $("#chart-dlg-head").innerHTML = accountHead(a, h.currency);
   const box = $("#chart-dlg-chart");
@@ -503,7 +555,7 @@ $("#update-btn").addEventListener("click", () => {
   setDate(form.date, today());
   $("#update-rows").innerHTML = active.map((a) => `
     <label class="update-row">
-      <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
+      <span class="u-name">${esc(a.name)}${a.institution ? ` <span class="detail">· ${esc(a.institution)}</span>` : ""} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
       <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
     </label>`).join("");
   setError($("#update-error"), null);

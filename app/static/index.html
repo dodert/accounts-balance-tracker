@@ -42,6 +42,10 @@
           <button type="button" data-mode="amounts" aria-pressed="true" data-i18n="chart.amounts">Amounts</button>
           <button type="button" data-mode="percent" aria-pressed="false" data-i18n="chart.percent">% since the start</button>
         </div>
+        <select id="chart-group" data-i18n-aria-label="chart.group" aria-label="Group by">
+          <option value="account" data-i18n="chart.by_account">By account</option>
+          <option value="institution" data-i18n="chart.by_institution">By institution</option>
+        </select>
         <select id="chart-currency" data-i18n-aria-label="chart.currency" aria-label="Currency" hidden></select>
         <select id="chart-range" data-i18n-aria-label="chart.range" aria-label="Range">
           <option value="all" data-i18n="range.all">All</option>
