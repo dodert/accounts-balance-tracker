@@ -157,7 +157,7 @@ def test_damaged_totp_secret_stops_the_app_instead_of_showing_a_new_one(tmp_path
 def guess_in_parallel(app, path, field_values, extra=None):
     """Post every value at the same time, as an attacker would; returns (value, status, location)."""
     import asyncio
-    import httpx
+    import httpx2 as httpx
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver",
