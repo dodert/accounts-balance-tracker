@@ -19,3 +19,28 @@ def test_upgrade_is_idempotent(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     upgrade_database(engine)
     upgrade_database(engine)
+
+
+def test_upgrade_keeps_the_balances(tmp_path):
+    """SQLite rebuilds `accounts` in 0002: the balances (ON DELETE CASCADE) must survive it."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")  # foreign keys on, like the app
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0001")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'bank', 'EUR', 0)"))
+        conn.execute(text("INSERT INTO balances (account_id, date, amount) VALUES (1, '2026-01-01', 5)"))
+    upgrade_database(engine)
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
+        assert conn.scalar(text("PRAGMA foreign_keys")) == 1
+        conn.execute(text("DELETE FROM accounts"))
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 0  # the cascade still works
