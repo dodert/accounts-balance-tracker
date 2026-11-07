@@ -39,8 +39,8 @@
         <h2 data-i18n="chart.title">Evolution</h2>
         <span class="spacer"></span>
         <div class="views" role="group" data-i18n-aria-label="chart.mode" aria-label="Chart">
-          <button type="button" data-mode="total" aria-pressed="true" data-i18n="chart.total">Total</button>
-          <button type="button" data-mode="accounts" aria-pressed="false" data-i18n="chart.by_account">By account</button>
+          <button type="button" data-mode="amounts" aria-pressed="true" data-i18n="chart.amounts">Amounts</button>
+          <button type="button" data-mode="percent" aria-pressed="false" data-i18n="chart.percent">% since the start</button>
         </div>
         <select id="chart-currency" data-i18n-aria-label="chart.currency" aria-label="Currency" hidden></select>
         <select id="chart-range" data-i18n-aria-label="chart.range" aria-label="Range">
@@ -52,6 +52,7 @@
         </select>
       </div>
       <div id="chart" class="chart"></div>
+      <div id="multiples" class="multiples" hidden></div>
       <div id="chart-legend" class="legend"></div>
       <details id="chart-table-wrap">
         <summary data-i18n="chart.show_table">Show as a table</summary>
