@@ -88,5 +88,11 @@
   "chart.amounts": "Amounts",
   "chart.percent": "% since the start",
   "chart.start_pct": "Start",
-  "chart.maximize": "Maximize"
+  "chart.maximize": "Maximize",
+  "chart.group": "Group by",
+  "chart.by_account": "By account",
+  "chart.by_institution": "By institution",
+  "chart.no_institution": "No institution",
+  "chart.one_account": "1 account",
+  "chart.n_accounts": "{n} accounts"
 }

@@ -88,5 +88,11 @@
   "chart.amounts": "Importes",
   "chart.percent": "% desde el inicio",
   "chart.start_pct": "Inicio",
-  "chart.maximize": "Ampliar"
+  "chart.maximize": "Ampliar",
+  "chart.group": "Agrupar por",
+  "chart.by_account": "Por cuenta",
+  "chart.by_institution": "Por entidad",
+  "chart.no_institution": "Sin entidad",
+  "chart.one_account": "1 cuenta",
+  "chart.n_accounts": "{n} cuentas"
 }
