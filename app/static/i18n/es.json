@@ -99,7 +99,7 @@
   "account.available_hint": "Déjalo vacío si el saldo ya se puede usar. Para saldos que no puedes usar hasta una fecha, como opciones sobre acciones sin consolidar.",
   "accounts.available_on": "disponible el {date}",
   "chart.available": "Disponible",
-  "chart.available_hint": "Disponible (sin lo que aún no lo está)",
   "totals.available_now": "Disponible ahora",
-  "totals.with_locked": "Con lo no disponible aún ({locked})"
+  "totals.with_locked": "Con lo no disponible aún ({locked})",
+  "chart.with_locked": "Con lo no disponible aún"
 }

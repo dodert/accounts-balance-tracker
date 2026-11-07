@@ -114,6 +114,8 @@ class CurrencyTotal(BaseModel):
     date: Date | None
     # Part of the total that can be used today (accounts whose available_from has come)
     available: float
+    # Available part on the first date with a recorded balance
+    first_available: float | None = None
 
 
 class Series(BaseModel):

@@ -139,6 +139,7 @@ def test_available_from(client):
 
     summary = client.get("/api/summary").json()[0]
     assert summary["total"] == 1160 and summary["available"] == 160  # options not yet
+    assert summary["first_total"] == 1150 and summary["first_available"] == 100
 
     h = client.get("/api/history").json()
     assert h["dates"] == ["2026-01-01", "2026-03-01"]

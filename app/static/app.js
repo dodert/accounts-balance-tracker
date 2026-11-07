@@ -415,7 +415,7 @@ function drawChart(box, opts) {
 }
 
 const ttRow = (s, value, sub = "") =>
-  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch${s.dashed ? " dashed-swatch" : ""}" style="${s.dashed ? "" : `background: ${s.color}`}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
+  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch${s.dashed ? " dashed-swatch" : ""}" style="${s.dashed ? `border-top-color: ${s.color}` : `background: ${s.color}`}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
   (sub ? `<div class="tt-since">${sub}</div>` : "");
 const sinceText = (s, v, currency) => (s.start !== null && s.start !== undefined ? `${changeCell(v, s.start, currency, true)} ${esc(t("chart.since_start"))}` : "");
 
@@ -453,17 +453,20 @@ function renderChart() {
     // The total on its own chart, then one small chart per account with its own scale and start
     // The available part of the total, when some balance was not available on some date
     const locked = h.available.some((v, i) => v !== h.total[i]);
-    const available = { name: t("chart.available"), values: h.available, color: "var(--total)", dashed: true };
+    // With balances not available yet, the main line is what is available; the total with them is secondary
+    const summary = state.totals?.find((c) => c.currency === cur);
+    const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: summary?.first_available ?? firstValue(h.available) } : total;
+    const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
-      dates: h.dates, series: locked ? [total, available] : [total], height: big, area: true,
-      ref: total.start !== null ? { value: total.start, label: t("chart.start", { amount: money(total.start, cur) }) } : null,
+      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,
+      ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join("") +
         accounts.filter((a) => a.values[idx] !== null).map((a) => ttRow(a, money(a.values[idx], cur))).join(""),
     });
     if (locked) {
-      $("#chart-legend").innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.total"))}</span>` +
-        `<span class="legend-item"><span class="swatch dashed-swatch"></span>${esc(t("chart.available_hint"))}</span>`;
+      $("#chart-legend").innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.available"))}</span>` +
+        `<span class="legend-item"><span class="swatch dashed-swatch" style="border-top-color: var(--muted)"></span>${esc(t("chart.with_locked"))}</span>`;
     }
     grid.hidden = accounts.length === 0;
     for (const a of accounts) {
@@ -479,7 +482,9 @@ function renderChart() {
   if ($("#chart-dlg").open) drawMaximized();
 
   // The amounts as a table: total and every account
-  const cols = [total, ...(h.available.some((v, i) => v !== h.total[i]) ? [{ name: t("chart.available"), values: h.available }] : []), ...accounts];
+  const cols = h.available.some((v, i) => v !== h.total[i])
+    ? [{ name: t("chart.available"), values: h.available }, { name: t("chart.with_locked"), values: h.total }, ...accounts]
+    : [total, ...accounts];
   $("#chart-table").innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}${s.detail ? `<span class="sub">${esc(s.detail)}</span>` : ""}</th>`).join("")}</tr></thead><tbody>` +
     h.dates.map((d, i) => `<tr><td>${esc(fmtDate(d))}</td>${cols.map((s) => `<td class="num">${esc(money(s.values[i], cur))}</td>`).join("")}</tr>`).reverse().join("") + "</tbody>";
 }

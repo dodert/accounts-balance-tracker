@@ -73,5 +73,6 @@ def currency_totals(accounts: list[Account]) -> list[dict]:
             "first_total": float(totals[0]) if len(totals) > 1 else None,
             "first_date": dates[0] if len(dates) > 1 else None,
             "available": float(available),
+            "first_available": float(available_totals(group, dates[:1], per_account)[0]) if len(dates) > 1 else None,
         })
     return out
