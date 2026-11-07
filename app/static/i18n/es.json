@@ -78,5 +78,9 @@
   "totp.setup_help": "Añade esta cuenta a tu app de autenticación: escanea el código QR o escribe el código de abajo. Después introduce el código de 6 dígitos que muestra.",
   "totp.code": "Código de un solo uso",
   "totp.error": "Código incorrecto o caducado.",
-  "totp.back": "Volver"
+  "totp.back": "Volver",
+  "settings.locale": "Formato de fechas y números",
+  "settings.locale_auto": "Igual que el idioma",
+  "error.date": "Fecha no válida: {value}",
+  "common.calendar": "Calendario"
 }

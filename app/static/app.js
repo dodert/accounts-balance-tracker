@@ -29,18 +29,82 @@ const state = { about: null, accounts: [], history: null, mode: "total", currenc
 const money = (value, currency, opts = {}) => {
   if (value === null || value === undefined) return "";
   try {
-    return new Intl.NumberFormat(i18n.lang, { style: "currency", currency, ...opts }).format(value);
+    return new Intl.NumberFormat(fmtLocale(), { style: "currency", currency, ...opts }).format(value);
   } catch {
     return `${Number(value).toFixed(2)} ${currency}`;
   }
 };
-const compactMoney = (value, currency) => money(value, currency, { notation: "compact", maximumFractionDigits: 1 });
+const compactMoney = (value, currency, digits = 1) => money(value, currency, { notation: "compact", maximumFractionDigits: digits });
+// Axis labels: compact (1,2 K), with more decimals when that would repeat a label, or in full
+function axisLabels(ticks, currency) {
+  for (const digits of [1, 2]) {
+    const labels = ticks.map((v) => compactMoney(v, currency, digits));
+    if (new Set(labels).size === labels.length) return labels;
+  }
+  return ticks.map((v) => money(v, currency, { maximumFractionDigits: 0 }));
+}
+// An amount for an input box, in the regional format without thousands separators (1234,50)
+const amountText = (value) => (value === null || value === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(value));
 const signedMoney = (value, currency) => (value > 0 ? "+" : "") + money(value, currency);
-const fmtDate = (iso, opts = { dateStyle: "medium" }) => (iso ? new Intl.DateTimeFormat(i18n.lang, { ...opts, timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`)) : "");
+const fmtDate = (iso, opts = { dateStyle: "medium" }) => (iso ? new Intl.DateTimeFormat(fmtLocale(), { ...opts, timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`)) : "");
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+// Date fields: a text box in the regional format (31/12/2026, 12/31/2026, 31.12.2026...), since the
+// browser's own date box always uses the browser's language, plus a button for its calendar
+const REGIONAL_LOCALES = ["es-ES", "en-GB", "en-US", "de-DE", "fr-FR", "it-IT", "pt-PT", "pt-BR", "nl-NL", "ca-ES", "es-MX", "ja-JP", "sv-SE"];
+
+function dateLayout() {
+  const parts = new Intl.DateTimeFormat(fmtLocale(), { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" })
+    .formatToParts(new Date(Date.UTC(2026, 11, 31)));
+  const order = parts.filter((p) => ["day", "month", "year"].includes(p.type)).map((p) => p.type);
+  const sep = parts.find((p) => p.type === "literal")?.value ?? "/";
+  return { order, sep };
+}
+
+function isoToText(iso) {
+  if (!iso) return "";
+  const [year, month, day] = iso.split("-");
+  const { order, sep } = dateLayout();
+  const values = { year, month, day };
+  return order.map((k) => values[k]).join(sep);
+}
+
+// The text in the regional format (or YYYY-MM-DD) -> YYYY-MM-DD; error if it isn't a real date
+function textToIso(text) {
+  const value = String(text).trim();
+  let year, month, day;
+  const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) [, year, month, day] = iso;
+  else {
+    const nums = value.split(/\D+/).filter(Boolean);
+    if (nums.length !== 3) throw new Error(t("error.date", { value: text }));
+    ({ year, month, day } = Object.fromEntries(dateLayout().order.map((k, i) => [k, nums[i]])));
+    if (year.length === 2) year = `20${year}`;
+  }
+  const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (year.length !== 4 || d.getUTCMonth() !== Number(month) - 1 || d.getUTCDate() !== Number(day)) throw new Error(t("error.date", { value: text }));
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function setDate(input, iso) {
+  input.value = isoToText(iso);
+  input.placeholder = isoToText(today());
+}
+
+const getDate = (input) => textToIso(input.value);
+
+// Every .date-field: the calendar button opens the browser's date picker
+$$(".date-field").forEach((field) => {
+  const text = $(".date-text", field), native = $(".date-native", field);
+  $(".date-btn", field).addEventListener("click", () => {
+    try { native.value = textToIso(text.value); } catch { native.value = today(); }
+    try { native.showPicker(); } catch { native.focus(); native.click(); }
+  });
+  native.addEventListener("change", () => { if (native.value) setDate(text, native.value); });
+});
 
 // "1.234,56", "1,234.56", "1234.56" or "-50" -> number; the last of "," and "." is the decimal mark
 function parseAmount(text) {
@@ -194,10 +258,11 @@ function renderChart() {
 
   const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": t("chart.title") }, box);
   // Grid and y axis
-  for (const tick of ticks) {
+  const labels = axisLabels(ticks, h.currency);
+  ticks.forEach((tick, i) => {
     svg("line", { x1: pad.left, x2: width - pad.right, y1: y(tick), y2: y(tick), class: tick === 0 ? "zero" : "grid" }, root);
-    svg("text", { x: pad.left - 8, y: y(tick), class: "axis", "text-anchor": "end", "dominant-baseline": "middle" }, root).textContent = compactMoney(tick, h.currency);
-  }
+    svg("text", { x: pad.left - 8, y: y(tick), class: "axis", "text-anchor": "end", "dominant-baseline": "middle" }, root).textContent = labels[i];
+  });
   // x axis: up to ~6 date labels
   const labelCount = Math.min(times.length, Math.max(2, Math.floor((width - pad.left) / 110)));
   const shown = new Set();
@@ -300,11 +365,11 @@ $("#update-btn").addEventListener("click", () => {
   const active = state.accounts.filter((a) => !a.archived);
   if (!active.length) { openAccount(null); return; }
   const form = $("#update-form");
-  form.date.value = today();
+  setDate(form.date, today());
   $("#update-rows").innerHTML = active.map((a) => `
     <label class="update-row">
       <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
-      <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${a.balance ?? ""}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
+      <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
     </label>`).join("");
   setError($("#update-error"), null);
   $("#update-dlg").showModal();
@@ -315,7 +380,7 @@ $("#update-form").addEventListener("submit", async (e) => {
   try {
     const items = $$("#update-rows input").map((input) => ({ account_id: Number(input.dataset.id), amount: parseAmount(input.value) }))
       .filter((item) => item.amount !== null);
-    await api("/api/balances/bulk", { json: { date: e.target.date.value, items } });
+    await api("/api/balances/bulk", { json: { date: getDate(e.target.date), items } });
     $("#update-dlg").close();
     await refresh();
   } catch (err) {
@@ -343,7 +408,7 @@ async function openAccount(id) {
   $("#balances-section").hidden = !account;
   setError($("#account-error"), null);
   if (account) {
-    $("#nb-date").value = today();
+    setDate($("#nb-date"), today());
     $("#nb-amount").value = "";
     $("#nb-note").value = "";
     await loadBalances();
@@ -368,7 +433,7 @@ $("#nb-add").addEventListener("click", async () => {
   try {
     const amount = parseAmount($("#nb-amount").value);
     if (amount === null) throw new Error(t("error.amount_required"));
-    await api(`/api/accounts/${state.editing.id}/balances`, { json: { date: $("#nb-date").value, amount, note: $("#nb-note").value } });
+    await api(`/api/accounts/${state.editing.id}/balances`, { json: { date: getDate($("#nb-date")), amount, note: $("#nb-note").value } });
     $("#nb-amount").value = "";
     $("#nb-note").value = "";
     setError($("#account-error"), null);
@@ -442,16 +507,29 @@ $("#csv-form").addEventListener("submit", async (e) => {
 $("#csv-export-btn").addEventListener("click", () => { $("#data-menu").open = false; });
 
 // Settings
+function renderLocaleOptions() {
+  const names = new Intl.DisplayNames([i18n.lang], { type: "language" });
+  const sample = (code) => new Intl.DateTimeFormat(code, { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 11, 31)))
+    + " · " + new Intl.NumberFormat(code, { minimumFractionDigits: 2 }).format(1234.5);
+  const current = savedLocale();
+  const codes = current && !REGIONAL_LOCALES.includes(current) ? [current, ...REGIONAL_LOCALES] : REGIONAL_LOCALES;
+  $("#locale-select").innerHTML = `<option value="">${esc(t("settings.locale_auto"))}</option>` +
+    codes.map((code) => `<option value="${esc(code)}">${esc(names.of(code) ?? code)} — ${esc(sample(code))}</option>`).join("");
+  $("#locale-select").value = current;
+}
+
 $("#settings-btn").addEventListener("click", async () => {
   const languages = await api("/api/languages");
   $("#lang-select").innerHTML = languages.map((l) => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join("");
   $("#lang-select").value = i18n.lang;
+  renderLocaleOptions();
   $("#settings-dlg").showModal();
 });
 
 $("#settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   setLang($("#lang-select").value);
+  setLocale($("#locale-select").value);
   $("#settings-dlg").close();
   await initI18n();
   renderAccounts();

@@ -90,6 +90,12 @@ table.data .t { font-weight: 600; }
 #balances-table td.actions { width: 1%; }
 .balances-wrap { max-height: 280px; overflow-y: auto; }
 
+/* Date fields: text in the regional format + the browser's calendar */
+.date-field { display: flex; gap: .3rem; position: relative; }
+.date-field .date-text { flex: 1; }
+.date-field .date-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; padding: 0; border: 0; }
+.date-field .date-btn { flex: 0 0 auto; padding: .3rem .5rem; }
+
 /* Dialogs and forms */
 dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); width: min(640px, 95vw); }
 dialog::backdrop { background: rgba(0,0,0,.5); }

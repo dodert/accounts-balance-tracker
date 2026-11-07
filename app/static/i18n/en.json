@@ -78,5 +78,9 @@
   "totp.setup_help": "Add this account to your authenticator app: scan the QR code, or type the code below. Then enter the 6-digit code it shows.",
   "totp.code": "One-time code",
   "totp.error": "Wrong or expired code.",
-  "totp.back": "Back"
+  "totp.back": "Back",
+  "settings.locale": "Date and number format",
+  "settings.locale_auto": "Same as the language",
+  "error.date": "Invalid date: {value}",
+  "common.calendar": "Calendar"
 }
