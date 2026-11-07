@@ -113,6 +113,25 @@ def test_archived_accounts_still_count_in_history(client):
 def test_cross_site_post_blocked(client):
     res = client.post("/api/accounts", json={"name": "X"}, headers={"sec-fetch-site": "cross-site"})
     assert res.status_code == 403
+    # Same site but another origin (e.g. another app on the same host, another port): blocked too
+    res = client.post("/api/accounts", json={"name": "X"}, headers={"sec-fetch-site": "same-site"})
+    assert res.status_code == 403
+    # Browsers without Sec-Fetch-Site: by the Origin they send
+    for origin in ("http://evil.example", "http://testserver:9000", "null"):
+        assert client.post("/api/accounts", json={"name": "X"}, headers={"origin": origin}).status_code == 403
+    # The app itself, a link typed by the user and clients that send neither header still work
+    assert client.post("/api/accounts", json={"name": "A"}, headers={"sec-fetch-site": "same-origin"}).status_code == 201
+    assert client.post("/api/accounts", json={"name": "B"}, headers={"sec-fetch-site": "none"}).status_code == 201
+    assert client.post("/api/accounts", json={"name": "C"}, headers={"origin": "http://testserver"}).status_code == 201
+    assert client.post("/api/accounts", json={"name": "D"}).status_code == 201
+    # Reading is never blocked
+    assert client.get("/api/accounts", headers={"sec-fetch-site": "cross-site"}).status_code == 200
+
+
+def test_account_notes_have_a_maximum_length(client):
+    assert client.post("/api/accounts", json={"name": "X", "notes": "a" * 5001}).status_code == 422
+    account = make_account(client, "Y", notes="a" * 5000)
+    assert client.patch(f"/api/accounts/{account['id']}", json={"notes": "b" * 5001}).status_code == 422
 
 
 def test_account_names_are_unique_per_institution(client):

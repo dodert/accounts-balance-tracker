@@ -33,6 +33,18 @@ ALIASES = {
     "disponible_desde": "available_from", "disponible": "available_from",
 }
 REQUIRED = {"account", "date", "amount"}
+# A text cell starting with one of these runs as a formula in Excel or LibreOffice (CSV injection)
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_text(value: str) -> str:
+    """Exported text that a spreadsheet shows as text: a leading ' when it would start a formula."""
+    return f"'{value}" if value.startswith(FORMULA_START) else value
+
+
+def unsafe_text(value: str) -> str:
+    """The text as it was before safe_text, so an exported file imported back finds the same accounts."""
+    return value[1:] if value.startswith("'") and value[1:].startswith(FORMULA_START) else value
 
 
 def export_csv(db: Session) -> str:
@@ -42,8 +54,9 @@ def export_csv(db: Session) -> str:
     accounts = db.scalars(select(Account).order_by(Account.name))
     for account in accounts:
         for b in account.balances:
-            writer.writerow([account.name, account.type.value, account.currency, account.institution or "",
-                             b.date.isoformat(), f"{b.amount:.2f}", b.note or "",
+            writer.writerow([safe_text(account.name), account.type.value, account.currency,
+                             safe_text(account.institution or ""), b.date.isoformat(), f"{b.amount:.2f}",
+                             safe_text(b.note or ""),
                              account.available_from.isoformat() if account.available_from else ""])
     return out.getvalue()
 
@@ -116,12 +129,12 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
             continue
         cell = lambda key: row[columns[key]].strip() if key in columns and columns[key] < len(row) else ""  # noqa: E731
         try:
-            name = cell("account")
+            name = unsafe_text(cell("account"))
             if not name or len(name) > 100:
                 raise ValueError("missing or too long account name")
             day = parse_date(cell("date"))
             amount = parse_amount(cell("amount"))
-            institution = cell("institution")[:100]
+            institution = unsafe_text(cell("institution"))[:100]
             account = find(name, institution)
             if account is None:
                 kind = cell("type").lower() or "bank"
@@ -137,7 +150,7 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 db.flush()
                 accounts.append(account)
                 result["accounts_created"] += 1
-            note = cell("note")[:300] or None
+            note = unsafe_text(cell("note"))[:300] or None
             key = (account.id, day)
             balance = seen.get(key) or db.scalar(select(Balance).where(Balance.account_id == account.id, Balance.date == day))
             if balance is None:

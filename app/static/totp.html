@@ -22,10 +22,6 @@
     <a class="totp-back" href="/login" data-i18n="totp.back">Back</a>
   </form>
   <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
-  <script>
-    document.getElementById("login-error").hidden = !new URLSearchParams(location.search).has("error");
-    document.querySelectorAll(".setup-only").forEach((el) => { el.hidden = document.forms[0].dataset.mode !== "setup"; });
-    initI18n();
-  </script>
+  <script src="/static/login.js?v={{ASSET_VERSION}}"></script>
 </body>
 </html>
