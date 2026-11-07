@@ -38,7 +38,9 @@ docker run -d --name accounts-balance-tracker -p 8000:8000 \
   ghcr.io/dodert/accounts-balance-tracker:latest
 ```
 
-Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (SQLite database and login secrets). The container runs as `PUID`:`PGID` (default `99:100`, Unraid's `nobody:users`). The database schema is migrated automatically on start.
+Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (SQLite database and login secrets). The container runs as `PUID`:`PGID` (default `99:100`, Unraid's `nobody:users`). The database schema is migrated automatically on start, keeping all the data.
+
+**Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. With PostgreSQL the app cannot copy the database: run `pg_dump` before updating. Exporting a CSV now and then (**Import / export → Export CSV**) is also a good copy of everything.
 
 | Variable | Default | |
 |---|---|---|

@@ -1,3 +1,5 @@
+import sqlite3
+
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import create_engine
@@ -19,6 +21,7 @@ def test_upgrade_is_idempotent(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     upgrade_database(engine)
     upgrade_database(engine)
+    assert [p.name for p in tmp_path.iterdir()] == ["db.sqlite"]  # nothing to back up: new, then up to date
 
 
 def test_upgrade_keeps_the_balances(tmp_path):
@@ -44,3 +47,11 @@ def test_upgrade_keeps_the_balances(tmp_path):
         assert conn.scalar(text("PRAGMA foreign_keys")) == 1
         conn.execute(text("DELETE FROM accounts"))
         assert conn.scalar(text("SELECT count(*) FROM balances")) == 0  # the cascade still works
+
+    # The database was backed up, as it was, before migrating it
+    backups = list(tmp_path.glob("db.sqlite.backup-0001-to-*"))
+    assert len(backups) == 1
+    with sqlite3.connect(backups[0]) as old:
+        assert old.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
+        assert old.execute("SELECT count(*) FROM balances").fetchone() == (1,)
+    old.close()
