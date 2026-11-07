@@ -21,6 +21,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
   Each account keeps its colour in every chart (the first 8; the rest are grey) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
 - **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note`, `available_from` (optional; `available_from` and `type` are only used when an account is created); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`, `disponible_desde`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. An account is found by its name and institution (without an institution in the row, by its name when only one account has it). Missing accounts are created, and a balance already recorded on that date is replaced.
+- **Demo mode** (**⚙ → Demo mode**, the *Try it with sample data* button when there are no accounts yet, or the link `/demo`): the app with made-up sample data (several institutions and accounts, EUR and USD, stock options not available yet, a mortgage, a closed account, two years of history), to show it to other people or to see how it works. The sample data lives in its own temporary database, apart from the real one, which is not read or changed while a browser is in demo mode; a banner shows it, with buttons to reset the sample data and to leave the demo. It is per browser (a cookie) and needs the login like the rest of the app.
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.
 - English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Both are saved in the browser. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
 
@@ -80,7 +81,7 @@ pytest -q
 
 ## API
 
-Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`.
+Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
 
 ## License
 

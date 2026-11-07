@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 import json
 from datetime import date
 from pathlib import Path
@@ -15,6 +16,7 @@ from .auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS, Auth
 from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
+from .demo import COOKIE as DEMO_COOKIE, Demo
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance
@@ -50,9 +52,16 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
     engine = make_engine(settings.resolved_database_url)
     SessionLocal = make_sessionmaker(engine)
     upgrade_database(engine)
+    demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
 
     version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
-    app = FastAPI(title="Accounts Balance Tracker", version=version)
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
+        demo.close()  # the demo database is temporary
+
+    app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan)
 
     @app.middleware("http")
     async def reject_cross_site_writes(request: Request, call_next):
@@ -69,8 +78,13 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
             return JSONResponse({"detail": "Login required"}, status_code=401)
         return RedirectResponse("/login", status_code=303)
 
-    def get_db():
-        with SessionLocal() as db:
+    def in_demo(request: Request) -> bool:
+        return request.cookies.get(DEMO_COOKIE) == "1"
+
+    def get_db(request: Request):
+        # Demo mode uses its own database: the real one is not even opened
+        maker = demo.sessionmaker(demo_lang(request)) if in_demo(request) else SessionLocal
+        with maker() as db:
             yield db
 
     def get_account_or_404(db: Session, account_id: int) -> Account:
@@ -99,15 +113,18 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
         return {"status": "ok", "version": version}
 
     @app.get("/api/about")
-    def about(db: Session = Depends(get_db)):
+    def about(request: Request):
+        with SessionLocal() as db:
+            schema = db.scalar(text("SELECT version_num FROM alembic_version"))
         return {
             "version": version,
             "commit": settings.git_sha or None,
             "ref": settings.git_ref or None,
             "build_date": settings.build_date or None,
             "database": engine.dialect.name,
-            "schema": db.scalar(text("SELECT version_num FROM alembic_version")),
+            "schema": schema,
             "auth": auth.enabled,
+            "demo": in_demo(request),
             "default_currency": settings.default_currency,
         }
 
@@ -119,6 +136,46 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
             name = json.loads(path.read_text(encoding="utf-8")).get("_name", path.stem)
             languages.append({"code": path.stem, "name": name})
         return languages
+
+    # --- Demo mode ---
+
+    def demo_lang(request: Request) -> str:
+        return request.cookies.get(DEMO_COOKIE + "_lang") or "en"
+
+    def set_demo(response: Response, request: Request, on: bool, lang: str = "en") -> Response:
+        if on:
+            for name, value in ((DEMO_COOKIE, "1"), (DEMO_COOKIE + "_lang", lang)):
+                response.set_cookie(name, value, httponly=True, samesite="lax", secure=is_https(request))
+        else:
+            response.delete_cookie(DEMO_COOKIE)
+            response.delete_cookie(DEMO_COOKIE + "_lang")
+        return response
+
+    @app.post("/api/demo", status_code=204)
+    def start_demo(request: Request, lang: str = Query("en", pattern=r"^[a-z]{2}$")):
+        """Demo mode on for this browser: made-up sample data, in a database apart from the real one."""
+        demo.sessionmaker(lang)
+        return set_demo(Response(status_code=204), request, True, lang)
+
+    @app.delete("/api/demo", status_code=204)
+    def stop_demo(request: Request):
+        """Back to the real data."""
+        return set_demo(Response(status_code=204), request, False)
+
+    @app.post("/api/demo/reset", status_code=204)
+    def reset_demo(request: Request, lang: str = Query(None, pattern=r"^[a-z]{2}$")):
+        """Build the sample data again (undoes the changes made in demo mode)."""
+        if not in_demo(request):
+            raise HTTPException(409, "Not in demo mode")
+        lang = lang or demo_lang(request)
+        demo.reset(lang)
+        return set_demo(Response(status_code=204), request, True, lang)
+
+    @app.get("/demo", include_in_schema=False)
+    def demo_link(request: Request, lang: str = Query("en", pattern=r"^[a-z]{2}$")):
+        """A link that opens the app in demo mode (e.g. to show it to someone)."""
+        demo.sessionmaker(lang)
+        return set_demo(RedirectResponse("/", status_code=303), request, True, lang)
 
     # --- Accounts ---
 
