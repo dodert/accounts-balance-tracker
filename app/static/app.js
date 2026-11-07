@@ -135,6 +135,7 @@ function changeCell(current, previous, currency, percent = false) {
 
 async function loadTotals() {
   const totals = await api("/api/summary");
+  state.totals = totals;
   $("#totals").innerHTML = totals.length ? totals.map((c) => `
     <div class="tile">
       <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
@@ -203,16 +204,21 @@ async function loadHistory() {
 // The series to draw: the total, or one per account (colour by account id, so it stays the same
 // whatever the range or archived filter; past 8 accounts the rest fold into "Other")
 function chartSeries(h) {
-  if (state.mode === "total") return [{ name: t("chart.total"), values: h.total, slot: 1 }];
+  const firstValue = (values) => values.find((v) => v !== null) ?? null;
+  if (state.mode === "total") {
+    const summary = state.totals?.find((c) => c.currency === h.currency);
+    return [{ name: t("chart.total"), values: h.total, slot: 1, start: summary?.first_total ?? firstValue(h.total) }];
+  }
+  const startOf = (a) => state.accounts.find((x) => x.id === a.account_id)?.first_balance ?? firstValue(a.values);
   const accounts = h.accounts.filter((a) => a.values.some((v) => v !== null));
   const ids = state.accounts.filter((a) => a.currency === h.currency).map((a) => a.id).sort((a, b) => a - b);
   const slotOf = (id) => ids.indexOf(id) + 1;
   const series = accounts.filter((a) => slotOf(a.account_id) <= SERIES_SLOTS - (ids.length > SERIES_SLOTS ? 1 : 0))
-    .map((a) => ({ name: a.name, values: a.values, slot: slotOf(a.account_id) }));
+    .map((a) => ({ name: a.name, values: a.values, slot: slotOf(a.account_id), start: startOf(a) }));
   const rest = accounts.filter((a) => !series.some((s) => s.name === a.name));
   if (rest.length) {
     const values = h.dates.map((_, i) => rest.reduce((sum, a) => (a.values[i] === null ? sum : (sum ?? 0) + a.values[i]), null));
-    series.push({ name: t("chart.other"), values, slot: SERIES_SLOTS });
+    series.push({ name: t("chart.other"), values, slot: SERIES_SLOTS, start: rest.reduce((sum, a) => sum + (startOf(a) ?? 0), 0) });
   }
   return series.sort((a, b) => a.slot - b.slot);
 }
@@ -256,6 +262,7 @@ function renderChart() {
   const pad = { top: 12, right: 16, bottom: 28, left: 64 };
   const times = h.dates.map((d) => Date.parse(`${d}T00:00:00Z`));
   const values = series.flatMap((s) => s.values).filter((v) => v !== null);
+  if (state.mode === "total" && series[0].start !== null) values.push(series[0].start);
   const ticks = niceTicks(Math.min(...values), Math.max(...values));
   const y0 = ticks[0], y1 = ticks[ticks.length - 1];
   const t0 = times[0], t1 = times[times.length - 1];
@@ -280,6 +287,11 @@ function renderChart() {
     svg("text", { x: x(times[idx]), y: height - 8, class: "axis", "text-anchor": anchor }, root).textContent = fmtDate(h.dates[idx], { month: "short", year: "2-digit" });
   }
   // Lines (step-free: straight segments between recorded dates), with dots when there are few points
+  if (state.mode === "total" && series[0].start !== null) {
+    const ys = y(series[0].start);
+    svg("line", { x1: pad.left, x2: width - pad.right, y1: ys, y2: ys, class: "start-line" }, root);
+    svg("text", { x: pad.left + 6, y: ys - 5, class: "start-label" }, root).textContent = t("chart.start", { amount: money(series[0].start, h.currency) });
+  }
   for (const s of series) {
     const pts = s.values.map((v, i) => (v === null ? null : [x(times[i]), y(v)]));
     let d = "", pen = false;
@@ -319,7 +331,8 @@ function renderChart() {
     });
     const rows = series.filter((s) => s.values[idx] !== null).sort((a, b) => b.values[idx] - a.values[idx]);
     tooltip.innerHTML = `<div class="tt-date">${esc(fmtDate(h.dates[idx]))}</div>` + rows.map((s) =>
-      `<div class="tt-row"><span class="swatch" style="background: var(--s${s.slot})"></span><span class="tt-name">${esc(s.name)}</span><span class="tt-value">${esc(money(s.values[idx], h.currency))}</span></div>`).join("") +
+      `<div class="tt-row"><span class="swatch" style="background: var(--s${s.slot})"></span><span class="tt-name">${esc(s.name)}</span><span class="tt-value">${esc(money(s.values[idx], h.currency))}</span></div>` +
+      (s.start !== null && s.start !== undefined ? `<div class="tt-since">${changeCell(s.values[idx], s.start, h.currency, true)} ${esc(t("chart.since_start"))}</div>` : "")).join("") +
       (state.mode === "accounts" ? `<div class="tt-row tt-total"><span class="tt-name">${esc(t("chart.total"))}</span><span class="tt-value">${esc(money(h.total[idx], h.currency))}</span></div>` : "");
     tooltip.hidden = false;
     const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;

@@ -84,5 +84,7 @@
   "error.date": "Invalid date: {value}",
   "common.calendar": "Calendar",
   "column.since_first": "Since the start",
-  "totals.since_first": "since the start ({date})"
+  "totals.since_first": "since the start ({date})",
+  "chart.start": "Start: {amount}",
+  "chart.since_start": "since the start"
 }

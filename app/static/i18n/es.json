@@ -84,5 +84,7 @@
   "error.date": "Fecha no válida: {value}",
   "common.calendar": "Calendario",
   "column.since_first": "Desde el inicio",
-  "totals.since_first": "desde el inicio ({date})"
+  "totals.since_first": "desde el inicio ({date})",
+  "chart.start": "Inicio: {amount}",
+  "chart.since_start": "desde el inicio"
 }
