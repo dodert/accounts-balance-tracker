@@ -14,6 +14,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 - **Search** in the accounts list (account, institution or type, ignoring case and accents): the accounts that do not match are dimmed, not hidden, and the charts do not change.
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
+- **Several currencies added up**: with accounts in more than one currency, a first box shows everything in `DEFAULT_CURRENCY` at today's exchange rates, with the rate used and a button to refresh it. Rates are the European Central Bank's, from the free [Frankfurter API](https://frankfurter.dev) (published once per working day, around 16:00 CET). Today's rate is fetched the first time it is needed each day and stored, so later visits do not call the service; past days are stored for good. **Only the two currencies and the date are sent; amounts never leave the app**: the conversion is done locally. If the service cannot be reached, the last stored rate is used and the box says so.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
   - *Amounts*: the total, then one small chart per account with its own scale. Each one has a dashed line at its first recorded balance (its start) and shows the change since then. The ⤢ button on an account opens its chart maximized (close it with Close, Esc or a click outside).
   - *% since the start*: every account and the total on one chart, as the % change since each one's own start, so they can be compared.
@@ -45,7 +46,8 @@ Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (
 
 | Variable | Default | |
 |---|---|---|
-| `DEFAULT_CURRENCY` | `EUR` | Currency for new accounts and CSV rows without one |
+| `DEFAULT_CURRENCY` | `EUR` | Currency for new accounts and CSV rows without one; totals in several currencies are added up in it |
+| `FX_URL` | `https://api.frankfurter.app` | Exchange-rate service (Frankfurter API or a self-hosted copy of it) |
 | `DATABASE_URL` | empty | Empty = SQLite in `/data`. PostgreSQL: `postgresql+psycopg://user:pass@host:5432/balances` |
 | `AUTH_USERNAME`, `AUTH_PASSWORD` | empty | Set both to ask for a login; changing the password logs everyone out |
 | `AUTH_TOTP` | `false` | `true` also asks for a one-time code; the first login shows the QR code. Delete `.totp_secret` in `/data` to show a new one |
@@ -81,7 +83,7 @@ pytest -q
 
 ## API
 
-Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`.
+Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`.
 
 ## License
 
