@@ -35,6 +35,7 @@ def account_out(account: Account) -> AccountOut:
         out.balance, out.balance_date = float(balances[-1].amount), balances[-1].date
     if len(balances) > 1:
         out.previous_balance, out.previous_date = float(balances[-2].amount), balances[-2].date
+        out.first_balance, out.first_date = float(balances[0].amount), balances[0].date
     return out
 
 

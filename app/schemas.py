@@ -52,6 +52,9 @@ class AccountOut(BaseModel):
     balance_date: Date | None = None
     previous_balance: float | None = None
     previous_date: Date | None = None
+    # The first balance recorded, to show the change since then
+    first_balance: float | None = None
+    first_date: Date | None = None
 
 
 class BalanceIn(BaseModel):
@@ -102,6 +105,9 @@ class CurrencyTotal(BaseModel):
     # Total on the previous date with a recorded balance, to show the change
     previous_total: float | None
     previous_date: Date | None
+    # Total on the first date with a recorded balance
+    first_total: float | None
+    first_date: Date | None
     date: Date | None
 
 

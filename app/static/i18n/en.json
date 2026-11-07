@@ -17,8 +17,6 @@
   "chart.title": "Evolution",
   "chart.mode": "Chart",
   "chart.total": "Total",
-  "chart.by_account": "By account",
-  "chart.other": "Other",
   "chart.currency": "Currency",
   "chart.range": "Range",
   "chart.empty": "Record some balances to see their evolution here.",
@@ -82,5 +80,13 @@
   "settings.locale": "Date and number format",
   "settings.locale_auto": "Same as the language",
   "error.date": "Invalid date: {value}",
-  "common.calendar": "Calendar"
+  "common.calendar": "Calendar",
+  "column.since_first": "Since the start",
+  "totals.since_first": "since the start ({date})",
+  "chart.start": "Start: {amount}",
+  "chart.since_start": "since the start",
+  "chart.amounts": "Amounts",
+  "chart.percent": "% since the start",
+  "chart.start_pct": "Start",
+  "chart.maximize": "Maximize"
 }

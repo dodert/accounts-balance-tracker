@@ -17,8 +17,6 @@
   "chart.title": "Evolución",
   "chart.mode": "Gráfica",
   "chart.total": "Total",
-  "chart.by_account": "Por cuenta",
-  "chart.other": "Otras",
   "chart.currency": "Moneda",
   "chart.range": "Periodo",
   "chart.empty": "Registra algunos saldos para ver aquí su evolución.",
@@ -82,5 +80,13 @@
   "settings.locale": "Formato de fechas y números",
   "settings.locale_auto": "Igual que el idioma",
   "error.date": "Fecha no válida: {value}",
-  "common.calendar": "Calendario"
+  "common.calendar": "Calendario",
+  "column.since_first": "Desde el inicio",
+  "totals.since_first": "desde el inicio ({date})",
+  "chart.start": "Inicio: {amount}",
+  "chart.since_start": "desde el inicio",
+  "chart.amounts": "Importes",
+  "chart.percent": "% desde el inicio",
+  "chart.start_pct": "Inicio",
+  "chart.maximize": "Ampliar"
 }

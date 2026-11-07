@@ -44,7 +44,7 @@ def history(accounts: list[Account], since: date | None = None) -> tuple[list[da
 
 
 def currency_totals(accounts: list[Account]) -> list[dict]:
-    """Current total per currency, and the total on the previous recorded date."""
+    """Current total per currency, and the totals on the previous and the first recorded dates."""
     out = []
     for currency in sorted({a.currency for a in accounts}):
         group = [a for a in accounts if a.currency == currency]
@@ -56,5 +56,7 @@ def currency_totals(accounts: list[Account]) -> list[dict]:
             "date": dates[-1] if dates else None,
             "previous_total": float(totals[-2]) if len(totals) > 1 else None,
             "previous_date": dates[-2] if len(dates) > 1 else None,
+            "first_total": float(totals[0]) if len(totals) > 1 else None,
+            "first_date": dates[0] if len(dates) > 1 else None,
         })
     return out
