@@ -101,5 +101,11 @@
   "chart.available": "Disponible",
   "totals.available_now": "Disponible ahora",
   "totals.with_locked": "Con lo no disponible aún ({locked})",
-  "chart.with_locked": "Con lo no disponible aún"
+  "chart.with_locked": "Con lo no disponible aún",
+  "totals.combined": "Total en {currency}, todas las monedas",
+  "fx.rate": "1 {base} = {rate} {quote}",
+  "fx.from": "(BCE, {date})",
+  "fx.stale": "(BCE, {date}; no se pudo actualizar)",
+  "fx.refresh": "Actualizar el tipo de cambio ahora",
+  "fx.missing": "Sin incluir, no hay tipo de cambio: {currencies}"
 }
