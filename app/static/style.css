@@ -83,6 +83,11 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .mini-chart { width: 100%; }
 .mini-max { margin-left: .2rem; line-height: 1.2; }
 .detail { color: var(--muted); font-weight: normal; }
+.chart .line.dashed { stroke-dasharray: 6 4; stroke-width: 2; }
+.chart .avail-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart .avail-label { fill: var(--muted); font-size: 11px; }
+.dashed-swatch { background: none; border-top: 2px dashed var(--total); border-radius: 0; height: 0; width: 14px; }
+.badge.lock { white-space: nowrap; }
 dialog.chart-dlg { width: min(1000px, 95vw); }
 .chart-dlg .mini-head { font-size: 1.1rem; }
 .chart-dlg .mini-name, .chart-dlg .mini-value { font-size: 1.1rem; }

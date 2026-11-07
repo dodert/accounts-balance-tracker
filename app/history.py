@@ -43,12 +43,26 @@ def history(accounts: list[Account], since: date | None = None) -> tuple[list[da
     return dates, totals, per_account
 
 
+def is_available(account: Account, day: date) -> bool:
+    return account.available_from is None or account.available_from <= day
+
+
+def available_totals(accounts: list[Account], dates: list[date], per_account: dict[int, list[Decimal | None]]) -> list[Decimal]:
+    """Per date, the sum of the balances of the accounts already available on that date."""
+    return [
+        sum((per_account[a.id][n] for a in accounts if per_account[a.id][n] is not None and is_available(a, day)), Decimal(0))
+        for n, day in enumerate(dates)
+    ]
+
+
 def currency_totals(accounts: list[Account]) -> list[dict]:
     """Current total per currency, and the totals on the previous and the first recorded dates."""
     out = []
     for currency in sorted({a.currency for a in accounts}):
         group = [a for a in accounts if a.currency == currency]
-        dates, totals, _ = history(group)
+        dates, totals, per_account = history(group)
+        today = date.today()
+        available = sum((v[-1] for a in group if (v := per_account[a.id]) and v[-1] is not None and is_available(a, today)), Decimal(0))
         out.append({
             "currency": currency,
             "accounts": sum(1 for a in group if not a.archived),
@@ -58,5 +72,6 @@ def currency_totals(accounts: list[Account]) -> list[dict]:
             "previous_date": dates[-2] if len(dates) > 1 else None,
             "first_total": float(totals[0]) if len(totals) > 1 else None,
             "first_date": dates[0] if len(dates) > 1 else None,
+            "available": float(available),
         })
     return out

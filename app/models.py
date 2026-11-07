@@ -32,6 +32,8 @@ class Account(Base):
     )
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     institution: Mapped[str | None] = mapped_column(String(100))
+    # The balance cannot be used before this day (e.g. unvested stock options); None = available
+    available_from: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
