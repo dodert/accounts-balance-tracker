@@ -31,6 +31,13 @@
     <form id="logout-btn" method="post" action="/logout" hidden><button type="submit" data-i18n="header.logout">Log out</button></form>
   </header>
 
+  <div id="demo-banner" class="demo-banner" role="status" hidden>
+    <span data-i18n="demo.banner">Demo mode: made-up sample data. Your real data is not shown or changed.</span>
+    <span class="spacer"></span>
+    <button type="button" id="demo-reset" data-i18n="demo.reset">Reset sample data</button>
+    <button type="button" id="demo-exit" class="primary" data-i18n="demo.exit">Leave the demo</button>
+  </div>
+
   <main>
     <section id="totals" class="tiles" aria-live="polite"></section>
 
@@ -87,7 +94,10 @@
           <tbody></tbody>
         </table>
       </div>
-      <p id="empty" class="hint" hidden data-i18n="accounts.empty">No accounts yet. Add one with "+ Account", or import a CSV.</p>
+      <div id="empty" hidden>
+        <p class="hint" data-i18n="accounts.empty">No accounts yet. Add one with "+ Account", or import a CSV.</p>
+        <p><button type="button" id="demo-try" data-i18n="demo.try">Try it with sample data</button></p>
+      </div>
     </section>
   </main>
 
@@ -178,6 +188,11 @@
       <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
       <label><span data-i18n="settings.locale">Date and number format</span> <select name="locale" id="locale-select"></select></label>
       <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
+      <fieldset class="demo-setting">
+        <legend data-i18n="demo.title">Demo mode</legend>
+        <p class="hint" data-i18n="demo.hint">Shows the app with made-up sample data, to show it to other people or to see how it works. Your real data stays hidden and is not changed.</p>
+        <button type="button" id="demo-toggle" data-i18n="demo.start">Show the demo</button>
+      </fieldset>
       <menu>
         <span class="spacer"></span>
         <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>

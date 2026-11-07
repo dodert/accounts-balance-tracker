@@ -199,3 +199,11 @@ footer a { color: inherit; }
   #accounts-table td.num { font-size: .8rem; }
   table.data td, table.data th { padding: .45rem .3rem; }
 }
+
+/* Demo mode */
+.demo-banner { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; max-width: 1200px; width: calc(100% - 2rem); margin: 0 auto .5rem;
+  padding: .6rem .8rem; border: 1px dashed var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: .9rem; }
+.demo-banner[hidden] { display: none; }
+.demo-setting { border: 1px solid var(--border); border-radius: 8px; margin: .8rem 0 0; padding: .4rem .8rem .8rem; }
+.demo-setting legend { font-weight: 600; padding: 0 .3rem; }
+.demo-setting .hint { margin-top: 0; }

@@ -109,5 +109,12 @@
   "fx.from": "(ECB, {date})",
   "fx.stale": "(ECB, {date}; could not update)",
   "fx.refresh": "Refresh the exchange rate now",
-  "fx.missing": "Not included, no exchange rate: {currencies}"
+  "fx.missing": "Not included, no exchange rate: {currencies}",
+  "demo.title": "Demo mode",
+  "demo.hint": "Shows the app with made-up sample data, to show it to other people or to see how it works. Your real data stays hidden and is not changed.",
+  "demo.start": "Show the demo",
+  "demo.exit": "Leave the demo",
+  "demo.try": "Try it with sample data",
+  "demo.reset": "Reset sample data",
+  "demo.banner": "Demo mode: made-up sample data. Your real data is not shown or changed."
 }
