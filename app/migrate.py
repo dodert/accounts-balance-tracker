@@ -41,10 +41,17 @@ def upgrade_database(engine: Engine) -> None:
     sqlite = engine.dialect.name == "sqlite"
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    head = ScriptDirectory.from_config(config).get_current_head()
+    scripts = ScriptDirectory.from_config(config)
+    head = scripts.get_current_head()
     with engine.connect() as connection:
         current = MigrationContext.configure(connection).get_current_revision()
         connection.rollback()
+        if current is not None and current not in {s.revision for s in scripts.walk_revisions()}:
+            # Made by a newer version of the app (e.g. a branch build): this one cannot use it. Nothing is changed.
+            raise RuntimeError(
+                f"The database is from a newer version of the app (schema {current}; this version knows up to {head}). "
+                "Run that newer version (or a later one), or restore a backup made before it migrated "
+                "(balances.db.backup-* in the data folder). The database was not changed.")
         if current is not None and current != head:
             if sqlite:
                 backup = backup_sqlite(engine, current, head)
