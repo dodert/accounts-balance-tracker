@@ -165,21 +165,28 @@ function combinedTile(c) {
 async function loadTotals() {
   const totals = await api("/api/summary");
   state.totals = totals;
-  // Only with more than one currency; if the rates cannot be had, the other boxes still show
-  const combined = totals.length > 1 ? await api("/api/summary/combined").catch(() => null) : null;
-  $("#totals").innerHTML = (combined ? combinedTile(combined) : "") + (totals.length ? totals.map((c) => `
+  const tiles = totals.map((c) => `
     <div class="tile">
       <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
       ${figures(c)}
       <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
       ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
-    </div>`).join("") : "");
+    </div>`).join("");
+  $("#totals").innerHTML = tiles;
   const currencies = totals.map((c) => c.currency);
   const select = $("#chart-currency");
   select.innerHTML = currencies.map((c) => `<option>${esc(c)}</option>`).join("");
   select.hidden = currencies.length < 2;
   if (!currencies.includes(state.currency)) state.currency = currencies[0] ?? null;
   select.value = state.currency ?? "";
+  // All currencies in the default one, only with more than one currency. Not awaited: fetching the
+  // rate can take a while (or fail), and the other boxes and the charts must not wait for it
+  if (totals.length > 1) {
+    const request = (state.combinedRequest = api("/api/summary/combined").catch(() => null));
+    request.then((combined) => {
+      if (combined && request === state.combinedRequest) $("#totals").innerHTML = combinedTile(combined) + tiles;
+    });
+  }
 }
 
 // --- Accounts ---
