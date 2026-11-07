@@ -10,7 +10,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 ## Features
 
-- **Accounts** with a type, institution, currency and notes. Archive the ones you close (record a 0 balance first so the history stays right).
+- **Accounts** with a type, institution, currency and notes. An institution can have several accounts, and the same name can be used in different institutions (e.g. "Payroll" at two banks). Archive the ones you close (record a 0 balance first so the history stays right).
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
@@ -20,7 +20,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
   *Group by*: by account (each one shown with its institution) or by institution (one series per institution, the sum of its accounts; its start is its total on the first date any of them had a balance). The choice is saved in the browser.
 
   Each account keeps its colour in every chart (the first 8; the rest are grey) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
-- **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note` (optional); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. Missing accounts are created, and a balance already recorded on that date is replaced.
+- **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note` (optional); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. An account is found by its name and institution (without an institution in the row, by its name when only one account has it). Missing accounts are created, and a balance already recorded on that date is replaced.
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.
 - English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Both are saved in the browser. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
 

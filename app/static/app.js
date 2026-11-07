@@ -555,7 +555,7 @@ $("#update-btn").addEventListener("click", () => {
   setDate(form.date, today());
   $("#update-rows").innerHTML = active.map((a) => `
     <label class="update-row">
-      <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
+      <span class="u-name">${esc(a.name)}${a.institution ? ` <span class="detail">· ${esc(a.institution)}</span>` : ""} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
       <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
     </label>`).join("");
   setError($("#update-error"), null);

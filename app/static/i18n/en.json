@@ -61,7 +61,7 @@
   "account.confirm_delete": "Delete the account \"{name}\" and all its balances?",
   "account.confirm_delete_balance": "Delete this balance?",
   "csv.title": "Import CSV",
-  "csv.hint": "One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is replaced.",
+  "csv.hint": "One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... An account is found by its name and institution. Missing accounts are created; a balance already recorded on that date is replaced.",
   "csv.import": "Import",
   "csv.result": "Accounts created: {accounts}. Balances added: {created}, replaced: {updated}.",
   "settings.title": "Settings",

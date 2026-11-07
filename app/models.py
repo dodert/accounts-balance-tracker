@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -21,9 +21,11 @@ class AccountType(str, enum.Enum):
 
 class Account(Base):
     __tablename__ = "accounts"
+    # The name is unique per institution (no institution counts as one more): same index as migration 0002
+    __table_args__ = (Index("uq_account_name_institution", "name", text("coalesce(institution, '')"), unique=True),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     type: Mapped[AccountType] = mapped_column(
         Enum(AccountType, native_enum=False, length=10, values_callable=lambda e: [m.value for m in e]),
         default=AccountType.bank,

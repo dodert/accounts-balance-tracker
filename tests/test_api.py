@@ -13,7 +13,7 @@ def add(client, account_id, day, amount, note=None):
 def test_health_and_about(client):
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0001" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0002" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
@@ -21,7 +21,7 @@ def test_health_and_about(client):
 def test_account_crud(client):
     account = make_account(client, "  Main  ", type="savings", institution="ING")
     assert account["name"] == "Main" and account["currency"] == "EUR" and account["balance"] is None
-    assert client.post("/api/accounts", json={"name": "Main"}).status_code == 409
+    assert client.post("/api/accounts", json={"name": "Main", "institution": "ING"}).status_code == 409
     assert client.post("/api/accounts", json={"name": "X", "currency": "euro"}).status_code == 422
     assert client.post("/api/accounts", json={"name": "X", "type": "nope"}).status_code == 422
 
@@ -113,3 +113,13 @@ def test_archived_accounts_still_count_in_history(client):
 def test_cross_site_post_blocked(client):
     res = client.post("/api/accounts", json={"name": "X"}, headers={"sec-fetch-site": "cross-site"})
     assert res.status_code == 403
+
+
+def test_account_names_are_unique_per_institution(client):
+    ing = make_account(client, "Payroll", institution="ING")
+    bbva = make_account(client, "Payroll", institution="BBVA")
+    plain = make_account(client, "Payroll")
+    assert len({ing["id"], bbva["id"], plain["id"]}) == 3
+    assert client.post("/api/accounts", json={"name": "Payroll"}).status_code == 409
+    assert client.post("/api/accounts", json={"name": "Payroll", "institution": "BBVA"}).status_code == 409
+    assert client.patch(f"/api/accounts/{bbva['id']}", json={"institution": "ING"}).status_code == 409
