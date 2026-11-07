@@ -47,6 +47,10 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .tile-label { color: var(--muted); font-size: .85rem; }
 .tile-value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: .2rem 0; }
 .tile-sub { font-size: .85rem; color: var(--muted); }
+/* Available now (main colour) and the total with what is not available yet (secondary colour) */
+.tile-figures { display: flex; flex-wrap: wrap; gap: .2rem 2.5rem; margin-bottom: .3rem; }
+.tile-caption { font-size: .8rem; color: var(--muted); margin-top: -.2rem; }
+.tile-locked .tile-value { color: var(--muted); }
 .panel-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
 
 /* Chart */

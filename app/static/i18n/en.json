@@ -98,7 +98,8 @@
   "account.available_from": "Available from",
   "account.available_hint": "Leave it empty if the balance can be used now. For balances you cannot use until a date, e.g. unvested stock options.",
   "accounts.available_on": "available {date}",
-  "totals.available": "Available: {amount} ({locked} not yet)",
   "chart.available": "Available",
-  "chart.available_hint": "Available (without what is not available yet)"
+  "chart.available_hint": "Available (without what is not available yet)",
+  "totals.available_now": "Available now",
+  "totals.with_locked": "Including what is not available yet ({locked})"
 }

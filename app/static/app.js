@@ -147,10 +147,13 @@ async function loadTotals() {
   $("#totals").innerHTML = totals.length ? totals.map((c) => `
     <div class="tile">
       <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
-      <div class="tile-value">${esc(money(c.total, c.currency))}</div>
+      ${c.available !== c.total ? `
+      <div class="tile-figures">
+        <div><div class="tile-value">${esc(money(c.available, c.currency))}</div><div class="tile-caption">${esc(t("totals.available_now"))}</div></div>
+        <div class="tile-locked"><div class="tile-value">${esc(money(c.total, c.currency))}</div><div class="tile-caption">🔒 ${esc(t("totals.with_locked", { locked: money(c.total - c.available, c.currency) }))}</div></div>
+      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>`}
       <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
       ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
-      ${c.available !== c.total ? `<div class="tile-sub tile-available">🔒 ${esc(t("totals.available", { amount: money(c.available, c.currency), locked: money(c.total - c.available, c.currency) }))}</div>` : ""}
     </div>`).join("") : "";
   const currencies = totals.map((c) => c.currency);
   const select = $("#chart-currency");
