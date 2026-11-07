@@ -91,7 +91,7 @@
   <dialog id="update-dlg">
     <form method="dialog" id="update-form">
       <h2 data-i18n="update.title">Update balances</h2>
-      <label><span data-i18n="update.date">Date</span> <input type="date" name="date" required></label>
+      <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="date" required><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
       <p class="hint" data-i18n="update.hint">Fill in the balance of each account on that date. Leave one empty to skip it.</p>
       <div id="update-rows"></div>
       <p class="error" id="update-error" hidden></p>
@@ -122,7 +122,7 @@
       <div id="balances-section" hidden>
         <h3 data-i18n="account.balances">Balances</h3>
         <div class="row add-balance">
-          <label><span data-i18n="update.date">Date</span> <input type="date" id="nb-date"></label>
+          <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="nb-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
           <label><span data-i18n="column.balance">Balance</span> <input type="text" inputmode="decimal" id="nb-amount"></label>
           <label><span data-i18n="account.note">Note</span> <input id="nb-note" maxlength="300"></label>
           <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
@@ -157,6 +157,7 @@
     <form method="dialog" id="settings-form">
       <h2 data-i18n="settings.title">Settings</h2>
       <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
+      <label><span data-i18n="settings.locale">Date and number format</span> <select name="locale" id="locale-select"></select></label>
       <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
       <menu>
         <span class="spacer"></span>

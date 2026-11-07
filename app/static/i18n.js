@@ -26,6 +26,25 @@ function setLang(code) {
   try { localStorage.setItem(LANG_KEY, code); } catch {}
 }
 
+// Regional format for dates and numbers (es-ES, en-GB, en-US...), chosen apart from the
+// language; empty = the one that goes with the language
+const LOCALE_KEY = "abt-locale";
+const LANG_LOCALES = { en: "en-GB", es: "es-ES" };
+
+function savedLocale() {
+  try { return localStorage.getItem(LOCALE_KEY) || ""; } catch { return ""; }
+}
+
+function setLocale(code) {
+  try { localStorage.setItem(LOCALE_KEY, code || ""); } catch {}
+}
+
+// The locale Intl formats with
+function fmtLocale() {
+  const code = savedLocale() || LANG_LOCALES[i18n.lang] || i18n.lang;
+  try { return Intl.getCanonicalLocales(code)[0]; } catch { return i18n.lang; }
+}
+
 // Texts and attributes marked with data-i18n* in the page
 const I18N_ATTRS = { placeholder: "placeholder", title: "title", "aria-label": "ariaLabel", alt: "alt" };
 
