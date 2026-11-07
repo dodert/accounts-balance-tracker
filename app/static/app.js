@@ -2,7 +2,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const ACCOUNT_TYPES = ["bank", "savings", "investment", "pension", "crypto", "cash", "loan", "other"];
-const SERIES_SLOTS = 8; // categorical colours; accounts past these are drawn in grey
+const SERIES_SLOTS = 16; // categorical colours; past these they repeat (never grey)
+const slotColor = (slot) => `var(--s${((slot - 1) % SERIES_SLOTS) + 1})`;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const api = async (path, opts = {}) => {
@@ -296,7 +297,7 @@ async function loadHistory() {
 }
 
 // The series to draw. Each account keeps its colour in every view and whatever the range (colour by
-// account id; past 8 accounts the rest have no colour of their own). The total is drawn in ink.
+// account id; past 16 accounts the colours repeat). The total is drawn in ink.
 // `start` is the first balance ever recorded, also when a shorter range is shown.
 const firstValue = (values) => values.find((v) => v !== null) ?? null;
 
@@ -313,7 +314,7 @@ function accountSeries(h) {
     return {
       account_id: a.account_id, name: a.name, detail: account?.institution ?? "", values: a.values, slot, archived: a.archived,
       available_from: account?.available_from ?? null,
-      color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
+      color: slotColor(slot),
       start: account?.first_balance ?? firstValue(a.values),
     };
   }).sort((a, b) => a.slot - b.slot);
@@ -343,7 +344,7 @@ function institutionSeries(h) {
       account_id: `i:${key}`, name: key || t("chart.no_institution"), values, slot, start,
       detail: t(members.length === 1 ? "chart.one_account" : "chart.n_accounts", { n: members.length }),
       archived: members.every((a) => a.archived),
-      color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
+      color: slotColor(slot),
     };
   });
 }
