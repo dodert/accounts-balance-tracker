@@ -87,5 +87,6 @@
   "chart.since_start": "since the start",
   "chart.amounts": "Amounts",
   "chart.percent": "% since the start",
-  "chart.start_pct": "Start"
+  "chart.start_pct": "Start",
+  "chart.maximize": "Maximize"
 }

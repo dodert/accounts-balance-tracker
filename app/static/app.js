@@ -22,7 +22,7 @@ const api = async (path, opts = {}) => {
   return res.status === 204 ? null : res.json();
 };
 
-const state = { about: null, accounts: [], history: null, mode: "amounts", currency: null, editing: null };
+const state = { about: null, accounts: [], history: null, mode: "amounts", currency: null, editing: null, maximized: null };
 
 // --- Formatting ---
 
@@ -217,7 +217,7 @@ function accountSeries(h) {
     const account = state.accounts.find((x) => x.id === a.account_id);
     const slot = ids.indexOf(a.account_id) + 1;
     return {
-      name: a.name, values: a.values, slot, archived: a.archived,
+      account_id: a.account_id, name: a.name, values: a.values, slot, archived: a.archived,
       color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
       start: account?.first_balance ?? firstValue(a.values),
     };
@@ -397,26 +397,16 @@ function renderChart() {
     });
     grid.hidden = accounts.length === 0;
     for (const a of accounts) {
-      const last = [...a.values].reverse().find((v) => v !== null);
       const card = document.createElement("div");
       card.className = "mini";
-      card.innerHTML = `
-        <div class="mini-head">
-          <span class="swatch" style="background: ${a.color}"></span>
-          <span class="mini-name">${esc(a.name)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
-          <span class="mini-value">${esc(money(last, cur))}</span>
-        </div>
-        <div class="mini-sub">${sinceText(a, last, cur)}</div>
-        <div class="chart mini-chart"></div>`;
+      const max = `<button type="button" class="icon mini-max" title="${esc(t("chart.maximize"))}" aria-label="${esc(t("chart.maximize"))}: ${esc(a.name)}">⤢</button>`;
+      card.innerHTML = accountHead(a, cur, max) + `<div class="chart mini-chart"></div>`;
       grid.appendChild(card);
-      drawChart($(".mini-chart", card), {
-        dates: h.dates, series: [a], height: 130, small: true, label: a.name,
-        ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount: compactMoney(a.start, cur) }) } : null,
-        axis: (ticks) => axisLabels(ticks, cur),
-        tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join(""),
-      });
+      $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id));
+      drawAccountChart($(".mini-chart", card), a, h, true);
     }
   }
+  if ($("#chart-dlg").open) drawMaximized();
 
   // The amounts as a table: total and every account
   const cols = [total, ...accounts];
@@ -442,6 +432,54 @@ async function refresh() {
 function showError(err) {
   alert(err.message ?? String(err));
 }
+
+// Name, last balance and change since the start of an account (small card and maximized chart)
+function accountHead(a, cur, extra = "") {
+  const last = [...a.values].reverse().find((v) => v !== null);
+  return `
+    <div class="mini-head">
+      <span class="swatch" style="background: ${a.color}"></span>
+      <span class="mini-name">${esc(a.name)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
+      <span class="mini-value">${esc(money(last, cur))}</span>${extra}
+    </div>
+    <div class="mini-sub">${sinceText(a, last, cur)}</div>`;
+}
+
+function drawAccountChart(box, a, h, small) {
+  const cur = h.currency;
+  const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
+  drawChart(box, {
+    dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
+    area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
+    axis: (ticks) => axisLabels(ticks, cur),
+    tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join(""),
+  });
+}
+
+// One account's chart, big, in a dialog (the tooltip moves into the dialog so it shows above it)
+function openMaximized(accountId) {
+  state.maximized = accountId;
+  const dlg = $("#chart-dlg");
+  dlg.appendChild($("#tooltip"));
+  dlg.showModal();
+  drawMaximized();
+}
+
+function drawMaximized() {
+  const h = state.history;
+  const a = h && accountSeries(h).find((s) => s.account_id === state.maximized);
+  if (!a) { $("#chart-dlg").close(); return; }
+  $("#chart-dlg-head").innerHTML = accountHead(a, h.currency);
+  const box = $("#chart-dlg-chart");
+  box.innerHTML = "";
+  drawAccountChart(box, a, h, false);
+}
+
+$("#chart-dlg").addEventListener("close", () => {
+  state.maximized = null;
+  $("#tooltip").hidden = true;
+  document.body.appendChild($("#tooltip"));
+});
 
 // --- Dialogs ---
 

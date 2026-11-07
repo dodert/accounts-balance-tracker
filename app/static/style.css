@@ -81,6 +81,11 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .mini-value { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .9rem; white-space: nowrap; }
 .mini-sub { font-size: .78rem; color: var(--muted); margin: .1rem 0 .2rem 1.05rem; min-height: 1em; }
 .mini-chart { width: 100%; }
+.mini-max { margin-left: .2rem; line-height: 1.2; }
+dialog.chart-dlg { width: min(1000px, 95vw); }
+.chart-dlg .mini-head { font-size: 1.1rem; }
+.chart-dlg .mini-name, .chart-dlg .mini-value { font-size: 1.1rem; }
+.chart-dlg .mini-sub { font-size: .85rem; margin-bottom: .6rem; }
 .mini-chart svg { display: block; max-width: 100%; height: auto; touch-action: pan-y; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
 .tooltip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); padding: .5rem .65rem; font-size: .82rem; min-width: 10rem; }

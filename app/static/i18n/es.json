@@ -87,5 +87,6 @@
   "chart.since_start": "desde el inicio",
   "chart.amounts": "Importes",
   "chart.percent": "% desde el inicio",
-  "chart.start_pct": "Inicio"
+  "chart.start_pct": "Inicio",
+  "chart.maximize": "Ampliar"
 }

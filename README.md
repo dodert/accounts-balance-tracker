@@ -14,7 +14,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
-  - *Amounts*: the total, then one small chart per account with its own scale. Each one has a dashed line at its first recorded balance (its start) and shows the change since then.
+  - *Amounts*: the total, then one small chart per account with its own scale. Each one has a dashed line at its first recorded balance (its start) and shows the change since then. The ⤢ button on an account opens its chart maximized.
   - *% since the start*: every account and the total on one chart, as the % change since each one's own start, so they can be compared.
 
   Each account keeps its colour in every chart (the first 8; the rest are grey) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
