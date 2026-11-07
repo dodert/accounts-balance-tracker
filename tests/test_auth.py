@@ -152,3 +152,64 @@ def test_damaged_totp_secret_stops_the_app_instead_of_showing_a_new_one(tmp_path
     (tmp_path / ".totp_secret").write_text("{not json")
     with pytest.raises(ValueError, match="damaged"):
         totp_client(tmp_path)
+
+
+def guess_in_parallel(app, path, field_values, extra=None):
+    """Post every value at the same time, as an attacker would; returns (value, status, location)."""
+    import asyncio
+    import httpx2 as httpx
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver",
+                                     cookies=extra or {}) as client:
+            async def one(field, value):
+                res = await client.post(path, data=field, follow_redirects=False)
+                return value, res.status_code, res.headers.get("location")
+            return await asyncio.gather(*(one(field, value) for field, value in field_values))
+    return asyncio.run(run())
+
+
+def test_parallel_password_guesses_wait_in_line(tmp_path, monkeypatch):
+    import time
+    import app.main as main
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
+    app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
+    wrong = [({"username": "admin", "password": f"guess{i}"}, f"guess{i}") for i in range(14)]
+    start = time.monotonic()
+    results = guess_in_parallel(app, "/login", wrong + [({"username": "admin", "password": "s3cret"}, "s3cret")])
+    # Only the first ones waiting are checked, one after the other with the delay; the rest are turned away
+    checked = [r for r in results if r[1] == 303]
+    assert len(checked) == main.MAX_WAITING_LOGINS
+    assert time.monotonic() - start >= main.MAX_WAITING_LOGINS * 0.05
+    assert all(r[2] == "/login?error=1" for r in checked)
+    # The right password came after the queue was full: turned away without being checked, not logged in
+    assert dict((r[0], r[1]) for r in results)["s3cret"] == 429
+
+
+def test_parallel_code_guesses_wait_in_line(tmp_path, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.01)
+    client = totp_client(tmp_path)
+    client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
+    pending = {"abt_pending": client.cookies["abt_pending"]}
+    guesses = [({"code": f"{i:06d}"}, i) for i in range(20)]
+    results = guess_in_parallel(client.app, "/login/totp", guesses, pending)
+    assert sum(r[1] == 429 for r in results) == 20 - main.MAX_WAITING_LOGINS
+
+
+def test_security_headers(tmp_path):
+    client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
+    for res in (client.get("/login"), client.get("/api/accounts"), client.get("/static/style.css")):
+        assert "frame-ancestors 'none'" in res.headers["content-security-policy"]
+        assert "script-src 'self';" in res.headers["content-security-policy"]
+        assert res.headers["x-frame-options"] == "DENY"
+        assert res.headers["x-content-type-options"] == "nosniff"
+        assert res.headers["referrer-policy"] == "same-origin"
+        assert "strict-transport-security" not in res.headers
+    https = client.get("/login", headers={"x-forwarded-proto": "https"})
+    assert https.headers["strict-transport-security"] == "max-age=31536000"
+    # No inline scripts left for the policy to block
+    assert "<script>" not in client.get("/login").text
+    # FastAPI's interactive docs need their CDN and inline script
+    client.post("/login", data={"username": "admin", "password": "s3cret"})
+    assert "https://cdn.jsdelivr.net" in client.get("/docs").headers["content-security-policy"]

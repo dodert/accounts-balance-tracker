@@ -20,9 +20,6 @@
     <button type="submit" class="primary" data-i18n="login.submit">Log in</button>
   </form>
   <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
-  <script>
-    document.getElementById("login-error").hidden = !new URLSearchParams(location.search).has("error");
-    initI18n();
-  </script>
+  <script src="/static/login.js?v={{ASSET_VERSION}}"></script>
 </body>
 </html>

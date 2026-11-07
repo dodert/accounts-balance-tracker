@@ -74,3 +74,21 @@ def test_import_finds_accounts_by_name_and_institution(client):
     res = client.post("/api/import/csv", files={"file": ("c.csv", b"account,date,amount\nSolo,2026-01-31,5\nSolo,2026-02-28,6\n", "text/csv")}).json()
     assert (res["accounts_created"], res["balances_created"], res["errors"]) == (1, 2, [])
 
+
+
+def test_export_neutralizes_formulas_and_import_reads_them_back(client, tmp_path):
+    account = client.post("/api/accounts", json={"name": "=HYPERLINK(\"http://x\")", "institution": "@bank"}).json()
+    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": -450, "note": "+1 call"})
+    text = client.get("/api/export/csv").text
+    row = text.splitlines()[1]
+    assert row.startswith("\"'=HYPERLINK(") and ",'@bank," in row and ",'+1 call," in row
+    assert ",-450.00," in row  # amounts are numbers, left as they are
+
+    # Imported back, the same account is found and the texts are as they were
+    res = client.post("/api/import/csv", files={"file": ("e.csv", text.encode(), "text/csv")}).json()
+    assert res["accounts_created"] == 0 and res["balances_updated"] == 1 and not res["errors"]
+    balances = client.get(f"/api/accounts/{account['id']}/balances").json()
+    assert balances[0]["note"] == "+1 call"
+    # A name that only starts with a quote keeps it
+    from app.csv_io import unsafe_text
+    assert unsafe_text("'quoted") == "'quoted"

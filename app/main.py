@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 from datetime import date
+from urllib.parse import urlsplit
 from decimal import Decimal
 from pathlib import Path
 
@@ -30,6 +31,18 @@ from .totp import Totp
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
+# Login and one-time code tries waiting their turn at most; more are turned away without being checked
+MAX_WAITING_LOGINS = 10
+WRONG_PASSWORD_DELAY = 1  # seconds
+# Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+       "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+# The interactive API docs (/docs, /redoc) are FastAPI's pages: an inline script and files from its CDN
+DOCS_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com; "
+            "worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc"}
 
 
 def account_out(account: Account) -> AccountOut:
@@ -66,10 +79,20 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan)
 
+    def foreign_request(request: Request) -> bool:
+        """Sent by a page of another origin: another website, or another app on the same host (another
+        port) or domain, which browsers call same-site and send the SameSite=Lax cookie to."""
+        site = request.headers.get("sec-fetch-site")
+        if site is not None:
+            return site not in ("same-origin", "none")  # none: typed or bookmarked by the user
+        # Browsers without Sec-Fetch-Site: compare the Origin they send with the host asked for
+        origin = request.headers.get("origin")
+        return origin is not None and (origin == "null" or urlsplit(origin).netloc != request.headers.get("host"))
+
     @app.middleware("http")
     async def reject_cross_site_writes(request: Request, call_next):
         # Another website open in the browser must not be able to post forms here (e.g. a CSV import)
-        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("sec-fetch-site") == "cross-site":
+        if request.method not in ("GET", "HEAD", "OPTIONS") and foreign_request(request):
             return Response("Cross-site request blocked", status_code=403)
         return await call_next(request)
 
@@ -80,6 +103,19 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": "Login required"}, status_code=401)
         return RedirectResponse("/login", status_code=303)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        # Added last, so it runs first: also on the answers of the checks above (401, 403...)
+        response = await call_next(request)
+        headers = response.headers
+        headers.setdefault("Content-Security-Policy", DOCS_CSP if request.url.path in DOCS_PATHS else CSP)
+        headers.setdefault("X-Frame-Options", "DENY")  # no other website can show the app in a frame
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("Referrer-Policy", "same-origin")
+        if is_https(request):
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return response
 
     def in_demo(request: Request) -> bool:
         return request.cookies.get(DEMO_COOKIE) == "1"
@@ -384,7 +420,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     def apple_touch_icon():
         return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png", media_type="image/png")
 
-    failed_login_lock = asyncio.Lock()
+    login_lock = asyncio.Lock()
+    waiting_logins = 0
 
     def is_https(request: Request) -> bool:
         return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
@@ -398,12 +435,27 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     wrong_codes = 0  # wrong one-time codes in a row, for the whole app
 
-    async def failed(location: str, delay: float = 1) -> RedirectResponse:
-        # One wrong password or code at a time for the whole app: parallel requests wait in line,
-        # so guessing can't be sped up by sending many at once
-        async with failed_login_lock:
-            await asyncio.sleep(delay)
-        return RedirectResponse(location, status_code=303)
+    class Busy(Exception):
+        pass
+
+    @asynccontextmanager
+    async def login_turn():
+        """One password or code check at a time for the whole app, and a wrong one keeps the turn
+        during its delay: parallel requests wait in line, so guessing can't be sped up by sending
+        many at once. Past a few waiting, the rest are turned away without being checked."""
+        nonlocal waiting_logins
+        if waiting_logins >= MAX_WAITING_LOGINS:
+            raise Busy
+        waiting_logins += 1
+        try:
+            async with login_lock:
+                yield
+        finally:
+            waiting_logins -= 1
+
+    def busy() -> Response:
+        return Response("Too many login attempts, try again in a minute", status_code=429,
+                        headers={"Retry-After": "60"})
 
     @app.get("/login", include_in_schema=False)
     def login_page(request: Request):
@@ -415,8 +467,13 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     async def login(request: Request, username: str = Form(""), password: str = Form("")):
         if not auth.enabled:
             return RedirectResponse("/", status_code=303)
-        if not auth.check_credentials(username, password):
-            return await failed("/login?error=1")
+        try:
+            async with login_turn():
+                if not auth.check_credentials(username, password):
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    return RedirectResponse("/login?error=1", status_code=303)
+        except Busy:
+            return busy()
         if not totp:
             return logged_in(request)
         # Password right: now the one-time code (or adding the secret to the app, the first time)
@@ -442,10 +499,15 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         nonlocal wrong_codes
         if not totp or not auth.valid_pending(request.cookies.get(PENDING_COOKIE)):
             return RedirectResponse("/login", status_code=303)
-        if not totp.verify(code):
-            # 1 s for the first few, then doubling up to a minute
-            wrong_codes += 1
-            return await failed("/login/totp?error=1", min(60, 2 ** max(0, wrong_codes - 5)))
+        try:
+            async with login_turn():
+                if not totp.verify(code):
+                    # 1 s for the first few, then doubling up to a minute
+                    wrong_codes += 1
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY * min(60, 2 ** max(0, wrong_codes - 5)))
+                    return RedirectResponse("/login/totp?error=1", status_code=303)
+        except Busy:
+            return busy()
         wrong_codes = 0
         if not totp.confirmed:
             totp.confirm()

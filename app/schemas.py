@@ -10,6 +10,8 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Currency = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")]
 Amount = Annotated[Decimal, Field(max_digits=14, decimal_places=2)]
 Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
+# Account notes: longer, free text
+Notes = Annotated[str, StringConstraints(max_length=5000)]
 
 
 def _blank_is_none(value):
@@ -22,7 +24,7 @@ class AccountIn(BaseModel):
     currency: Currency | None = None  # None -> DEFAULT_CURRENCY
     institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
     available_from: Date | None = None
-    notes: str | None = None
+    notes: Notes | None = None
     archived: bool = False
 
     _blanks = field_validator("institution", "notes", "currency", "available_from", mode="before")(_blank_is_none)
@@ -34,7 +36,7 @@ class AccountUpdate(BaseModel):
     currency: Currency | None = None
     institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
     available_from: Date | None = None
-    notes: str | None = None
+    notes: Notes | None = None
     archived: bool | None = None
 
     _blanks = field_validator("institution", "notes", "available_from", mode="before")(_blank_is_none)
