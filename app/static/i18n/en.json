@@ -101,5 +101,7 @@
   "chart.available": "Available",
   "totals.available_now": "Available now",
   "totals.with_locked": "Including what is not available yet ({locked})",
-  "chart.with_locked": "Including what is not available yet"
+  "chart.with_locked": "Including what is not available yet",
+  "accounts.search": "Search: account, institution, type",
+  "accounts.search_count": "{n} of {total}"
 }

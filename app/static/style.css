@@ -118,6 +118,12 @@ table.data .t { font-weight: 600; }
 #accounts-table tbody tr { cursor: pointer; }
 #accounts-table tbody tr:hover td, #accounts-table tbody tr:focus-visible td { background: var(--bg); }
 #accounts-table tr.archived td { color: var(--muted); }
+/* Search: the accounts that do not match fade out, the ones that do keep their place */
+.search { min-width: 0; width: 16rem; max-width: 100%; padding: .3rem .55rem; font-size: .9rem; }
+#accounts-table tr { transition: opacity .15s; }
+#accounts-table tr.dim { opacity: .3; }
+#accounts-table tr.dim:hover, #accounts-table tr.dim:focus-visible { opacity: .7; }
+mark { background: color-mix(in srgb, var(--s4) 45%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
 #balances-table td.note { color: var(--muted); font-size: .8rem; }
 #balances-table td.actions { width: 1%; }
 .balances-wrap { max-height: 280px; overflow-y: auto; }

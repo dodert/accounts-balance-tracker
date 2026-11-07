@@ -11,6 +11,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 ## Features
 
 - **Accounts** with a type, institution, currency and notes, and optionally the date their balance becomes **available** (e.g. unvested stock options: one account per vesting tranche). Until then they are flagged; the totals show two figures, the amount available now (main colour) and the total including what is not available yet (secondary colour), and the total chart also draws the available part. An institution can have several accounts, and the same name can be used in different institutions (e.g. "Payroll" at two banks). Archive the ones you close (record a 0 balance first so the history stays right).
+- **Search** in the accounts list (account, institution or type, ignoring case and accents): the accounts that do not match are dimmed, not hidden, and the charts do not change.
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
