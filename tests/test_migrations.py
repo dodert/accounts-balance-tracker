@@ -56,3 +56,18 @@ def test_upgrade_keeps_the_balances(tmp_path):
         assert old.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
         assert old.execute("SELECT count(*) FROM balances").fetchone() == (1,)
     old.close()
+
+
+def test_database_from_a_newer_version_is_refused_untouched(tmp_path):
+    import pytest
+    from sqlalchemy import text
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
+    upgrade_database(engine)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alembic_version SET version_num = '9999'"))
+    with pytest.raises(RuntimeError, match="newer version of the app"):
+        upgrade_database(engine)
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "9999"
+    assert [p.name for p in tmp_path.iterdir()] == ["db.sqlite"]  # no backup, nothing changed

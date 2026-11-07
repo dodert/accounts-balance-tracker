@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -17,12 +18,13 @@ from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo
+from .fx import Fetcher, frankfurter, get_rate
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance
 from .schemas import (
     AccountIn, AccountOut, AccountUpdate, BalanceIn, BalanceOut, BalanceUpdate, BulkBalancesIn, BulkBalancesOut,
-    CsvImportOut, CurrencyTotal, HistoryOut,
+    CombinedTotal, CsvImportOut, CurrencyTotal, FxRateOut, HistoryOut,
 )
 from .totp import Totp
 
@@ -44,7 +46,7 @@ def account_out(account: Account) -> AccountOut:
 DUPLICATE_NAME = "An account with that name already exists in that institution"
 
 
-def create_app(settings: Settings = default_settings) -> FastAPI:
+def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None = None) -> FastAPI:
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
         raise ValueError("AUTH_TOTP needs AUTH_USERNAME and AUTH_PASSWORD")
@@ -53,6 +55,7 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
     SessionLocal = make_sessionmaker(engine)
     upgrade_database(engine)
     demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
+    fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
 
     version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
 
@@ -278,6 +281,45 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
     @app.get("/api/summary", response_model=list[CurrencyTotal])
     def summary(db: Session = Depends(get_db)):
         return currency_totals(accounts_with_balances(db))
+
+    def combined_total(db: Session, refresh: bool) -> CombinedTotal:
+        target = settings.default_currency
+        total = available = Decimal(0)
+        rates, missing = [], []
+        for c in currency_totals(accounts_with_balances(db)):
+            try:
+                rate = get_rate(db, fetch_rate, c["currency"], target, refresh=refresh)
+            except LookupError:
+                missing.append(c["currency"])
+                continue
+            total += Decimal(str(c["total"])) * rate.rate
+            available += Decimal(str(c["available"])) * rate.rate
+            if c["currency"] != target:
+                rates.append(FxRateOut(**vars(rate)))
+        return CombinedTotal(currency=target, total=round(total, 2), available=round(available, 2), rates=rates, missing=missing)
+
+    @app.get("/api/summary/combined", response_model=CombinedTotal)
+    def summary_combined(db: Session = Depends(get_db)):
+        """All currencies in the default one. Today's rates are fetched the first time each day."""
+        return combined_total(db, refresh=False)
+
+    @app.post("/api/fx/refresh", response_model=CombinedTotal)
+    def fx_refresh(db: Session = Depends(get_db)):
+        """Fetch today's rates again now, and the combined total with them."""
+        return combined_total(db, refresh=True)
+
+    @app.get("/api/fx", response_model=FxRateOut)
+    def fx_rate(
+        base: str = Query(..., alias="from", pattern=r"^[A-Za-z]{3}$"),
+        quote: str = Query(..., alias="to", pattern=r"^[A-Za-z]{3}$"),
+        day: date | None = Query(None, alias="date"),
+        db: Session = Depends(get_db),
+    ):
+        """The rate from one currency to another on a day (default today)."""
+        try:
+            return FxRateOut(**vars(get_rate(db, fetch_rate, base, quote, day)))
+        except LookupError as exc:
+            raise HTTPException(503, str(exc)) from None
 
     @app.get("/api/currencies", response_model=list[str])
     def currencies(db: Session = Depends(get_db)):

@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
@@ -77,3 +78,20 @@ def test_demo_needs_login(tmp_path):
     with TestClient(app) as c:
         assert c.post("/api/demo").status_code == 401
         assert c.get("/demo", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_demo_combined_total_in_default_currency(tmp_path):
+    asked = []
+
+    def fetch(base, quote, day):
+        asked.append((base, quote, day))
+        return Decimal("0.9"), date.today()
+
+    with TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=fetch)) as c:
+        c.post("/api/demo")
+        combined = c.get("/api/summary/combined").json()
+        summary = {s["currency"]: s for s in c.get("/api/summary").json()}
+    assert combined["missing"] == []
+    expected = Decimal(str(summary["EUR"]["total"])) + Decimal(str(summary["USD"]["total"])) * Decimal("0.9")
+    assert Decimal(str(combined["total"])) == round(expected, 2)
+    assert asked == [("USD", "EUR", None)]  # only the currencies are asked for, never amounts

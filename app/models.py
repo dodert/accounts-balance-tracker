@@ -57,3 +57,17 @@ class Balance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     account: Mapped[Account] = relationship(back_populates="balances")
+
+
+class FxRate(Base):
+    """An exchange rate: 1 `base` = `rate` `quote`, for a day. See app/fx.py."""
+    __tablename__ = "fx_rates"
+    __table_args__ = (UniqueConstraint("base", "quote", "day", name="uq_fx_rate_pair_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base: Mapped[str] = mapped_column(String(3))
+    quote: Mapped[str] = mapped_column(String(3))
+    day: Mapped[date] = mapped_column(Date)  # the day it was asked for
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 8))
+    rate_date: Mapped[date] = mapped_column(Date)  # the day the rate is from
+    fetched_at: Mapped[datetime] = mapped_column(DateTime)

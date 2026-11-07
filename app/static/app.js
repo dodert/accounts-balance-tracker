@@ -141,20 +141,39 @@ function changeCell(current, previous, currency, percent = false) {
 
 // --- Totals ---
 
-async function loadTotals() {
-  const totals = await api("/api/summary");
-  state.totals = totals;
-  $("#totals").innerHTML = totals.length ? totals.map((c) => `
-    <div class="tile">
-      <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
-      ${c.available !== c.total ? `
+// The big figure: available now (main colour) and, if part is not available yet, the total with it
+const figures = (c) => (c.available !== c.total ? `
       <div class="tile-figures">
         <div><div class="tile-value">${esc(money(c.available, c.currency))}</div><div class="tile-caption">${esc(t("totals.available_now"))}</div></div>
         <div class="tile-locked"><div class="tile-value">${esc(money(c.total, c.currency))}</div><div class="tile-caption">🔒 ${esc(t("totals.with_locked", { locked: money(c.total - c.available, c.currency) }))}</div></div>
-      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>`}
+      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>`);
+
+// Every currency added up in the default one, at today's exchange rates (fetched once a day by the server)
+function combinedTile(c) {
+  const rate = (r) => `${esc(t("fx.rate", { base: r.base, rate: new Intl.NumberFormat(fmtLocale(), { maximumFractionDigits: 4 }).format(r.rate), quote: r.quote }))}` +
+    ` <span class="fx-date">${esc(t(r.stale ? "fx.stale" : "fx.from", { date: fmtDate(r.rate_date) }))}</span>`;
+  return `
+    <div class="tile tile-combined">
+      <div class="tile-label">${esc(t("totals.combined", { currency: c.currency }))}
+        <button type="button" class="icon fx-refresh" title="${esc(t("fx.refresh"))}" aria-label="${esc(t("fx.refresh"))}">↻</button></div>
+      ${figures(c)}
+      ${c.rates.map((r) => `<div class="tile-sub">${rate(r)}</div>`).join("")}
+      ${c.missing.length ? `<div class="tile-sub error">${esc(t("fx.missing", { currencies: c.missing.join(", ") }))}</div>` : ""}
+    </div>`;
+}
+
+async function loadTotals() {
+  const totals = await api("/api/summary");
+  state.totals = totals;
+  // Only with more than one currency; if the rates cannot be had, the other boxes still show
+  const combined = totals.length > 1 ? await api("/api/summary/combined").catch(() => null) : null;
+  $("#totals").innerHTML = (combined ? combinedTile(combined) : "") + (totals.length ? totals.map((c) => `
+    <div class="tile">
+      <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
+      ${figures(c)}
       <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
       ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
-    </div>`).join("") : "";
+    </div>`).join("") : "");
   const currencies = totals.map((c) => c.currency);
   const select = $("#chart-currency");
   select.innerHTML = currencies.map((c) => `<option>${esc(c)}</option>`).join("");
@@ -170,6 +189,43 @@ async function loadAccounts() {
   renderAccounts();
 }
 
+// Search in the accounts list: rows that do not match are dimmed, not hidden, and the charts do not
+// change. Case and accent insensitive ("ahorro" finds "Ahorro", "inversion" finds "Inversión").
+const fold = (c) => c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const searchTerm = () => fold($("#account-search").value.trim());
+
+// The text, escaped, with the part that matches the search marked
+function highlight(text) {
+  const term = searchTerm();
+  if (!term || !text) return esc(text);
+  const chars = [...text];
+  const folded = chars.map(fold);
+  const flat = folded.join("");
+  const at = flat.indexOf(term);
+  if (at < 0) return esc(text);
+  // Map the match in the folded text back to the original characters
+  let pos = 0, start = -1, end = chars.length;
+  for (let i = 0; i < chars.length; i++) {
+    if (start < 0 && pos + folded[i].length > at) start = i;
+    pos += folded[i].length;
+    if (pos >= at + term.length) { end = i + 1; break; }
+  }
+  return esc(chars.slice(0, start).join("")) + `<mark>${esc(chars.slice(start, end).join(""))}</mark>` + esc(chars.slice(end).join(""));
+}
+
+function applySearch() {
+  const term = searchTerm();
+  const rows = $$("#accounts-table tbody tr[data-id]");
+  let hits = 0;
+  for (const row of rows) {
+    const a = state.accounts.find((x) => x.id === Number(row.dataset.id));
+    const match = !term || [a.name, a.institution, t(`type.${a.type}`)].some((v) => v && fold(v).includes(term));
+    row.classList.toggle("dim", !match);
+    hits += match ? 1 : 0;
+  }
+  $("#account-search-count").textContent = term ? t("accounts.search_count", { n: hits, total: rows.length }) : "";
+}
+
 function renderAccounts() {
   const showArchived = $("#show-archived").checked;
   const rows = state.accounts.filter((a) => showArchived || !a.archived);
@@ -177,16 +233,35 @@ function renderAccounts() {
   $("#accounts-table").hidden = rows.length === 0;
   $("#accounts-table tbody").innerHTML = rows.map((a) => `
     <tr data-id="${a.id}" tabindex="0" class="${a.archived ? "archived" : ""}">
-      <td><span class="t">${esc(a.name)}</span>${a.institution ? `<span class="sub">${esc(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${lockBadge(a)}</td>
-      <td>${esc(t(`type.${a.type}`))}</td>
+      <td><span class="t">${highlight(a.name)}</span>${a.institution ? `<span class="sub">${highlight(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${lockBadge(a)}</td>
+      <td>${highlight(t(`type.${a.type}`))}</td>
       <td class="num">${esc(money(a.balance, a.currency))}</td>
       <td class="num">${changeCell(a.balance, a.previous_balance, a.currency)}</td>
       <td class="num">${changeCell(a.balance, a.first_balance, a.currency, true)}</td>
       <td>${esc(fmtDate(a.balance_date))}</td>
     </tr>`).join("");
+  applySearch();
 }
 
 $("#show-archived").addEventListener("change", renderAccounts);
+$("#account-search").addEventListener("input", renderAccounts);
+$("#account-search").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.target.value = ""; renderAccounts(); }
+});
+// Refresh the exchange rates now (only the currencies and the date go to the service, never amounts)
+$("#totals").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".fx-refresh");
+  if (!btn) return;
+  btn.disabled = true;
+  btn.classList.add("spinning");
+  try {
+    $(".tile-combined").outerHTML = combinedTile(await api("/api/fx/refresh", { method: "POST" }));
+  } catch (err) {
+    showError(err);
+    btn.disabled = false;
+    btn.classList.remove("spinning");
+  }
+});
 $("#accounts-table tbody").addEventListener("click", (e) => {
   const row = e.target.closest("tr[data-id]");
   if (row) openAccount(Number(row.dataset.id));
