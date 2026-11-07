@@ -73,6 +73,7 @@
               <th data-i18n="column.type">Type</th>
               <th class="num" data-i18n="column.balance">Balance</th>
               <th class="num" data-i18n="column.change">Change</th>
+              <th class="num" data-i18n="column.since_first">Since the start</th>
               <th data-i18n="column.updated">Updated</th>
             </tr>
           </thead>
@@ -127,7 +128,7 @@
           <label><span data-i18n="account.note">Note</span> <input id="nb-note" maxlength="300"></label>
           <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
         </div>
-        <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><tbody></tbody></table></div>
+        <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="column.balance">Balance</th><th class="num" data-i18n="column.change">Change</th><th class="num" data-i18n="column.since_first">Since the start</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
       <p class="error" id="account-error" hidden></p>
       <menu>

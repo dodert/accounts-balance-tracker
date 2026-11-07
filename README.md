@@ -12,7 +12,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 - **Accounts** with a type, institution, currency and notes. Archive the ones you close (record a 0 balance first so the history stays right).
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
-- **Totals** per currency, with the change since the previous recorded date.
+- **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Chart** of the total or of each account (up to 8 lines: with more accounts, the oldest 7 get their own line and the rest are grouped as *Other*), for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view. An account keeps its last recorded balance until a new one is recorded.
 - **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note` (optional); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. Missing accounts are created, and a balance already recorded on that date is replaced.
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.

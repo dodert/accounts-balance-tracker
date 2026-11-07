@@ -119,12 +119,16 @@ function parseAmount(text) {
   return Math.round(n * 100) / 100;
 }
 
-function changeCell(current, previous, currency) {
+// The change from `previous` to `current`, coloured; with percent=true also in % of `previous`
+function changeCell(current, previous, currency, percent = false) {
   if (current === null || previous === null || previous === undefined) return "";
-  const diff = current - previous;
+  const diff = Math.round((current - previous) * 100) / 100;
   const cls = diff > 0 ? "up" : diff < 0 ? "down" : "";
   const arrow = diff > 0 ? "▲ " : diff < 0 ? "▼ " : "";
-  return `<span class="${cls}">${arrow}${esc(signedMoney(diff, currency))}</span>`;
+  const pct = percent && previous !== 0
+    ? ` <span class="pct">(${esc(new Intl.NumberFormat(fmtLocale(), { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(diff / Math.abs(previous)))})</span>`
+    : "";
+  return `<span class="${cls}"><span class="arrow">${arrow}</span>${esc(signedMoney(diff, currency))}${pct}</span>`;
 }
 
 // --- Totals ---
@@ -136,6 +140,7 @@ async function loadTotals() {
       <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
       <div class="tile-value">${esc(money(c.total, c.currency))}</div>
       <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
+      ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
     </div>`).join("") : "";
   const currencies = totals.map((c) => c.currency);
   const select = $("#chart-currency");
@@ -163,6 +168,7 @@ function renderAccounts() {
       <td>${esc(t(`type.${a.type}`))}</td>
       <td class="num">${esc(money(a.balance, a.currency))}</td>
       <td class="num">${changeCell(a.balance, a.previous_balance, a.currency)}</td>
+      <td class="num">${changeCell(a.balance, a.first_balance, a.currency, true)}</td>
       <td>${esc(fmtDate(a.balance_date))}</td>
     </tr>`).join("");
 }
@@ -419,11 +425,15 @@ async function openAccount(id) {
 async function loadBalances() {
   const account = state.editing;
   const balances = await api(`/api/accounts/${account.id}/balances`);
+  // Newest first: the next row is the previous balance, the last row the first one
+  const first = balances[balances.length - 1];
+  $("#balances-table thead").hidden = !balances.length;
   $("#balances-table tbody").innerHTML = balances.length ? balances.map((b, i) => `
     <tr>
       <td>${esc(fmtDate(b.date))}</td>
       <td class="num">${esc(money(b.amount, account.currency))}</td>
       <td class="num">${balances[i + 1] ? changeCell(b.amount, balances[i + 1].amount, account.currency) : ""}</td>
+      <td class="num">${balances[i + 1] ? changeCell(b.amount, first.amount, account.currency, true) : ""}</td>
       <td class="note">${esc(b.note ?? "")}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${b.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("") : `<tr><td class="hint">${esc(t("account.no_balances"))}</td></tr>`;

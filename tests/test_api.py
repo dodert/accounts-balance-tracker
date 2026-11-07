@@ -47,6 +47,7 @@ def test_balances_one_per_day(client):
 
     out = client.get(f"/api/accounts/{account['id']}").json()
     assert (out["balance"], out["balance_date"], out["previous_balance"]) == (1250.25, "2026-02-28", 1000.5)
+    assert (out["first_balance"], out["first_date"]) == (1000.5, "2026-01-31")
 
     first = balances[1]["id"]
     assert client.patch(f"/api/balances/{first}", json={"date": "2026-02-28"}).status_code == 409
@@ -81,7 +82,8 @@ def test_summary_and_history(client):
     summary = {c["currency"]: c for c in client.get("/api/summary").json()}
     assert summary["EUR"]["total"] == 1300 and summary["EUR"]["date"] == "2026-02-01"
     assert summary["EUR"]["previous_total"] == 1500 and summary["EUR"]["previous_date"] == "2026-01-15"
-    assert summary["USD"]["total"] == 50 and summary["USD"]["previous_total"] is None
+    assert summary["EUR"]["first_total"] == 1000 and summary["EUR"]["first_date"] == "2026-01-01"
+    assert summary["USD"]["total"] == 50 and summary["USD"]["previous_total"] is None and summary["USD"]["first_total"] is None
     assert client.get("/api/currencies").json() == ["EUR", "USD"]
 
     h = client.get("/api/history", params={"currency": "eur"}).json()

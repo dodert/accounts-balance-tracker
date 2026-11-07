@@ -33,6 +33,7 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .hint { color: var(--muted); font-size: .8rem; }
 .error { color: var(--danger); font-size: .85rem; }
 .up { color: var(--ok); }
+.pct { white-space: nowrap; }
 .down { color: var(--danger); }
 .sub { display: block; color: var(--muted); font-size: .78rem; font-weight: normal; }
 .badge { display: inline-block; font-size: .7rem; padding: 0 .35rem; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
@@ -149,6 +150,9 @@ footer a { color: inherit; }
   header .spacer { display: none; }
   .tile-value { font-size: 1.6rem; }
   .update-row .u-input { width: 9rem; }
-  #accounts-table th:nth-child(2), #accounts-table td:nth-child(2), #accounts-table th:nth-child(5), #accounts-table td:nth-child(5) { display: none; }
+  #accounts-table th:nth-child(2), #accounts-table td:nth-child(2), #accounts-table th:nth-child(6), #accounts-table td:nth-child(6) { display: none; }
+  table.data .pct { display: block; }
+  #accounts-table .arrow { display: none; }
+  #accounts-table td.num { font-size: .8rem; }
   table.data td, table.data th { padding: .45rem .3rem; }
 }
