@@ -56,8 +56,8 @@
         </select>
       </div>
       <div id="chart" class="chart"></div>
-      <div id="multiples" class="multiples" hidden></div>
       <div id="chart-legend" class="legend"></div>
+      <div id="multiples" class="multiples" hidden></div>
       <details id="chart-table-wrap">
         <summary data-i18n="chart.show_table">Show as a table</summary>
         <div class="table-wrap"><table id="chart-table" class="data"></table></div>
@@ -121,6 +121,7 @@
         <label><span data-i18n="column.type">Type</span> <select name="type" id="account-type"></select></label>
         <label><span data-i18n="account.currency">Currency</span> <input name="currency" required maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters"></label>
       </div>
+      <label><span data-i18n="account.available_from">Available from</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="available_from"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span> <span class="hint" data-i18n="account.available_hint">Leave it empty if the balance can be used now. For balances you cannot use until a date, e.g. unvested stock options.</span></label>
       <label><span data-i18n="account.notes">Notes</span> <textarea name="notes" rows="2"></textarea></label>
       <label class="radio"><input type="checkbox" name="archived"> <span data-i18n="account.archived">Archived (closed account: record a 0 balance first)</span></label>
       <p class="hint" data-i18n="account.loan_hint">For loans and credit cards, record the debt as a negative balance.</p>

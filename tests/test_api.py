@@ -13,7 +13,7 @@ def add(client, account_id, day, amount, note=None):
 def test_health_and_about(client):
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0002" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0003" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
@@ -123,3 +123,28 @@ def test_account_names_are_unique_per_institution(client):
     assert client.post("/api/accounts", json={"name": "Payroll"}).status_code == 409
     assert client.post("/api/accounts", json={"name": "Payroll", "institution": "BBVA"}).status_code == 409
     assert client.patch(f"/api/accounts/{bbva['id']}", json={"institution": "ING"}).status_code == 409
+
+
+def test_available_from(client):
+    from datetime import date, timedelta
+
+    future = (date.today() + timedelta(days=30)).isoformat()
+    cash = make_account(client, "Cash")
+    options = make_account(client, "Options", type="investment", available_from=future)
+    vested = make_account(client, "Vested", available_from="2026-02-01")
+    assert options["available_from"] == future
+    for account, amount in ((cash, 100), (options, 1000), (vested, 50)):
+        add(client, account["id"], "2026-01-01", amount)
+    add(client, vested["id"], "2026-03-01", 60)
+
+    summary = client.get("/api/summary").json()[0]
+    assert summary["total"] == 1160 and summary["available"] == 160  # options not yet
+    assert summary["first_total"] == 1150 and summary["first_available"] == 100
+
+    h = client.get("/api/history").json()
+    assert h["dates"] == ["2026-01-01", "2026-03-01"]
+    assert h["total"] == [1150, 1160] and h["available"] == [100, 160]  # vested from 2026-02-01
+
+    cleared = client.patch(f"/api/accounts/{options['id']}", json={"available_from": ""}).json()
+    assert cleared["available_from"] is None
+    assert client.get("/api/summary").json()[0]["available"] == 1160

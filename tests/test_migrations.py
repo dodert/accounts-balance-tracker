@@ -44,6 +44,7 @@ def test_upgrade_keeps_the_balances(tmp_path):
     upgrade_database(engine)
     with engine.begin() as conn:
         assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
+        assert conn.scalar(text("SELECT available_from FROM accounts")) is None  # 0003: available
         assert conn.scalar(text("PRAGMA foreign_keys")) == 1
         conn.execute(text("DELETE FROM accounts"))
         assert conn.scalar(text("SELECT count(*) FROM balances")) == 0  # the cascade still works

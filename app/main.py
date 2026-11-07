@@ -15,7 +15,7 @@ from .auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS, Auth
 from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
-from .history import accounts_with_balances, currency_totals, history
+from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance
 from .schemas import (
@@ -241,6 +241,7 @@ def create_app(settings: Settings = default_settings) -> FastAPI:
             currency=currency,
             dates=dates,
             total=[float(t) for t in totals],
+            available=[float(t) for t in available_totals(accounts, dates, per_account)],
             accounts=[
                 {"account_id": a.id, "name": a.name, "archived": a.archived,
                  "values": [None if v is None else float(v) for v in per_account[a.id]]}

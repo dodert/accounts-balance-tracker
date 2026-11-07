@@ -100,6 +100,9 @@ function setDate(input, iso) {
 }
 
 const getDate = (input) => textToIso(input.value);
+// Not available yet: available_from after today (ISO dates compare as text)
+const notAvailableYet = (a) => !!a?.available_from && a.available_from > today();
+const lockBadge = (a) => (notAvailableYet(a) ? ` <span class="badge lock" title="${esc(t("account.available_hint"))}">🔒 ${esc(t("accounts.available_on", { date: fmtDate(a.available_from) }))}</span>` : "");
 
 // Every .date-field: the calendar button opens the browser's date picker
 $$(".date-field").forEach((field) => {
@@ -144,7 +147,11 @@ async function loadTotals() {
   $("#totals").innerHTML = totals.length ? totals.map((c) => `
     <div class="tile">
       <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
-      <div class="tile-value">${esc(money(c.total, c.currency))}</div>
+      ${c.available !== c.total ? `
+      <div class="tile-figures">
+        <div><div class="tile-value">${esc(money(c.available, c.currency))}</div><div class="tile-caption">${esc(t("totals.available_now"))}</div></div>
+        <div class="tile-locked"><div class="tile-value">${esc(money(c.total, c.currency))}</div><div class="tile-caption">🔒 ${esc(t("totals.with_locked", { locked: money(c.total - c.available, c.currency) }))}</div></div>
+      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>`}
       <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
       ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
     </div>`).join("") : "";
@@ -170,7 +177,7 @@ function renderAccounts() {
   $("#accounts-table").hidden = rows.length === 0;
   $("#accounts-table tbody").innerHTML = rows.map((a) => `
     <tr data-id="${a.id}" tabindex="0" class="${a.archived ? "archived" : ""}">
-      <td><span class="t">${esc(a.name)}</span>${a.institution ? `<span class="sub">${esc(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</td>
+      <td><span class="t">${esc(a.name)}</span>${a.institution ? `<span class="sub">${esc(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${lockBadge(a)}</td>
       <td>${esc(t(`type.${a.type}`))}</td>
       <td class="num">${esc(money(a.balance, a.currency))}</td>
       <td class="num">${changeCell(a.balance, a.previous_balance, a.currency)}</td>
@@ -223,6 +230,7 @@ function accountSeries(h) {
     const slot = ids.indexOf(a.account_id) + 1;
     return {
       account_id: a.account_id, name: a.name, detail: account?.institution ?? "", values: a.values, slot, archived: a.archived,
+      available_from: account?.available_from ?? null,
       color: slot <= SERIES_SLOTS ? `var(--s${slot})` : "var(--muted)",
       start: account?.first_balance ?? firstValue(a.values),
     };
@@ -349,6 +357,15 @@ function drawChart(box, opts) {
     const below = ys - pad.top < 14;
     svg("text", { x: pad.left + 6, y: below ? ys + 13 : ys - 5, class: "start-label" }, root).textContent = ref.label;
   }
+  // The day the balance becomes available, when it falls inside the range shown
+  if (opts.marker) {
+    const time = Date.parse(`${opts.marker.date}T00:00:00Z`);
+    if (time >= t0 && time <= t1 && t1 > t0) {
+      const xm = x(time);
+      svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "avail-line" }, root);
+      svg("text", { x: xm + 4, y: pad.top + 10, class: "avail-label" }, root).textContent = opts.marker.label;
+    }
+  }
   // Total last, so it is drawn over the accounts
   const order = [...series].sort((a, b) => Number(!!a.total) - Number(!!b.total));
   order.forEach((s, n) => {
@@ -360,12 +377,12 @@ function drawChart(box, opts) {
       pen = true;
     }
     if (!d) return;
-    if (opts.area && n === 0) {
+    if (opts.area && s === series[0]) {
       const first = pts.find(Boolean), last = [...pts].reverse().find(Boolean);
       const base = y(Math.max(y0, Math.min(ref ? ref.value : 0, y1)));
       svg("path", { d: `${d}L${last[0]},${base}L${first[0]},${base}Z`, class: "area", style: `fill: ${s.color}` }, root);
     }
-    svg("path", { d, class: `line${s.total ? " total" : ""}`, style: `stroke: ${s.color}` }, root);
+    svg("path", { d, class: `line${s.total ? " total" : ""}${s.dashed ? " dashed" : ""}`, style: `stroke: ${s.color}` }, root);
     if (times.length <= 24) {
       for (const p of pts) if (p) svg("circle", { cx: p[0], cy: p[1], r: opts.small ? 3 : 4, class: "dot", style: `fill: ${s.color}` }, root);
     }
@@ -398,7 +415,7 @@ function drawChart(box, opts) {
 }
 
 const ttRow = (s, value, sub = "") =>
-  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch" style="background: ${s.color}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
+  `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch${s.dashed ? " dashed-swatch" : ""}" style="${s.dashed ? `border-top-color: ${s.color}` : `background: ${s.color}`}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
   (sub ? `<div class="tt-since">${sub}</div>` : "");
 const sinceText = (s, v, currency) => (s.start !== null && s.start !== undefined ? `${changeCell(v, s.start, currency, true)} ${esc(t("chart.since_start"))}` : "");
 
@@ -434,13 +451,23 @@ function renderChart() {
       `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${seriesName(s)}</span>`).join("");
   } else {
     // The total on its own chart, then one small chart per account with its own scale and start
+    // The available part of the total, when some balance was not available on some date
+    const locked = h.available.some((v, i) => v !== h.total[i]);
+    // With balances not available yet, the main line is what is available; the total with them is secondary
+    const summary = state.totals?.find((c) => c.currency === cur);
+    const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: summary?.first_available ?? firstValue(h.available) } : total;
+    const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
-      dates: h.dates, series: [total], height: big, area: true,
-      ref: total.start !== null ? { value: total.start, label: t("chart.start", { amount: money(total.start, cur) }) } : null,
+      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,
+      ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join("") +
         accounts.filter((a) => a.values[idx] !== null).map((a) => ttRow(a, money(a.values[idx], cur))).join(""),
     });
+    if (locked) {
+      $("#chart-legend").innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.available"))}</span>` +
+        `<span class="legend-item"><span class="swatch dashed-swatch" style="border-top-color: var(--muted)"></span>${esc(t("chart.with_locked"))}</span>`;
+    }
     grid.hidden = accounts.length === 0;
     for (const a of accounts) {
       const card = document.createElement("div");
@@ -455,7 +482,9 @@ function renderChart() {
   if ($("#chart-dlg").open) drawMaximized();
 
   // The amounts as a table: total and every account
-  const cols = [total, ...accounts];
+  const cols = h.available.some((v, i) => v !== h.total[i])
+    ? [{ name: t("chart.available"), values: h.available }, { name: t("chart.with_locked"), values: h.total }, ...accounts]
+    : [total, ...accounts];
   $("#chart-table").innerHTML = `<thead><tr><th>${esc(t("update.date"))}</th>${cols.map((s) => `<th class="num">${esc(s.name)}${s.detail ? `<span class="sub">${esc(s.detail)}</span>` : ""}</th>`).join("")}</tr></thead><tbody>` +
     h.dates.map((d, i) => `<tr><td>${esc(fmtDate(d))}</td>${cols.map((s) => `<td class="num">${esc(money(s.values[i], cur))}</td>`).join("")}</tr>`).reverse().join("") + "</tbody>";
 }
@@ -494,7 +523,7 @@ function accountHead(a, cur, extra = "") {
       <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
       <span class="mini-value">${esc(money(last, cur))}</span>${extra}
     </div>
-    <div class="mini-sub">${sinceText(a, last, cur)}</div>`;
+    <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>`;
 }
 
 function drawAccountChart(box, a, h, small) {
@@ -503,6 +532,7 @@ function drawAccountChart(box, a, h, small) {
   drawChart(box, {
     dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
+    marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,
     axis: (ticks) => axisLabels(ticks, cur),
     tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join(""),
   });
@@ -587,6 +617,8 @@ async function openAccount(id) {
   $("#account-dlg-title").textContent = account ? account.name : t("account.new");
   form.name.value = account?.name ?? "";
   form.institution.value = account?.institution ?? "";
+  setDate(form.available_from, account?.available_from ?? "");
+  form.available_from.placeholder = ""; // empty means available: no example date that looks like a value
   form.type.value = account?.type ?? "bank";
   form.currency.value = account?.currency ?? state.about?.default_currency ?? "EUR";
   form.notes.value = account?.notes ?? "";
@@ -648,11 +680,12 @@ $("#balances-table").addEventListener("click", async (e) => {
 $("#account-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
-  const data = {
-    name: form.name.value, institution: form.institution.value, type: form.type.value,
-    currency: form.currency.value.toUpperCase(), notes: form.notes.value, archived: form.archived.checked,
-  };
   try {
+    const data = {
+      name: form.name.value, institution: form.institution.value, type: form.type.value,
+      currency: form.currency.value.toUpperCase(), notes: form.notes.value, archived: form.archived.checked,
+      available_from: form.available_from.value.trim() ? getDate(form.available_from) : null,
+    };
     if (state.editing) await api(`/api/accounts/${state.editing.id}`, { method: "PATCH", json: data });
     else await api("/api/accounts", { json: data });
     $("#account-dlg").close();

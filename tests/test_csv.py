@@ -34,11 +34,11 @@ def test_import_creates_accounts_and_replaces_balances(client):
 
 
 def test_export_round_trip(client, tmp_path):
-    a = client.post("/api/accounts", json={"name": "Cash, wallet", "type": "cash"}).json()
+    a = client.post("/api/accounts", json={"name": "Cash, wallet", "type": "cash", "available_from": "2027-01-01"}).json()
     client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 12.5, "note": "x"})
     res = client.get("/api/export/csv")
     assert res.headers["content-disposition"].startswith("attachment")
-    assert res.text.splitlines() == ["account,type,currency,institution,date,amount,note", '"Cash, wallet",cash,EUR,,2026-01-01,12.50,x']
+    assert res.text.splitlines() == ["account,type,currency,institution,date,amount,note,available_from", '"Cash, wallet",cash,EUR,,2026-01-01,12.50,x,2027-01-01']
 
     from fastapi.testclient import TestClient
 
@@ -47,7 +47,8 @@ def test_export_round_trip(client, tmp_path):
     other = TestClient(create_app(Settings(data_dir=tmp_path / "other")))
     out = other.post("/api/import/csv", files={"file": ("e.csv", res.content, "text/csv")}).json()
     assert (out["accounts_created"], out["balances_created"], out["errors"]) == (1, 1, [])
-    assert other.get("/api/accounts").json()[0]["type"] == "cash"
+    copy = other.get("/api/accounts").json()[0]
+    assert copy["type"] == "cash" and copy["available_from"] == "2027-01-01"
 
 
 def test_import_rejects_files_without_required_columns(client):

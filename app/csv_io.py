@@ -1,8 +1,8 @@
 """CSV export and import of balances: one row per account and date.
 
-Columns: account, type, currency, institution, date, amount, note. The import also takes the
-Spanish names (cuenta, tipo, moneda, entidad, fecha, saldo, nota) and only needs account, date and
-amount. Amounts may use a decimal point or comma ("1234.56", "1.234,56", "1,234.56"); dates
+Columns: account, type, currency, institution, date, amount, note, available_from. The import also
+takes the Spanish names (cuenta, tipo, moneda, entidad, fecha, saldo, nota, disponible_desde) and
+only needs account, date and amount; available_from is only used when an account is created. Amounts may use a decimal point or comma ("1234.56", "1.234,56", "1,234.56"); dates
 YYYY-MM-DD or DD/MM/YYYY.
 
 An account is found by its name and institution (names are unique per institution). Without an
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .models import Account, AccountType, Balance
 
-COLUMNS = ["account", "type", "currency", "institution", "date", "amount", "note"]
+COLUMNS = ["account", "type", "currency", "institution", "date", "amount", "note", "available_from"]
 ALIASES = {
     "account": "account", "cuenta": "account", "name": "account", "nombre": "account",
     "type": "type", "tipo": "type",
@@ -29,6 +29,8 @@ ALIASES = {
     "date": "date", "fecha": "date",
     "amount": "amount", "balance": "amount", "saldo": "amount", "importe": "amount",
     "note": "note", "nota": "note", "notes": "note", "notas": "note",
+    "available_from": "available_from", "available": "available_from",
+    "disponible_desde": "available_from", "disponible": "available_from",
 }
 REQUIRED = {"account", "date", "amount"}
 
@@ -41,7 +43,8 @@ def export_csv(db: Session) -> str:
     for account in accounts:
         for b in account.balances:
             writer.writerow([account.name, account.type.value, account.currency, account.institution or "",
-                             b.date.isoformat(), f"{b.amount:.2f}", b.note or ""])
+                             b.date.isoformat(), f"{b.amount:.2f}", b.note or "",
+                             account.available_from.isoformat() if account.available_from else ""])
     return out.getvalue()
 
 
@@ -128,7 +131,8 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 if not re.fullmatch(r"[A-Z]{3}", currency):
                     raise ValueError(f"invalid currency '{currency}'")
                 account = Account(name=name, type=AccountType(kind), currency=currency,
-                                  institution=institution or None, archived=False)
+                                  institution=institution or None, archived=False,
+                                  available_from=parse_date(cell("available_from")) if cell("available_from") else None)
                 db.add(account)
                 db.flush()
                 accounts.append(account)

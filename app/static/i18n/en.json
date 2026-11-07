@@ -61,7 +61,7 @@
   "account.confirm_delete": "Delete the account \"{name}\" and all its balances?",
   "account.confirm_delete_balance": "Delete this balance?",
   "csv.title": "Import CSV",
-  "csv.hint": "One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... An account is found by its name and institution. Missing accounts are created; a balance already recorded on that date is replaced.",
+  "csv.hint": "One row per account and date. Columns: account, date, amount (required); type, currency, institution, note, available_from (optional). Spanish names also work: cuenta, fecha, saldo... An account is found by its name and institution. Missing accounts are created; a balance already recorded on that date is replaced.",
   "csv.import": "Import",
   "csv.result": "Accounts created: {accounts}. Balances added: {created}, replaced: {updated}.",
   "settings.title": "Settings",
@@ -94,5 +94,12 @@
   "chart.by_institution": "By institution",
   "chart.no_institution": "No institution",
   "chart.one_account": "1 account",
-  "chart.n_accounts": "{n} accounts"
+  "chart.n_accounts": "{n} accounts",
+  "account.available_from": "Available from",
+  "account.available_hint": "Leave it empty if the balance can be used now. For balances you cannot use until a date, e.g. unvested stock options.",
+  "accounts.available_on": "available {date}",
+  "chart.available": "Available",
+  "totals.available_now": "Available now",
+  "totals.with_locked": "Including what is not available yet ({locked})",
+  "chart.with_locked": "Including what is not available yet"
 }

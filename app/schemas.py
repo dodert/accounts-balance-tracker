@@ -21,10 +21,11 @@ class AccountIn(BaseModel):
     type: AccountType = AccountType.bank
     currency: Currency | None = None  # None -> DEFAULT_CURRENCY
     institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+    available_from: Date | None = None
     notes: str | None = None
     archived: bool = False
 
-    _blanks = field_validator("institution", "notes", "currency", mode="before")(_blank_is_none)
+    _blanks = field_validator("institution", "notes", "currency", "available_from", mode="before")(_blank_is_none)
 
 
 class AccountUpdate(BaseModel):
@@ -32,10 +33,11 @@ class AccountUpdate(BaseModel):
     type: AccountType | None = None
     currency: Currency | None = None
     institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+    available_from: Date | None = None
     notes: str | None = None
     archived: bool | None = None
 
-    _blanks = field_validator("institution", "notes", mode="before")(_blank_is_none)
+    _blanks = field_validator("institution", "notes", "available_from", mode="before")(_blank_is_none)
 
 
 class AccountOut(BaseModel):
@@ -46,6 +48,7 @@ class AccountOut(BaseModel):
     type: AccountType
     currency: str
     institution: str | None
+    available_from: Date | None = None
     notes: str | None
     archived: bool
     balance: float | None = None
@@ -109,6 +112,10 @@ class CurrencyTotal(BaseModel):
     first_total: float | None
     first_date: Date | None
     date: Date | None
+    # Part of the total that can be used today (accounts whose available_from has come)
+    available: float
+    # Available part on the first date with a recorded balance
+    first_available: float | None = None
 
 
 class Series(BaseModel):
@@ -123,6 +130,8 @@ class HistoryOut(BaseModel):
     currency: str
     dates: list[Date]
     total: list[float]
+    # Part of the total available on each date
+    available: list[float]
     accounts: list[Series]
 
 

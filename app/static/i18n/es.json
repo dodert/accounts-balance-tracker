@@ -61,7 +61,7 @@
   "account.confirm_delete": "¿Eliminar la cuenta \"{name}\" y todos sus saldos?",
   "account.confirm_delete_balance": "¿Eliminar este saldo?",
   "csv.title": "Importar CSV",
-  "csv.hint": "Una fila por cuenta y fecha. Columnas: cuenta, fecha, saldo (obligatorias); tipo, moneda, entidad, nota (opcionales). También en inglés: account, date, amount... La cuenta se busca por nombre y entidad. Las que no existan se crean; si ya hay un saldo en esa fecha se reemplaza.",
+  "csv.hint": "Una fila por cuenta y fecha. Columnas: cuenta, fecha, saldo (obligatorias); tipo, moneda, entidad, nota, disponible_desde (opcionales). También en inglés: account, date, amount... La cuenta se busca por nombre y entidad. Las que no existan se crean; si ya hay un saldo en esa fecha se reemplaza.",
   "csv.import": "Importar",
   "csv.result": "Cuentas creadas: {accounts}. Saldos añadidos: {created}, reemplazados: {updated}.",
   "settings.title": "Ajustes",
@@ -94,5 +94,12 @@
   "chart.by_institution": "Por entidad",
   "chart.no_institution": "Sin entidad",
   "chart.one_account": "1 cuenta",
-  "chart.n_accounts": "{n} cuentas"
+  "chart.n_accounts": "{n} cuentas",
+  "account.available_from": "Disponible a partir de",
+  "account.available_hint": "Déjalo vacío si el saldo ya se puede usar. Para saldos que no puedes usar hasta una fecha, como opciones sobre acciones sin consolidar.",
+  "accounts.available_on": "disponible el {date}",
+  "chart.available": "Disponible",
+  "totals.available_now": "Disponible ahora",
+  "totals.with_locked": "Con lo no disponible aún ({locked})",
+  "chart.with_locked": "Con lo no disponible aún"
 }
