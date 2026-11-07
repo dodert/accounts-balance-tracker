@@ -95,3 +95,13 @@ def test_demo_combined_total_in_default_currency(tmp_path):
     expected = Decimal(str(summary["EUR"]["total"])) + Decimal(str(summary["USD"]["total"])) * Decimal("0.9")
     assert Decimal(str(combined["total"])) == round(expected, 2)
     assert asked == [("USD", "EUR", None)]  # only the currencies are asked for, never amounts
+
+
+def test_demo_combined_total_offline(tmp_path):
+    def offline(base, quote, day):
+        raise OSError("no network")
+
+    with TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=offline)) as c:
+        c.post("/api/demo")
+        combined = c.get("/api/summary/combined").json()
+    assert combined["missing"] == [] and combined["rates"][0]["stale"] is True

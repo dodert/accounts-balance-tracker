@@ -9,14 +9,14 @@ import shutil
 import tempfile
 import threading
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .db import Base, make_engine, make_sessionmaker
-from .models import Account, AccountType, Balance
+from .models import Account, AccountType, Balance, FxRate
 
 COOKIE = "abt_demo"
 MONTHS = 24
@@ -91,6 +91,11 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
                 amount = 0
             account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
             value += sample.monthly + rng.uniform(-sample.noise, sample.noise)
+    # A sample USD/EUR rate from yesterday, so the combined total works offline too: today's real
+    # rate is still fetched (only the two currencies are sent) and replaces it when it can be
+    yesterday = today - timedelta(days=1)
+    db.add(FxRate(base="USD", quote="EUR", day=yesterday, rate=Decimal("0.92"), rate_date=yesterday,
+                  fetched_at=datetime.combine(yesterday, datetime.min.time())))
     db.commit()
 
 
