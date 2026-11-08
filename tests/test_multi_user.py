@@ -27,7 +27,7 @@ def fast_argon2(monkeypatch):
 
 def make_app(tmp_path):
     return create_app(Settings(data_dir=tmp_path, auth_username=ADMIN["username"], auth_password=ADMIN["password"],
-                               multi_user=True))
+                               multi_user=True, country_db=False))
 
 
 def admin_client(app, tmp_path):
@@ -319,3 +319,81 @@ def test_user_ids_are_never_reused(tmp_path):
     sign_up(app, invite(admin))
     with sqlite3.connect(tmp_path / "users.db") as db:
         assert "AUTOINCREMENT" in db.execute("SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
+
+
+# --- Admin panel ---
+
+def user_id(tmp_path, username):
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        return db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
+
+
+def test_admin_sees_users_sizes_and_last_login(setup, tmp_path):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    TestClient(app, client=("203.0.113.9", 1)).post(
+        "/login", data={"username": "ana", "password": "ana-password"},
+        headers={"cf-connecting-ip": "203.0.113.9", "cf-ipcountry": "es"})
+    page = admin.get("/admin").text
+    assert "ana@example.com" in page and "203.0.113.9 · ES" in page
+    assert re.search(r"admin.user_count\">Users</span>: <strong>1</strong>", page)
+    assert " KB</td>" in page
+    # The admin sees no data of the users
+    ana.post("/api/accounts", json={"name": "Hidden", "type": "bank"})
+    assert "Hidden" not in admin.get("/admin").text
+
+
+def test_block_and_unblock_a_user(setup, tmp_path):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    ana.post("/api/accounts", json={"name": "Kept", "type": "bank"})
+    uid = user_id(tmp_path, "ana")
+    admin.post(f"/admin/users/{uid}/block")
+    assert ana.get("/api/accounts").status_code == 401  # logged out at once
+    res = TestClient(app).post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+    assert res.headers["location"] == "/login?error=1"
+    assert "admin.status_blocked" in admin.get("/admin").text
+    admin.post(f"/admin/users/{uid}/unblock")
+    again = TestClient(app)
+    again.post("/login", data={"username": "ana", "password": "ana-password"})
+    assert [a["name"] for a in again.get("/api/accounts").json()] == ["Kept"]  # the data was kept
+
+
+def test_delete_a_user_and_block_the_email(setup, tmp_path):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    bob, _ = sign_up(app, invite(admin), "bob", "bob@example.com", "bob-password")
+    uid = user_id(tmp_path, "ana")
+    admin.post(f"/admin/users/{uid}/delete?block_email=1")
+    assert not (tmp_path / "users" / f"{uid}.db.enc").exists()
+    assert ana.get("/api/accounts").status_code == 401
+    assert bob.get("/api/accounts").status_code == 200  # nobody else is touched
+    page = admin.get("/admin").text
+    assert "ana@example.com" in page  # in the blocked emails
+    _, res = sign_up(app, invite(admin), "ana2", "ana@example.com")
+    assert "register.error.blocked" in res.text
+    # A plain delete leaves the email free
+    admin.post(f"/admin/users/{user_id(tmp_path, 'bob')}/delete")
+    client, _ = sign_up(app, invite(admin), "bob", "bob@example.com", "bob-password")
+    assert client.get("/api/accounts").json() == []  # a new, empty account
+
+
+def test_blocked_emails_list(setup):
+    app, admin = setup
+    admin.post("/admin/blocked-emails", data={"email": "Spam@Example.com"})
+    assert "spam@example.com" in admin.get("/admin").text
+    _, res = sign_up(app, invite(admin), "spam", "spam@example.com")
+    assert "register.error.blocked" in res.text
+    admin.post("/admin/blocked-emails/unblock?email=spam%40example.com")
+    client, _ = sign_up(app, invite(admin), "spam", "spam@example.com")
+    assert USER_COOKIE in client.cookies
+    assert "register.error.email" in admin.post("/admin/blocked-emails", data={"email": "nope"}).text
+
+
+def test_admin_actions_need_the_admin(setup, tmp_path):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    uid = user_id(tmp_path, "ana")
+    for path in (f"/admin/users/{uid}/delete", f"/admin/users/{uid}/block", "/admin/blocked-emails"):
+        assert ana.post(path, data={"email": "x@example.com"}, follow_redirects=False).headers["location"] == "/login"
+    assert (tmp_path / "users" / f"{uid}.db.enc").exists()
