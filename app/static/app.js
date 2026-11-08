@@ -25,6 +25,8 @@ const api = async (path, opts = {}) => {
 
 // ALL_CURRENCIES: the charts of every currency, one after the other, each in its own currency
 const ALL_CURRENCIES = "*";
+// CONVERTED: every account converted into the default currency (each date at that date's rate), on one chart
+const CONVERTED = "=";
 const state = { about: null, accounts: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
 
 // Chart grouping (by account or by institution), remembered in this browser
@@ -180,11 +182,13 @@ async function loadTotals() {
   state.currencies = currencies;
   const select = $("#chart-currency");
   const multi = currencies.length > 1;
-  select.innerHTML = (multi ? `<option value="${ALL_CURRENCIES}">${esc(t("chart.all_currencies"))}</option>` : "") +
+  const target = state.about?.default_currency ?? "EUR";
+  select.innerHTML = (multi ? `<option value="${ALL_CURRENCIES}">${esc(t("chart.all_currencies"))}</option>` +
+    `<option value="${CONVERTED}">${esc(t("chart.converted", { currency: target }))}</option>` : "") +
     currencies.map((c) => `<option>${esc(c)}</option>`).join("");
   select.hidden = !multi;
   // With more than one currency, all of them are shown until one is picked
-  if (!currencies.includes(state.currency) && !(multi && state.currency === ALL_CURRENCIES)) state.currency = multi ? ALL_CURRENCIES : currencies[0] ?? null;
+  if (!currencies.includes(state.currency) && !(multi && [ALL_CURRENCIES, CONVERTED].includes(state.currency))) state.currency = multi ? ALL_CURRENCIES : currencies[0] ?? null;
   select.value = state.currency ?? "";
   // All currencies in the default one, only with more than one currency. Not awaited: fetching the
   // rate can take a while (or fail), and the other boxes and the charts must not wait for it
@@ -297,6 +301,12 @@ function sinceDate() {
 
 async function loadHistory() {
   const since = sinceDate();
+  if (state.currency === CONVERTED) {
+    const h = await api(`/api/history/converted${since ? `?since=${since}` : ""}`);
+    state.histories = [{ ...h, isConverted: true }];
+    renderChart();
+    return;
+  }
   const currencies = state.currency === ALL_CURRENCIES ? state.currencies : state.currency ? [state.currency] : [];
   state.histories = await Promise.all(currencies.map((c) =>
     api(`/api/history?currency=${encodeURIComponent(c)}${since ? `&since=${since}` : ""}`)));
@@ -310,7 +320,7 @@ const firstValue = (values) => values.find((v) => v !== null) ?? null;
 
 function totalSeries(h) {
   const summary = state.totals?.find((c) => c.currency === h.currency);
-  return { name: t("chart.total"), values: h.total, color: "var(--total)", start: summary?.first_total ?? firstValue(h.total), total: true };
+  return { name: t("chart.total"), values: h.total, color: "var(--total)", start: h.first_total ?? summary?.first_total ?? firstValue(h.total), total: true };
 }
 
 function accountSeries(h) {
@@ -319,10 +329,12 @@ function accountSeries(h) {
     const account = state.accounts.find((x) => x.id === a.account_id);
     const slot = ids.indexOf(a.account_id) + 1;
     return {
-      account_id: a.account_id, name: a.name, detail: account?.institution ?? "", values: a.values, slot, archived: a.archived,
+      // In the converted chart, an account in another currency says which one
+      account_id: a.account_id, name: a.name, values: a.values, slot, archived: a.archived,
+      detail: [account?.institution, a.currency && a.currency !== h.currency ? a.currency : ""].filter(Boolean).join(" · "),
       available_from: account?.available_from ?? null,
       color: slotColor(slot),
-      start: account?.first_balance ?? firstValue(a.values),
+      start: a.start ?? account?.first_balance ?? firstValue(a.values),
     };
   }).sort((a, b) => a.slot - b.slot);
 }
@@ -332,7 +344,7 @@ function accountSeries(h) {
 function institutionSeries(h) {
   const groups = new Map();
   for (const a of accountSeries(h)) {
-    const key = a.detail;
+    const key = state.accounts.find((x) => x.id === a.account_id)?.institution ?? "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(a);
   }
@@ -345,7 +357,7 @@ function institutionSeries(h) {
     });
     const firsts = members.map((a) => state.accounts.find((x) => x.id === a.account_id)).filter((a) => a?.first_date);
     const day = firsts.map((a) => a.first_date).sort()[0];
-    const start = day ? firsts.filter((a) => a.first_date === day).reduce((sum, a) => sum + a.first_balance, 0) : firstValue(values);
+    const start = h.isConverted ? firstValue(values) : day ? firsts.filter((a) => a.first_date === day).reduce((sum, a) => sum + a.first_balance, 0) : firstValue(values);
     const slot = i + 1;
     return {
       account_id: `i:${key}`, name: key || t("chart.no_institution"), values, slot, start,
@@ -520,6 +532,15 @@ function renderChart() {
   head.textContent = multi ? hs[0].currency : "";
   const more = $("#chart-more");
   more.innerHTML = "";
+  // The converted chart says which currencies were converted, and which could not be
+  const note = $("#chart-note");
+  const conv = hs[0]?.isConverted ? hs[0] : null;
+  note.hidden = !conv;
+  note.textContent = conv ? [
+    conv.converted.length ? t("chart.converted_note", { currencies: conv.converted.join(", "), currency: conv.currency }) : "",
+    conv.missing.length ? t("chart.converted_missing", { currencies: conv.missing.join(", ") }) : "",
+    conv.stale ? t("chart.converted_stale") : "",
+  ].filter(Boolean).join(" ") : "";
   renderBlock(hs[0] ?? null, { box: $("#chart"), legend: $("#chart-legend"), grid: $("#multiples"), table: $("#chart-table"), tableWrap: $("#chart-table-wrap") });
   for (const h of hs.slice(1)) {
     const block = document.createElement("div");
@@ -567,7 +588,7 @@ function renderBlock(h, el) {
     const locked = h.available.some((v, i) => v !== h.total[i]);
     // With balances not available yet, the main line is what is available; the total with them is secondary
     const summary = state.totals?.find((c) => c.currency === cur);
-    const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: summary?.first_available ?? firstValue(h.available) } : total;
+    const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: h.first_available ?? summary?.first_available ?? firstValue(h.available) } : total;
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
       dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,

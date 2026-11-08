@@ -21,7 +21,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
   *Group by*: by account (each one shown with its institution) or by institution (one series per institution, the sum of its accounts; its start is its total on the first date any of them had a balance). The choice is saved in the browser.
 
-  *Currency*: with accounts in more than one currency, *All currencies* (the default) shows the charts of each currency one after the other, each in its own currency (no conversion); or pick one currency.
+  *Currency*: with accounts in more than one currency, *All currencies* (the default) shows the charts of each currency one after the other, each in its own currency (no conversion); or pick one currency. *All in EUR* (the default currency) converts every account into it, each date at that date's ECB rate, and draws them on one chart; the rates are stored, so each date is asked for once, and only currencies and dates are sent, never amounts.
 
   Each account keeps its colour in every chart (16 colours; past 16 they repeat) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
 - **CSV import / export**: one row per account and date. Columns `account`, `date`, `amount` (required) and `type`, `currency`, `institution`, `note`, `available_from` (optional; `available_from` and `type` are only used when an account is created); Spanish names also work (`cuenta`, `fecha`, `saldo`, `tipo`, `moneda`, `entidad`, `nota`, `disponible_desde`). Comma, semicolon or tab separated; UTF-8 or Windows-1252; amounts as `1234.56`, `1.234,56` or `1,234.56`; dates `YYYY-MM-DD` or `DD/MM/YYYY`. An account is found by its name and institution (without an institution in the row, by its name when only one account has it). Missing accounts are created, and a balance already recorded on that date is replaced.
@@ -86,7 +86,7 @@ pytest -q
 
 ## API
 
-Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
+Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
 
 ## License
 

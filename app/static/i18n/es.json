@@ -117,5 +117,9 @@
   "demo.try": "Probar con datos de ejemplo",
   "demo.reset": "Restablecer datos de ejemplo",
   "demo.banner": "Modo demo: datos de ejemplo inventados. Tus datos reales no se muestran ni se modifican.",
-  "chart.all_currencies": "Todas las monedas"
+  "chart.all_currencies": "Todas las monedas",
+  "chart.converted": "Todas en {currency}",
+  "chart.converted_note": "{currencies} convertido a {currency} con el tipo del BCE de cada fecha.",
+  "chart.converted_missing": "Sin tipo de cambio para {currencies}: no se incluye.",
+  "chart.converted_stale": "Algunas fechas usan el tipo guardado más cercano (no se pudo consultar el servicio)."
 }

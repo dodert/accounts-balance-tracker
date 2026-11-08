@@ -117,5 +117,9 @@
   "demo.try": "Try it with sample data",
   "demo.reset": "Reset sample data",
   "demo.banner": "Demo mode: made-up sample data. Your real data is not shown or changed.",
-  "chart.all_currencies": "All currencies"
+  "chart.all_currencies": "All currencies",
+  "chart.converted": "All in {currency}",
+  "chart.converted_note": "{currencies} converted into {currency} at the ECB rate of each date.",
+  "chart.converted_missing": "No exchange rate for {currencies}: left out.",
+  "chart.converted_stale": "Some dates use the nearest stored rate (the rate service could not be reached)."
 }
