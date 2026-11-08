@@ -48,6 +48,8 @@ Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (
 
 **Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. With PostgreSQL the app cannot copy the database: run `pg_dump` before updating. Exporting a CSV now and then (**Import / export → Export CSV**) is also a good copy of everything.
 
+**File permissions**: the SQLite database and its backups are only readable by the container's user (`0600`, `PUID`), whatever `UMASK` is; databases created by older versions are fixed on start.
+
 | Variable | Default | |
 |---|---|---|
 | `DEFAULT_CURRENCY` | `EUR` | Currency for new accounts and CSV rows without one; totals in several currencies are added up in it |
