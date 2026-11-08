@@ -49,6 +49,8 @@ class SystemBase(DeclarativeBase):
 
 class User(SystemBase):
     __tablename__ = "users"
+    # Ids are never reused: a deleted user's cookie or files can't ever match a new user
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(32), unique=True)

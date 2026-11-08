@@ -311,3 +311,11 @@ def test_an_older_user_database_is_backed_up_then_migrated(setup, tmp_path):
 def app_session(app, client):
     """The logged-in session behind the client's cookie (to reach the user's key in a test)."""
     return app.state.users.session(client.cookies[USER_COOKIE])
+
+
+def test_user_ids_are_never_reused(tmp_path):
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    sign_up(app, invite(admin))
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        assert "AUTOINCREMENT" in db.execute("SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
