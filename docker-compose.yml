@@ -20,6 +20,9 @@ services:
       - AUTH_TOTP=false
       # Optional: several users, each with their own encrypted database (AUTH_* above = the admin)
       # - MULTI_USER=true
+      # - ACCOUNT_DAYS=30   # days a new account lasts (0 = no expiry)
+      # - MAX_USERS=100
+      # - MAX_DB_MB=10
       # Optional: reverse proxies whose X-Forwarded-For is trusted (default: local and Docker networks)
       # - FORWARDED_ALLOW_IPS=172.18.0.5
     restart: unless-stopped

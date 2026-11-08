@@ -4,4 +4,7 @@ const form = document.forms[0];
 if (form.dataset.mode) {
   document.querySelectorAll(".setup-only").forEach((el) => { el.hidden = form.dataset.mode !== "setup"; });
 }
-initI18n();
+initI18n().then(() => {
+  // The demo's sample data in the language of the page
+  document.querySelectorAll('a[href="/demo"]').forEach((a) => { a.href = `/demo?lang=${encodeURIComponent(i18n.lang)}`; });
+});

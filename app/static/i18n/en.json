@@ -190,5 +190,12 @@
   "admin.blocked_emails": "Blocked emails",
   "admin.blocked_help": "These emails can't create an account, even with an invitation.",
   "admin.block_email": "Block email",
-  "admin.no_blocked": "No blocked emails."
+  "admin.no_blocked": "No blocked emails.",
+  "admin.status_expired": "Expired (data deleted)",
+  "admin.never": "Never",
+  "admin.extend": "Extend (days)",
+  "admin.no_expiry": "No expiry",
+  "register.error.full": "There is no room for more users right now. Ask the person who invited you.",
+  "account.expires_soon": "Your account expires in {n} days, and then its data is deleted. Export it now (Import / export → Export CSV) if you want to keep it, or ask the admin to extend it.",
+  "login.demo": "Try the demo"
 }

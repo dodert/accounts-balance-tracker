@@ -190,5 +190,12 @@
   "admin.blocked_emails": "Emails bloqueados",
   "admin.blocked_help": "Estos emails no pueden crear una cuenta, ni siquiera con invitación.",
   "admin.block_email": "Bloquear email",
-  "admin.no_blocked": "No hay emails bloqueados."
+  "admin.no_blocked": "No hay emails bloqueados.",
+  "admin.status_expired": "Caducada (datos borrados)",
+  "admin.never": "Nunca",
+  "admin.extend": "Ampliar (días)",
+  "admin.no_expiry": "Sin caducidad",
+  "register.error.full": "Ahora mismo no hay sitio para más usuarios. Pregunta a quien te invitó.",
+  "account.expires_soon": "Tu cuenta caduca en {n} días, y entonces se borran sus datos. Expórtalos ahora (Importar / exportar → Exportar CSV) si quieres conservarlos, o pide al administrador que la amplíe.",
+  "login.demo": "Probar la demo"
 }

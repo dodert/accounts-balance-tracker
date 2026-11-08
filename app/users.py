@@ -25,7 +25,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, select, text
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, event, func, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -97,6 +97,10 @@ class RevokedSession(SystemBase):
     expires: Mapped[int] = mapped_column(Integer)
 
 
+class DatabaseTooBig(Exception):
+    """A change would make the user's database bigger than the limit: it is not saved."""
+
+
 class SignupError(ValueError):
     """Why a sign-up was refused; `code` names the message shown (register.error.<code>)."""
 
@@ -117,6 +121,10 @@ def now() -> datetime:
     return datetime.now().replace(microsecond=0)
 
 
+def expired(user: "User") -> bool:
+    return user.expires_at is not None and user.expires_at <= now()
+
+
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -132,8 +140,9 @@ def key_aad(user_id: int) -> bytes:
 class UserDatabases:
     """The encrypted database files, opened one request at a time per user."""
 
-    def __init__(self, folder: Path):
+    def __init__(self, folder: Path, max_bytes: int = 0):
         self.folder = folder
+        self.max_bytes = max_bytes  # 0 = no limit
         folder.mkdir(parents=True, exist_ok=True)
         folder.chmod(0o700)
         self._locks: dict[int, threading.Lock] = {}
@@ -182,7 +191,8 @@ class UserDatabases:
 
     @contextmanager
     def open(self, user_id: int, key: bytes):
-        """A session on the user's database, decrypted in memory; saved encrypted afterwards if it changed."""
+        """A session on the user's database, decrypted in memory. Each commit writes it back encrypted, before the
+        answer is sent; a commit that would make it too big raises DatabaseTooBig and is not saved."""
         with self._lock(user_id):
             path = self.path(user_id)
             plain = crypto.unseal(key, path.read_bytes(), db_aad(user_id))
@@ -190,12 +200,23 @@ class UserDatabases:
             try:
                 connection.deserialize(plain)
                 engine = self._engine(connection)
-                migrated = self._migrate(user_id, engine, path)
-                changes = connection.total_changes
-                with sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)() as db:
-                    yield db
-                if connection.total_changes != changes or migrated:
+                if self._migrate(user_id, engine, path):
                     self._write(user_id, key, connection.serialize())
+                saved = connection.total_changes
+
+                def save(_session):
+                    nonlocal saved
+                    if connection.total_changes == saved:
+                        return
+                    data = connection.serialize()
+                    if self.max_bytes and len(data) > self.max_bytes:
+                        raise DatabaseTooBig
+                    self._write(user_id, key, data)
+                    saved = connection.total_changes
+
+                with sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)() as db:
+                    event.listen(db, "after_commit", save)
+                    yield db
                 engine.dispose()
             finally:
                 connection.close()
@@ -225,7 +246,8 @@ class UserDatabases:
 class Users:
     """Accounts, invitations and sessions of the multi-user mode."""
 
-    def __init__(self, data_dir: Path, server_secret: bytes, admin_username: str):
+    def __init__(self, data_dir: Path, server_secret: bytes, admin_username: str, account_days: int = 0,
+                 max_users: int = 0, max_db_bytes: int = 0):
         system_db = data_dir / "users.db"
         data_dir.mkdir(parents=True, exist_ok=True)
         _create_private(system_db)
@@ -233,7 +255,8 @@ class Users:
         SystemBase.metadata.create_all(engine)
         restrict_permissions(system_db)
         self.Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-        self.databases = UserDatabases(data_dir / "users")
+        self.databases = UserDatabases(data_dir / "users", max_db_bytes)
+        self.account_days, self.max_users = account_days, max_users
         self._session_key = crypto.derive(server_secret, b"abt-user-session")
         self.admin_username = admin_username.lower()
         # Same work for an unknown user as for a known one, so the time taken doesn't tell which names exist
@@ -300,12 +323,15 @@ class Users:
                 raise SignupError("blocked")
             if db.scalar(select(User).where((User.username == username) | (User.email == email))) is not None:
                 raise SignupError("taken")
+            if self.max_users and db.scalar(select(func.count()).select_from(User)) >= self.max_users:
+                raise SignupError("full")
             invitation = db.get(Invitation, invitation.id)
             if invitation.used_at is not None:
                 raise SignupError("invitation")
             user = User(username=username, email=email, created_at=now(), kdf_salt=salt, kdf_params=params,
                         key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"",
-                        last_login_at=now(), last_ip=ip, last_country=country)
+                        last_login_at=now(), last_ip=ip, last_country=country,
+                        expires_at=now() + timedelta(days=self.account_days) if self.account_days else None)
             db.add(user)
             db.flush()  # the id ties the wrapped keys and the database to this user
             user.key_by_password = crypto.seal(by_password_key, key, key_aad(user.id))
@@ -337,8 +363,10 @@ class Users:
                 key = self._unwrap(user, password)
             except crypto.WrongKey:
                 return None
-            if user.blocked:
+            if user.blocked or expired(user):
                 return None
+            if not self.databases.path(user.id).exists():
+                self.databases.create(user.id, key)  # deleted when the account expired, then extended by the admin
             user.last_login_at, user.last_ip, user.last_country = now(), ip, country
             db.commit()
             return self._logged_in(user, key)
@@ -402,7 +430,8 @@ class Users:
             return None
         with self.Session() as db:
             user = db.get(User, payload["u"])
-            if user is None or user.blocked or user.session_epoch != payload["g"] or db.get(RevokedSession, payload["n"]):
+            if (user is None or user.blocked or expired(user) or user.session_epoch != payload["g"]
+                    or db.get(RevokedSession, payload["n"])):
                 return None
             return LoggedIn(user.id, user.username, base64.b64decode(payload["k"]), payload["n"])
 
@@ -453,6 +482,40 @@ class Users:
             db.commit()
         with self.databases._lock(user_id):
             self.databases.delete(user_id)
+
+    def extend(self, user_id: int, days: int | None) -> None:
+        """`days` more (from today if it already expired), or no expiry with None. An account blocked because it
+        expired is unblocked; it starts again with an empty database (the old one was deleted)."""
+        with self.Session() as db:
+            user = db.get(User, user_id)
+            if user is None:
+                return
+            if days is None:
+                was_expired = expired(user)
+                user.expires_at = None
+            else:
+                was_expired = expired(user)
+                start = user.expires_at if user.expires_at and not was_expired else now()
+                user.expires_at = start + timedelta(days=days)
+            if was_expired:
+                user.blocked = False
+            db.commit()
+
+    def purge_expired(self) -> int:
+        """Delete the database of every expired account and block it. Returns how many."""
+        with self.Session() as db:
+            users = list(db.scalars(select(User).where(User.expires_at.is_not(None), User.expires_at <= now())))
+            purged = 0
+            for user in users:
+                if user.blocked and not self.databases.path(user.id).exists():
+                    continue
+                with self.databases._lock(user.id):
+                    self.databases.delete(user.id)
+                user.blocked = True
+                purged += 1
+                log.warning("Account %s expired: its database was deleted and the user blocked", user.username)
+            db.commit()
+        return purged
 
     def blocked_emails(self) -> list[BlockedEmail]:
         with self.Session() as db:

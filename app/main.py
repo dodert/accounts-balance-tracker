@@ -2,8 +2,9 @@ import asyncio
 import html
 from contextlib import asynccontextmanager
 import json
+import logging
 import math
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import quote, urlsplit
 from decimal import Decimal
 from pathlib import Path
@@ -21,7 +22,7 @@ from .auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS, Auth
 from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
-from .demo import COOKIE as DEMO_COOKIE, Demo
+from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
 from .geo import Countries
 from .fx import Fetcher, frankfurter, get_rate, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
@@ -33,12 +34,15 @@ from .schemas import (
 )
 from .ratelimit import TooManyTries, TryLimit
 from .totp import Totp
-from .users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, SignupError, Users
+from .users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, DatabaseTooBig, SignupError, Users, expired
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
 # Multi-user mode: reachable without logging in (with /invite/<token>)
 MULTI_USER_PUBLIC = {"/recover"}
+# Multi-user mode: these start the demo, also without an account
+DEMO_ENTRY = {"/demo", "/api/demo"}
+PURGE_EVERY = 3600  # seconds between checks for expired accounts
 WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
 WRONG_PASSWORDS_PER_IP = 10
@@ -81,7 +85,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if not auth.enabled:
             raise ValueError("MULTI_USER needs AUTH_USERNAME and AUTH_PASSWORD (the admin's login)")
         # The admin has no data of its own; each user has an encrypted database (see users.py)
-        users = Users(settings.data_dir, Auth._secret(settings.data_dir), settings.auth_username)
+        users = Users(settings.data_dir, Auth._secret(settings.data_dir), settings.auth_username,
+                      settings.account_days, settings.max_users, settings.max_db_mb * 1024 * 1024)
         totp = Totp(settings.data_dir)  # always asked to the admin
         countries = Countries(settings.data_dir, settings.country_db)  # for the admin's list of users
         engine = SessionLocal = None
@@ -92,17 +97,36 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         SessionLocal = make_sessionmaker(engine)
         upgrade_database(engine)
     demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
+    visitor_demos = VisitorDemos()  # multi-user mode: one per visitor, usable without an account
     fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
 
     version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
 
+    async def purge_expired_accounts():
+        """Multi-user: delete the database of expired accounts (and block them), now and every hour."""
+        while True:
+            try:
+                await run_in_threadpool(users.purge_expired)
+            except Exception:
+                logging.getLogger(__name__).exception("Could not delete the expired accounts")
+            await asyncio.sleep(PURGE_EVERY)
+
     @asynccontextmanager
     async def lifespan(_app):
+        purge = asyncio.create_task(purge_expired_accounts()) if multi else None
         yield
+        if purge is not None:
+            purge.cancel()
         demo.close()  # the demo database is temporary
+        visitor_demos.close()
 
     app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan)
     app.state.users = users
+
+    @app.exception_handler(DatabaseTooBig)
+    async def database_too_big(_request: Request, _error: DatabaseTooBig):
+        return JSONResponse({"detail": f"Your data would be over the limit of {settings.max_db_mb} MB: the change "
+                                       "was not saved"}, status_code=413)
 
     def foreign_request(request: Request) -> bool:
         """Sent by a page of another origin: another website, or another app on the same host (another
@@ -145,6 +169,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if session is not None:
             request.state.user = session
             return await call_next(request)
+        # The demo can be tried without an account: each visitor gets their own sample data
+        if not path.startswith("/account") and (path in DEMO_ENTRY or in_demo(request)):
+            return await call_next(request)
         if is_admin(request) and not path.startswith("/api/"):
             return RedirectResponse("/admin", status_code=303)
         return login_required(request)
@@ -162,13 +189,21 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return response
 
+    def visitor_demo(request: Request) -> Demo | None:
+        """The demo of this browser: its own one in multi-user mode, the shared one otherwise."""
+        visitor = request.cookies.get(DEMO_COOKIE)
+        if multi:
+            return visitor_demos.get(visitor)
+        return demo if visitor == "1" else None
+
     def in_demo(request: Request) -> bool:
-        return request.cookies.get(DEMO_COOKIE) == "1"
+        return visitor_demo(request) is not None
 
     def get_db(request: Request):
         # Demo mode uses its own database: the real one is not even opened
-        if in_demo(request):
-            with demo.sessionmaker(demo_lang(request))() as db:
+        current_demo = visitor_demo(request)
+        if current_demo is not None:
+            with current_demo.sessionmaker(demo_lang(request))() as db:
                 yield db
         elif multi:
             with users.database(request.state.user) as db:
@@ -211,6 +246,10 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                 schema = db.scalar(text("SELECT version_num FROM alembic_version"))
             database = engine.dialect.name
         session = getattr(request.state, "user", None)
+        expires = None
+        if session is not None:
+            user = users.get_user(session.user_id)
+            expires = user.expires_at if user else None
         return {
             "version": version,
             "commit": settings.git_sha or None,
@@ -220,6 +259,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             "schema": schema,
             "auth": auth.enabled,
             "user": session.username if session else None,
+            "expires": expires.isoformat() if expires else None,
+            "days_left": max(0, (expires - datetime.now()).days) if expires else None,
             "demo": in_demo(request),
             "default_currency": settings.default_currency,
         }
@@ -240,7 +281,14 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     def set_demo(response: Response, request: Request, on: bool, lang: str = "en") -> Response:
         if on:
-            for name, value in ((DEMO_COOKIE, "1"), (DEMO_COOKIE + "_lang", lang)):
+            if multi:
+                visitor = request.cookies.get(DEMO_COOKIE)
+                if visitor_demos.get(visitor) is None:
+                    visitor = visitor_demos.start(lang)
+            else:
+                demo.sessionmaker(lang)
+                visitor = "1"
+            for name, value in ((DEMO_COOKIE, visitor), (DEMO_COOKIE + "_lang", lang)):
                 response.set_cookie(name, value, httponly=True, samesite="lax", secure=is_https(request))
         else:
             response.delete_cookie(DEMO_COOKIE)
@@ -250,12 +298,13 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     @app.post("/api/demo", status_code=204)
     def start_demo(request: Request, lang: str = Query("en", pattern=r"^[a-z]{2}$")):
         """Demo mode on for this browser: made-up sample data, in a database apart from the real one."""
-        demo.sessionmaker(lang)
         return set_demo(Response(status_code=204), request, True, lang)
 
     @app.delete("/api/demo", status_code=204)
     def stop_demo(request: Request):
         """Back to the real data."""
+        if multi:
+            visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
         return set_demo(Response(status_code=204), request, False)
 
     @app.post("/api/demo/reset", status_code=204)
@@ -264,13 +313,12 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if not in_demo(request):
             raise HTTPException(409, "Not in demo mode")
         lang = lang or demo_lang(request)
-        demo.reset(lang)
+        visitor_demo(request).reset(lang)
         return set_demo(Response(status_code=204), request, True, lang)
 
     @app.get("/demo", include_in_schema=False)
     def demo_link(request: Request, lang: str = Query("en", pattern=r"^[a-z]{2}$")):
         """A link that opens the app in demo mode (e.g. to show it to someone)."""
-        demo.sessionmaker(lang)
         return set_demo(RedirectResponse("/", status_code=303), request, True, lang)
 
     # --- Accounts ---
@@ -554,8 +602,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     register_html, recovery_html, recover_html = page("register.html"), page("recovery.html"), page("recover.html")
     account_html, admin_html, message_html = page("account.html"), page("admin.html"), page("message.html")
     english = json.loads((STATIC_DIR / "i18n" / "en.json").read_text(encoding="utf-8"))
-    login_html = login_html.replace("{{RECOVER}}", '<a class="totp-back" href="/recover" data-i18n="login.forgot">'
-                                    f'{english["login.forgot"]}</a>' if multi else "")
+    login_html = login_html.replace("{{RECOVER}}", (
+        f'<a class="totp-back" href="/recover" data-i18n="login.forgot">{english["login.forgot"]}</a>'
+        f'<a class="totp-back" href="/demo" data-i18n="login.demo">{english["login.demo"]}</a>') if multi else "")
 
     def fill(template: str, **values: str) -> HTMLResponse:
         for name, value in values.items():
@@ -680,6 +729,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if multi:
             users.revoke(request.cookies.get(USER_COOKIE))
             response.delete_cookie(USER_COOKIE)
+            visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
+            set_demo(response, request, False)
         return response
 
     # --- Multi-user mode: sign-up by invitation, passwords, admin ---
@@ -797,16 +848,29 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         for user, db_size in users.list_users():
             total += db_size
             where = " · ".join(html.escape(x) for x in (user.last_ip, user.last_country) if x)
-            status = tr("admin.status_blocked", css="status-blocked") if user.blocked else tr("admin.status_active")
+            status = (tr("admin.status_expired", css="status-blocked") if expired(user) else
+                      tr("admin.status_blocked", css="status-blocked") if user.blocked else tr("admin.status_active"))
+            if user.expires_at is None:
+                expiry = tr("admin.never")
+            else:
+                days = (user.expires_at - datetime.now()).days
+                expiry = when(user.expires_at) + (f"<br><small>{max(0, days)} d</small>" if days >= 0 else "")
+            expiry += (f'<form method="post" action="/admin/users/{user.id}/extend" class="extend">'
+                       f'<input name="days" type="number" min="1" max="3650" value="{settings.account_days or 30}" '
+                       f'aria-label="days"><button type="submit" data-i18n="admin.extend">'
+                       f'{html.escape(english["admin.extend"])}</button></form>')
+            if user.expires_at is not None:
+                expiry += action(f"/admin/users/{user.id}/no-expiry", "admin.no_expiry")
             actions = (action(f"/admin/users/{user.id}/unblock", "admin.unblock") if user.blocked else
                        action(f"/admin/users/{user.id}/block", "admin.block"))
             actions += action(f"/admin/users/{user.id}/delete", "admin.delete", "danger", "admin.confirm_delete")
             actions += action(f"/admin/users/{user.id}/delete?block_email=1", "admin.delete_block", "danger",
                               "admin.confirm_delete_block")
             user_rows.append([html.escape(user.username), html.escape(user.email), when(user.created_at),
-                              f"{when(user.last_login_at)}<br><small>{where}</small>", size(db_size), status,
+                              f"{when(user.last_login_at)}<br><small>{where}</small>", size(db_size), expiry, status,
                               f'<div class="row-actions">{actions}</div>'])
-        summary = (f'<p class="totp-help">{tr("admin.user_count")}: <strong>{len(user_rows)}</strong> · '
+        limit = f" / {settings.max_users}" if settings.max_users else ""
+        summary = (f'<p class="totp-help">{tr("admin.user_count")}: <strong>{len(user_rows)}{limit}</strong> · '
                    f'{tr("admin.total_size")}: <strong>{size(total)}</strong></p>')
         invitation_rows = [[html.escape(i.email) if i.email else tr("admin.anyone", "em"), when(i.expires_at),
                             action(f"/admin/invitations/{i.id}/cancel", "admin.cancel")]
@@ -816,7 +880,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                         for b in users.blocked_emails()]
         return fill(admin_html, NEW_LINK=new_link, SUMMARY=summary,
                     USERS=table(["admin.user", "admin.email", "admin.created", "admin.last_login", "admin.size",
-                                 "admin.status", ""], user_rows, "admin.no_users"),
+                                 "admin.expires", "admin.status", ""], user_rows, "admin.no_users"),
                     INVITATIONS=table(["admin.email", "admin.expires", ""], invitation_rows, "admin.no_invitations"),
                     BLOCKED=table(["admin.email", "admin.created", ""], blocked_rows, "admin.no_blocked"))
 
@@ -846,6 +910,16 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     @app.post("/admin/users/{user_id}/unblock", include_in_schema=False, dependencies=[Depends(multi_only)])
     def unblock_user(user_id: int):
         users.set_blocked(user_id, False)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/users/{user_id}/extend", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def extend_user(user_id: int, days: int = Form(30, ge=1, le=3650)):
+        users.extend(user_id, days)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/users/{user_id}/no-expiry", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def no_expiry(user_id: int):
+        users.extend(user_id, None)
         return RedirectResponse("/admin", status_code=303)
 
     @app.post("/admin/users/{user_id}/delete", include_in_schema=False, dependencies=[Depends(multi_only)])

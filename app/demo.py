@@ -5,6 +5,9 @@ reached only by browsers that have the demo cookie: demo mode never reads, chang
 data. The file is deleted when the app stops, and the data is built again (relative to today) on reset.
 """
 import random
+import secrets
+import time
+from collections import OrderedDict
 import shutil
 import tempfile
 import threading
@@ -145,3 +148,56 @@ class Demo:
     def close(self) -> None:
         with self._lock:
             self._close()
+
+
+class VisitorDemos:
+    """Multi-user mode: one demo database per visitor (browser), so visitors don't see each other's changes.
+    A visitor's demo is forgotten after IDLE_SECONDS without use; past MAX_DEMOS, the least recently used goes."""
+
+    IDLE_SECONDS = 3600
+    MAX_DEMOS = 200
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._demos: OrderedDict[str, tuple[Demo, float]] = OrderedDict()
+
+    def _forget_idle(self) -> None:
+        limit = time.monotonic() - self.IDLE_SECONDS
+        while self._demos:
+            visitor, (demo, used) = next(iter(self._demos.items()))
+            if used >= limit and len(self._demos) <= self.MAX_DEMOS:
+                break
+            del self._demos[visitor]
+            demo.close()
+
+    def start(self, lang: str = "en") -> str:
+        """A new visitor id with its own sample data."""
+        visitor = secrets.token_urlsafe(16)
+        demo = Demo()
+        demo.sessionmaker(lang)
+        with self._lock:
+            self._demos[visitor] = (demo, time.monotonic())
+            self._forget_idle()
+        return visitor
+
+    def get(self, visitor: str | None) -> Demo | None:
+        with self._lock:
+            self._forget_idle()
+            entry = self._demos.get(visitor or "")
+            if entry is None:
+                return None
+            self._demos[visitor] = (entry[0], time.monotonic())
+            self._demos.move_to_end(visitor)
+            return entry[0]
+
+    def stop(self, visitor: str | None) -> None:
+        with self._lock:
+            entry = self._demos.pop(visitor or "", None)
+        if entry is not None:
+            entry[0].close()
+
+    def close(self) -> None:
+        with self._lock:
+            demos, self._demos = list(self._demos.values()), OrderedDict()
+        for demo, _ in demos:
+            demo.close()

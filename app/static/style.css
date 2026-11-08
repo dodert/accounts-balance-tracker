@@ -207,6 +207,8 @@ footer a { color: inherit; }
 .row-actions { display: flex; gap: .3rem; flex-wrap: wrap; }
 .row-actions button, .admin-box td button { margin: 0; padding: .2rem .5rem; font-size: .8rem; }
 .status-blocked { color: var(--danger); }
+.admin-box form.extend { display: flex; gap: .3rem; margin-top: .3rem; }
+.admin-box form.extend input { width: 4.5rem; padding: .2rem .3rem; }
 .attribution { font-size: .75rem; color: var(--muted); text-align: center; margin: 1rem 0 0; }
 .attribution a { color: inherit; }
 .admin-box h2 { font-size: 1.05rem; margin: 1.4rem 0 .5rem; }
