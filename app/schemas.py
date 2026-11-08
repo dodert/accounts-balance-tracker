@@ -146,6 +146,9 @@ class Series(BaseModel):
     archived: bool
     # One value per entry of HistoryOut.dates: the last balance known on that day, None before the first
     values: list[float | None]
+    # Only in the converted history: the account's own currency, and its first balance converted
+    currency: str | None = None
+    start: float | None = None
 
 
 class HistoryOut(BaseModel):
@@ -155,6 +158,12 @@ class HistoryOut(BaseModel):
     # Part of the total available on each date
     available: list[float]
     accounts: list[Series]
+    # Only in the converted history (every currency in the default one, at each date's rate):
+    first_total: float | None = None       # the total and the available part on the first date ever
+    first_available: float | None = None
+    converted: list[str] = []              # currencies converted
+    missing: list[str] = []                # currencies left out: no rate stored and the service down
+    stale: bool = False                    # some dates use the nearest stored rate, not their own
 
 
 class CsvImportOut(BaseModel):

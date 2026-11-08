@@ -19,7 +19,7 @@ from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo
-from .fx import Fetcher, frankfurter, get_rate
+from .fx import Fetcher, frankfurter, get_rate, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance
@@ -382,6 +382,52 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                  "values": [None if v is None else float(v) for v in per_account[a.id]]}
                 for a in accounts
             ],
+        )
+
+    @app.get("/api/history/converted", response_model=HistoryOut)
+    def get_history_converted(since: date | None = None, db: Session = Depends(get_db)):
+        """Every account in the default currency, each date at that date's rate. Only the currencies
+        and the dates are sent to the rate service; the amounts are converted here."""
+        target = settings.default_currency
+        accounts = accounts_with_balances(db)
+        all_dates, _, all_values = history(accounts)
+        dates, _, values = history(accounts, since)
+        rates, converted, missing, stale = {}, [], [], False
+        for currency in sorted({a.currency for a in accounts} - {target}):
+            try:
+                rates[currency], old = rates_for_days(db, fetch_rate, currency, target, set(all_dates) | set(dates))
+            except LookupError:
+                missing.append(currency)
+                continue
+            converted.append(currency)
+            stale = stale or old
+        used = [a for a in accounts if a.currency == target or a.currency in rates]
+
+        def convert(account, days, amounts):
+            if account.currency == target:
+                return amounts
+            return [None if v is None else v * rates[account.currency][d] for d, v in zip(days, amounts)]
+
+        def totals(per_account, days):
+            total = [sum((v[n] for v in per_account.values() if v[n] is not None), Decimal(0)) for n in range(len(days))]
+            return total, available_totals(used, days, per_account)
+
+        per_account = {a.id: convert(a, dates, values[a.id]) for a in used}
+        total, available = totals(per_account, dates)
+        all_per_account = {a.id: convert(a, all_dates, all_values[a.id]) for a in used}
+        all_total, all_available = totals(all_per_account, all_dates)
+        money = lambda v: None if v is None else float(round(v, 2))  # noqa: E731
+        return HistoryOut(
+            currency=target, dates=dates, total=[money(v) for v in total], available=[money(v) for v in available],
+            accounts=[
+                {"account_id": a.id, "name": a.name, "archived": a.archived, "currency": a.currency,
+                 "start": money(next((v for v in all_per_account[a.id] if v is not None), None)),
+                 "values": [money(v) for v in per_account[a.id]]}
+                for a in used
+            ],
+            first_total=money(all_total[0]) if len(all_dates) > 1 else None,
+            first_available=money(all_available[0]) if len(all_dates) > 1 else None,
+            converted=converted, missing=missing, stale=stale,
         )
 
     # --- CSV ---

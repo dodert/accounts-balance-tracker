@@ -114,9 +114,13 @@ dialog.chart-dlg { width: min(1000px, 95vw); }
 .tt-name { flex: 1; }
 .tt-value { font-variant-numeric: tabular-nums; font-weight: 600; }
 .tt-total { border-top: 1px solid var(--border); margin-top: .25rem; padding-top: .3rem; }
-#chart-table-wrap { margin-top: .75rem; font-size: .85rem; }
-#chart-table-wrap summary { cursor: pointer; color: var(--muted); }
-#chart-table-wrap .table-wrap { max-height: 320px; overflow-y: auto; margin-top: .5rem; }
+/* "All currencies": one block per currency, each with its heading */
+.chart-note { margin: .5rem 0 0; font-size: .85rem; }
+.chart-cur-head { font-size: 1rem; margin: .25rem 0 .5rem; }
+.chart-block { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+#chart-table-wrap, .chart-block details { margin-top: .75rem; font-size: .85rem; }
+#chart-table-wrap summary, .chart-block summary { cursor: pointer; color: var(--muted); }
+#chart-table-wrap .table-wrap, .chart-block .table-wrap { max-height: 320px; overflow-y: auto; margin-top: .5rem; }
 
 /* Tables */
 .table-wrap { overflow-x: auto; }

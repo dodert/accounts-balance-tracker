@@ -91,3 +91,55 @@ def test_only_the_currencies_and_date_are_sent(monkeypatch):
     assert fetch("USD", "EUR", date(2026, 1, 2)) == (Decimal("0.91"), date(2026, 1, 2))
     assert fetch("USD", "EUR", None)[0] == Decimal("0.91")
     assert seen == ["https://api.frankfurter.app/2026-01-02?from=USD&to=EUR", "https://api.frankfurter.app/latest?from=USD&to=EUR"]
+
+
+class RatesByDay(FakeRates):
+    """A different rate each day: 0.9 on 2026-01-01, 0.8 on any other day."""
+
+    def __call__(self, base, quote, day):
+        self.calls.append((base, quote, day))
+        if self.down:
+            raise OSError("service down")
+        return (Decimal("0.9") if day == date(2026, 1, 1) else Decimal("0.8")), day or date.today()
+
+
+def test_converted_history_uses_each_dates_rate_and_asks_once(tmp_path):
+    rates = RatesByDay()
+    client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=rates))
+    eur = client.post("/api/accounts", json={"name": "Euros", "currency": "EUR"}).json()
+    usd = client.post("/api/accounts", json={"name": "Dollars", "currency": "USD"}).json()
+    client.post(f"/api/accounts/{eur['id']}/balances", json={"date": "2026-01-01", "amount": 1000})
+    client.post(f"/api/accounts/{usd['id']}/balances", json={"date": "2026-01-01", "amount": 500})
+    client.post(f"/api/accounts/{eur['id']}/balances", json={"date": "2026-02-01", "amount": 1100})
+
+    h = client.get("/api/history/converted").json()
+    assert h["currency"] == "EUR" and h["dates"] == ["2026-01-01", "2026-02-01"]
+    assert h["converted"] == ["USD"] and h["missing"] == [] and h["stale"] is False
+    # 500 USD at 0.9 on the first date, the same 500 USD at 0.8 on the second
+    assert h["total"] == [1450, 1500] and h["available"] == [1450, 1500]
+    dollars = next(a for a in h["accounts"] if a["name"] == "Dollars")
+    assert dollars["currency"] == "USD" and dollars["values"] == [450, 400] and dollars["start"] == 450
+    assert h["first_total"] == 1450
+    # Only currencies and dates were sent, once per date; the second load uses what is stored
+    assert sorted(rates.calls) == [("USD", "EUR", date(2026, 1, 1)), ("USD", "EUR", date(2026, 2, 1))]
+    client.get("/api/history/converted", params={"since": "2026-02-01"})
+    assert len(rates.calls) == 2
+
+
+def test_converted_history_with_the_service_down(tmp_path):
+    rates = RatesByDay()
+    client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=rates))
+    usd = client.post("/api/accounts", json={"name": "Dollars", "currency": "USD"}).json()
+    client.post(f"/api/accounts/{usd['id']}/balances", json={"date": "2026-01-01", "amount": 500})
+    rates.down = True
+    h = client.get("/api/history/converted").json()
+    assert h["missing"] == ["USD"] and h["accounts"] == [] and h["total"] == [0]
+    assert rates.calls == [("USD", "EUR", date(2026, 1, 1))]  # not asked again for every date
+
+    rates.down = False
+    client.get("/api/history/converted")  # stores the rate of 2026-01-01
+    client.post(f"/api/accounts/{usd['id']}/balances", json={"date": "2026-03-01", "amount": 600})
+    rates.down = True
+    h = client.get("/api/history/converted").json()
+    # 2026-03-01 has no rate of its own: the nearest stored one (0.9) is used, and flagged
+    assert h["converted"] == ["USD"] and h["stale"] is True and h["total"] == [450, 540]
