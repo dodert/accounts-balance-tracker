@@ -377,7 +377,7 @@ def test_admin_sees_users_sizes_and_last_login(setup, tmp_path):
         headers={"cf-connecting-ip": "203.0.113.9", "cf-ipcountry": "es"})
     page = admin.get("/admin").text
     assert "ana@example.com" in page and "203.0.113.9 · ES" in page
-    assert re.search(r"admin.user_count\">Users</span>: <strong>1</strong>", page)
+    assert re.search(r"admin.user_count\">Users</span>: <strong>1 / 100</strong>", page)
     assert " KB</td>" in page
     # The admin sees no data of the users
     ana.post("/api/accounts", json={"name": "Hidden", "type": "bank"})
@@ -438,3 +438,116 @@ def test_admin_actions_need_the_admin(setup, tmp_path):
     for path in (f"/admin/users/{uid}/delete", f"/admin/users/{uid}/block", "/admin/blocked-emails"):
         assert ana.post(path, data={"email": "x@example.com"}, follow_redirects=False).headers["location"] == "/login"
     assert (tmp_path / "users" / f"{uid}.db.enc").exists()
+
+
+# --- Expiry, limits and the demo ---
+
+def set_expiry(tmp_path, username, moment):
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        db.execute("UPDATE users SET expires_at = ? WHERE username = ?",
+                   (moment.isoformat(" ") if moment else None, username))
+
+
+def test_new_accounts_last_30_days(setup):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    about = client.get("/api/about").json()
+    assert about["days_left"] in (29, 30) and about["expires"]
+
+
+def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp_path):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    ana.post("/api/accounts", json={"name": "Old", "type": "bank"})
+    uid = user_id(tmp_path, "ana")
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    assert ana.get("/api/accounts").status_code == 401  # logged out as soon as it expires
+    assert app.state.users.purge_expired() == 1
+    assert app.state.users.purge_expired() == 0  # once
+    assert not (tmp_path / "users" / f"{uid}.db.enc").exists()
+    assert "admin.status_expired" in admin.get("/admin").text
+    login = {"username": "ana", "password": "ana-password"}
+    assert TestClient(app).post("/login", data=login, follow_redirects=False).headers["location"] == "/login?error=1"
+
+    admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
+    again = TestClient(app)
+    assert again.post("/login", data=login, follow_redirects=False).headers["location"] == "/"
+    assert again.get("/api/accounts").json() == []  # a new, empty database
+    assert again.get("/api/about").json()["days_left"] in (9, 10)
+
+
+def test_extend_adds_days_and_no_expiry_removes_it(setup, tmp_path):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    uid = user_id(tmp_path, "ana")
+    admin.post(f"/admin/users/{uid}/extend", data={"days": "5"})
+    assert client.get("/api/about").json()["days_left"] in (34, 35)
+    admin.post(f"/admin/users/{uid}/no-expiry")
+    about = client.get("/api/about").json()
+    assert about["expires"] is None and about["days_left"] is None
+    assert "admin.never" in admin.get("/admin").text
+
+
+def test_no_expiry_when_account_days_is_0(tmp_path):
+    app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="admin-pass", multi_user=True,
+                              country_db=False, account_days=0))
+    client, _ = sign_up(app, invite(admin_client(app, tmp_path)))
+    assert client.get("/api/about").json()["expires"] is None
+
+
+def test_most_users(tmp_path):
+    app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="admin-pass", multi_user=True,
+                              country_db=False, max_users=1))
+    admin = admin_client(app, tmp_path)
+    sign_up(app, invite(admin))
+    _, res = sign_up(app, invite(admin), "bob", "bob@example.com")
+    assert "register.error.full" in res.text
+
+
+def test_most_database_size(setup):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    client.post("/api/accounts", json={"name": "Small", "type": "bank"})
+    app.state.users.databases.max_bytes = len(b"x") * 60 * 1024  # a little over an empty database
+    res = None
+    for i in range(200):
+        res = client.post("/api/accounts", json={"name": f"Big {i}", "type": "bank", "notes": "x" * 500})
+        if res.status_code == 413:
+            break
+    assert res.status_code == 413 and "limit" in res.json()["detail"]
+    names = [a["name"] for a in client.get("/api/accounts").json()]
+    assert f"Big {i}" not in names and "Small" in names  # that change was not saved, the earlier ones were
+
+
+def test_the_demo_without_an_account_is_one_per_visitor(setup):
+    app, admin = setup
+    one, two = TestClient(app), TestClient(app)
+    assert one.get("/api/accounts").status_code == 401
+    assert one.get("/demo?lang=es", follow_redirects=False).headers["location"] == "/"
+    two.post("/api/demo?lang=en")
+    first = one.get("/api/accounts").json()
+    assert first and len(first) == len(two.get("/api/accounts").json())
+    one.delete(f"/api/accounts/{first[0]['id']}")
+    assert len(one.get("/api/accounts").json()) == len(first) - 1
+    assert len(two.get("/api/accounts").json()) == len(first)  # the other visitor's demo is untouched
+    assert one.get("/api/about").json()["demo"] is True
+    # The demo gives no access to accounts or the admin
+    assert one.get("/account", follow_redirects=False).headers["location"] == "/login"
+    assert one.get("/admin", follow_redirects=False).headers["location"] == "/login"
+    # Leaving it ends it
+    one.delete("/api/demo")
+    assert one.get("/api/accounts").status_code == 401
+    # A made-up demo cookie gives nothing
+    fake = TestClient(app)
+    fake.cookies.set("abt_demo", "made-up")
+    assert fake.get("/api/accounts").status_code == 401
+
+
+def test_a_user_in_the_demo_does_not_touch_their_data(setup):
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    ana.post("/api/accounts", json={"name": "Real", "type": "bank"})
+    ana.post("/api/demo?lang=en")
+    assert "Real" not in [a["name"] for a in ana.get("/api/accounts").json()]
+    ana.delete("/api/demo")
+    assert [a["name"] for a in ana.get("/api/accounts").json()] == ["Real"]

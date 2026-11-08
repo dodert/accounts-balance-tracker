@@ -1063,6 +1063,9 @@ $("#demo-reset").addEventListener("click", async () => {
   $("#version").textContent = `v${state.about.version}`;
   $("#logout-btn").hidden = !state.about.auth;
   $("#account-link").hidden = !state.about.user;
+  const daysLeft = state.about.days_left;
+  $("#expiry-banner").hidden = !(daysLeft !== null && daysLeft !== undefined && daysLeft <= 3);
+  $("#expiry-banner").textContent = t("account.expires_soon", { n: daysLeft ?? 0 });
   $("#account-link").textContent = state.about.user ? `👤 ${state.about.user}` : "";
   renderDemo();
   await refresh();

@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     multi_user: bool = False
     # Multi-user: download DB-IP's free country database once a month, for the admin's list of users
     country_db: bool = True
+    # Multi-user: days an account lasts from sign-up (0 = no limit); then its database is deleted and the
+    # user blocked, unless the admin extends it. Most users, and most size of one user's database
+    account_days: int = 30
+    max_users: int = 100
+    max_db_mb: int = 10
 
     @field_validator("auth_totp", "multi_user", "country_db", mode="before")
     @classmethod

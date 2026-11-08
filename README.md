@@ -173,6 +173,9 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` | Addresses (or CIDR ranges) of the reverse proxies whose `X-Forwarded-For` / `X-Forwarded-Proto` headers are trusted. The default trusts the local network and Docker networks, so a proxy or `cloudflared` there works as is, and a client coming straight from the internet can't fake its IP. To be stricter, set only your proxy's IP |
 | `MULTI_USER` | `false` | `true` = several users, each with their own encrypted database, registered by invitation. `AUTH_USERNAME` / `AUTH_PASSWORD` are then the admin's login (the one-time code is always asked). See [Several users](#several-users) |
 | `COUNTRY_DB` | `true` | Multi-user only: download DB-IP's free country database once a month, to show the country of each user's last login |
+| `ACCOUNT_DAYS` | `30` | Multi-user only: days a new account lasts. When it expires, its data is deleted and the user is blocked; the admin can extend it or remove the expiry. `0` = no expiry |
+| `MAX_USERS` | `100` | Multi-user only: most users that can sign up (the admin is not counted) |
+| `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
 | `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
@@ -190,6 +193,9 @@ With `MULTI_USER=true`, one instance serves several people, each with their own 
 - `/data/users.db` holds the users, invitations and logged-out sessions (no balances, no account names).
 - **Admin panel** (`/admin`): the users with their email, sign-up date, last login (IP and country), size of their encrypted database and status; **block** / unblock (a blocked user is logged out at once and keeps their data), **delete** (the user and their data, for good) or **delete and block the email**; the open invitations; and the **blocked emails**, which can't sign up even with an invitation.
 - **Country of the last login**: behind Cloudflare, from its `CF-IPCountry` header (turn on *Add visitor location headers* in Cloudflare's Managed Transforms); otherwise from the free [DB-IP IP to Country Lite](https://db-ip.com/db/download/ip-to-country-lite) database (CC BY 4.0), downloaded once a month to `/data` (`COUNTRY_DB=false` turns the download off). The IP is never sent to another service.
+- **Expiry**: a new account lasts `ACCOUNT_DAYS` days (30 by default); the app warns the user in the last 3 days. Once expired, the user is blocked and their data deleted (checked every hour). In `/admin` the admin can **extend** an account by some days (an expired one is unblocked and starts again empty) or set it to **no expiry**.
+- **Limits**: at most `MAX_USERS` users (100) and `MAX_DB_MB` MB (10) per user's database.
+- **Demo**: anyone can try the demo from the login page (**Try the demo**) or `/demo`, without an account. Each visitor gets their own copy of the sample data, kept in memory and dropped after an hour without use (at most 200 at once).
 - What it does not protect: while a user is logged in, the server has their data in memory to calculate totals and charts, so whoever runs the server could change it to read it. It protects the files on disk and their backups.
 - **Backups**: copy the whole `/data` folder; the users' files stay encrypted in it. Before a schema change, each user's file is copied next to it (`<id>.db.enc.backup-<from>-to-<to>-<date>`) the first time they use the new version.
 
