@@ -1,5 +1,6 @@
 import asyncio
 import html
+import ipaddress
 from contextlib import asynccontextmanager
 import json
 import logging
@@ -14,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from . import __version__
@@ -38,6 +39,7 @@ from .users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, Databas
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
+MAX_DEMO_CSV_BYTES = 1024 * 1024  # anyone can try the demo: smaller files, so one import can't take long
 NEW_INVITE_COOKIE = "abt_new_invite"
 # Multi-user mode: reachable without logging in (with /invite/<token>)
 MULTI_USER_PUBLIC = {"/recover"}
@@ -52,6 +54,13 @@ WRONG_CODES_PER_IP = 10
 # IPs can't guess the 6 digits between them
 WRONG_CODES_TOTAL = 30
 LOGIN_WINDOW = 15 * 60
+# Wrong passwords for one user name from all IPs together, so many addresses (e.g. an IPv6 /64) can't
+# guess one password between them. Recovery keys are not limited this way: they are too long to guess
+WRONG_PASSWORDS_PER_USER = 30
+# Password checks (Argon2id: 64 MB and ~0.1 s each) running at once; the rest wait without taking a thread
+ARGON2_AT_ONCE = 4
+# CSV imports running at once (each takes a thread while it parses and stores the file)
+IMPORTS_AT_ONCE = 2
 # Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -128,6 +137,14 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     async def database_too_big(_request: Request, _error: DatabaseTooBig):
         return JSONResponse({"detail": f"Your data would be over the limit of {settings.max_db_mb} MB: the change "
                                        "was not saved"}, status_code=413)
+
+    @app.exception_handler(OperationalError)
+    async def database_full(_request: Request, error: OperationalError):
+        # A demo database past its size limit (see demo.py); anything else is a real error
+        if "database or disk is full" in str(error.orig):
+            return JSONResponse({"detail": "The demo data is over its size limit: the change was not saved"},
+                                status_code=413)
+        raise error
 
     def foreign_request(request: Request) -> bool:
         """Sent by a page of another origin: another website, or another app on the same host (another
@@ -582,13 +599,18 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         return Response(export_csv(db), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
+    import_slots = asyncio.Semaphore(IMPORTS_AT_ONCE)
+
     @app.post("/api/import/csv", response_model=CsvImportOut)
-    async def import_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
-        data = await file.read(MAX_CSV_BYTES + 1)
-        if len(data) > MAX_CSV_BYTES:
-            raise HTTPException(413, "File too large")
+    async def import_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+        limit = MAX_DEMO_CSV_BYTES if in_demo(request) else MAX_CSV_BYTES
+        data = await file.read(limit + 1)
+        if len(data) > limit:
+            raise HTTPException(413, f"File too large (most {limit // 1024 // 1024} MB)")
         try:
-            return import_csv(db, data, settings.default_currency)
+            # In a worker thread: a big file takes a while, and the app must keep answering meanwhile
+            async with import_slots:
+                return await run_in_threadpool(import_csv, db, data, settings.default_currency)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 
@@ -625,6 +647,13 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png", media_type="image/png")
 
     password_tries = TryLimit(WRONG_PASSWORDS_PER_IP, LOGIN_WINDOW)
+    user_password_tries = TryLimit(WRONG_PASSWORDS_PER_USER, LOGIN_WINDOW)
+    argon2_slots = asyncio.Semaphore(ARGON2_AT_ONCE)
+
+    async def with_password_check(function, *args):
+        """Run a function that derives a key from a password (Argon2id), a few at a time."""
+        async with argon2_slots:
+            return await run_in_threadpool(function, *args)
     code_tries = TryLimit(WRONG_CODES_PER_IP, LOGIN_WINDOW, allowed_total=WRONG_CODES_TOTAL)
 
     def is_https(request: Request) -> bool:
@@ -649,6 +678,19 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         # The real client behind a trusted reverse proxy (uvicorn --proxy-headers, FORWARDED_ALLOW_IPS)
         return request.client.host if request.client else "unknown"
 
+    def limit_key(ip: str) -> str:
+        """What the wrong tries are counted by: the IP, or its /64 for IPv6 (one connection usually has
+        the whole /64, so counting each address would let it try 2^64 times)."""
+        try:
+            address = ipaddress.ip_address(ip)
+        except ValueError:
+            return ip
+        if address.version == 6:
+            if address.ipv4_mapped:
+                return str(address.ipv4_mapped)
+            return str(ipaddress.ip_network(f"{address}/64", strict=False))
+        return ip
+
     def too_many(error: TooManyTries) -> Response:
         minutes = math.ceil(error.retry_after / 60)
         return Response(f"Too many wrong tries, try again in {minutes} minute{'s' if minutes > 1 else ''}",
@@ -665,22 +707,25 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if not auth.enabled:
             return RedirectResponse("/", status_code=303)
         ip = client_ip(request)
+        name = username.strip().lower()
         session = None
         try:
-            with password_tries.attempt(ip) as attempt:
+            with password_tries.attempt(limit_key(ip)) as attempt, user_password_tries.attempt(name) as user_attempt:
                 if multi and username != auth.username:
-                    session = await run_in_threadpool(users.login, username, password, ip,
-                                                      countries.country(ip, request.headers))
+                    session = await with_password_check(users.login, username, password, ip,
+                                                        countries.country(ip, request.headers))
                     ok = session is not None
                 else:
                     ok = auth.check_credentials(username, password)
                 if not ok:
                     attempt.wrong()
+                    user_attempt.wrong()
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return RedirectResponse("/login?error=1", status_code=303)
         except TooManyTries as error:
             return too_many(error)
-        password_tries.reset(ip)
+        password_tries.reset(limit_key(ip))
+        user_password_tries.reset(name)
         if session is not None:
             return user_logged_in(request, session)
         if not totp:
@@ -707,7 +752,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     async def totp_login(request: Request, code: str = Form("")):
         if not totp or not auth.valid_pending(request.cookies.get(PENDING_COOKIE)):
             return RedirectResponse("/login", status_code=303)
-        ip = client_ip(request)
+        ip = limit_key(client_ip(request))
         try:
             with code_tries.attempt(ip) as attempt:
                 if not totp.verify(code):
@@ -770,8 +815,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             return signup_page(request, token, message("register.error.mismatch"), username, email)
         try:
             ip = client_ip(request)
-            session, recovery = await run_in_threadpool(users.sign_up, token, username, email, password, ip,
-                                                        countries.country(ip, request.headers))
+            session, recovery = await with_password_check(users.sign_up, token, username, email, password, ip,
+                                                          countries.country(ip, request.headers))
         except SignupError as error:
             if error.code == "invitation":
                 return signup_page(request, token)
@@ -789,11 +834,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                       password: str = Form(""), password2: str = Form("")):
         if password != password2:
             return fill(recover_html, ERROR=message("register.error.mismatch"))
-        ip = client_ip(request)
+        ip = limit_key(client_ip(request))
         try:
             with password_tries.attempt(ip) as attempt:
                 try:
-                    session = await run_in_threadpool(users.recover, username, recovery_key, password)
+                    session = await with_password_check(users.recover, username, recovery_key, password)
                 except SignupError:
                     return fill(recover_html, ERROR=message("register.error.password"))
                 if session is None:
@@ -816,12 +861,12 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                               password2: str = Form("")):
         if password != password2:
             return account_page(request, message("register.error.mismatch"))
-        ip = client_ip(request)
+        ip = limit_key(client_ip(request))
         try:
             with password_tries.attempt(ip) as attempt:
                 try:
-                    session = await run_in_threadpool(users.change_password, request.state.user.user_id, current,
-                                                      password)
+                    session = await with_password_check(users.change_password, request.state.user.user_id, current,
+                                                        password)
                 except SignupError:
                     return account_page(request, message("register.error.password"))
                 if session is None:

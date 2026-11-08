@@ -551,3 +551,134 @@ def test_a_user_in_the_demo_does_not_touch_their_data(setup):
     assert "Real" not in [a["name"] for a in ana.get("/api/accounts").json()]
     ana.delete("/api/demo")
     assert [a["name"] for a in ana.get("/api/accounts").json()] == ["Real"]
+
+
+# --- Abuse: invitation race, guessing from many addresses, demo size, imports ---
+
+def test_one_invitation_makes_one_account_even_when_sent_at_the_same_time(setup):
+    import threading
+    app, admin = setup
+    token = invite(admin)
+    users = app.state.users
+    results = []
+
+    def go(i):
+        try:
+            users.sign_up(token, f"user{i}", f"user{i}@example.com", "long-password")
+            results.append("ok")
+        except Exception as error:  # noqa: BLE001
+            results.append(str(error))
+    threads = [threading.Thread(target=go, args=(i,)) for i in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results.count("ok") == 1 and results.count("invitation") == 5
+    assert len(users.list_users()) == 1
+
+
+def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
+    import app.main as main
+    app, admin = setup
+    sign_up(app, invite(admin))
+    for i in range(main.WRONG_PASSWORDS_PER_USER):
+        # A different IPv4 address each time: the per-IP limit never kicks in
+        guesser = TestClient(app, client=(f"203.0.{i // 250}.{i % 250 + 1}", 50000))
+        bad = guesser.post("/login", data={"username": "ana", "password": f"guess-{i:04d}"}, follow_redirects=False)
+        assert bad.headers["location"] == "/login?error=1"
+    blocked = TestClient(app, client=("198.51.100.9", 50000)).post(
+        "/login", data={"username": "Ana", "password": "ana-password"}, follow_redirects=False)
+    assert blocked.status_code == 429 and USER_COOKIE not in blocked.cookies
+    # Other users are not affected
+    sign_up(app, invite(admin), "bea", "bea@example.com", "bea-password")
+    ok = TestClient(app, client=("198.51.100.9", 50000)).post(
+        "/login", data={"username": "bea", "password": "bea-password"}, follow_redirects=False)
+    assert ok.headers["location"] == "/"
+
+
+def test_ipv6_addresses_of_one_64_count_as_one(setup):
+    import app.main as main
+    app, admin = setup
+    sign_up(app, invite(admin))
+    for i in range(main.WRONG_PASSWORDS_PER_IP):
+        guesser = TestClient(app, client=(f"2001:db8:1:2::{i + 1:x}", 50000))
+        guesser.post("/login", data={"username": f"nobody{i}", "password": "x" * 12})
+    same_64 = TestClient(app, client=("2001:db8:1:2:ffff::1", 50000))
+    assert same_64.post("/login", data={"username": "ana", "password": "ana-password"},
+                        follow_redirects=False).status_code == 429
+    other_64 = TestClient(app, client=("2001:db8:1:3::1", 50000))
+    assert other_64.post("/login", data={"username": "ana", "password": "ana-password"},
+                         follow_redirects=False).headers["location"] == "/"
+
+
+def test_the_demo_has_a_size_limit(setup, monkeypatch):
+    import app.demo as demo
+    monkeypatch.setattr(demo, "MAX_BYTES", 300 * 1024)
+    app, _ = setup
+    visitor = TestClient(app)
+    visitor.post("/api/demo")
+    # Too big a file is refused before reading it all
+    big = b"account,date,amount\n" + b"x,2020-01-01,1\n" * 80_000
+    assert visitor.post("/api/import/csv", files={"file": ("b.csv", big, "text/csv")}).status_code == 413
+    # Past the database's limit the change is refused with 413 and the demo still works
+    rows = "\n".join(f"Account {i},2020-01-01,{i}" for i in range(5_000))
+    res = visitor.post("/api/import/csv", files={"file": ("r.csv", f"account,date,amount\n{rows}".encode(), "text/csv")})
+    assert res.status_code == 413 and "size limit" in res.json()["detail"]
+    assert visitor.get("/api/accounts").status_code == 200
+
+
+def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
+    import asyncio
+    import threading
+    import app.main as main
+    import httpx2 as httpx
+    app, _ = setup
+    running, most, lock = 0, 0, threading.Lock()
+
+    def slow_login(*_args):
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        time.sleep(0.1)
+        with lock:
+            running -= 1
+    monkeypatch.setattr(app.state.users, "login", slow_login)
+
+    async def run():
+        async def one(i):
+            transport = httpx.ASGITransport(app=app, client=(f"203.0.113.{i + 1}", 50000))
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                await client.post("/login", data={"username": f"user{i}", "password": "x" * 12})
+        await asyncio.gather(*(one(i) for i in range(12)))
+    asyncio.run(run())
+    assert most == main.ARGON2_AT_ONCE
+
+
+def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
+    import asyncio
+    import app.main as main
+    import httpx2 as httpx
+    app, _ = setup
+
+    def slow_import(*_args):
+        time.sleep(0.5)
+        return {"accounts_created": 0, "balances_created": 0, "balances_updated": 0, "errors": []}
+    monkeypatch.setattr(main, "import_csv", slow_import)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+            await client.post("/api/demo")
+            stalls = []
+
+            async def ticker():
+                while True:
+                    start = time.monotonic()
+                    await asyncio.sleep(0.01)
+                    stalls.append(time.monotonic() - start)
+            tick = asyncio.create_task(ticker())
+            res = await client.post("/api/import/csv", files={"file": ("a.csv", b"account,date,amount\n", "text/csv")})
+            tick.cancel()
+            return res.status_code, max(stalls)
+    status, longest = asyncio.run(run())
+    assert status == 200 and longest < 0.3
