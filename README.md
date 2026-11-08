@@ -2,9 +2,27 @@
 
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dodert)
 
-Self-hosted app to keep track of the balance of your accounts over time: current accounts, savings, investments, pension plans, crypto, cash and loans. Record each account's balance whenever you want (for example once a month) and see the total and how it evolves.
+Self-hosted app to keep track of the balance of your accounts over time: current accounts, savings, investments, pension plans, crypto, cash and loans. Record each account's balance whenever you want (for example once a month) and see the total and how it evolves. Your data stays on your server.
 
 > **Note:** this project has been almost entirely vibe-coded with an AI coding assistant ([Claude Code](https://claude.com/claude-code)).
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Install on Unraid](#install-on-unraid)
+  - [From Apps](#from-apps-community-applications) · [By hand](#by-hand-with-the-template)
+- [Install with Docker on your computer](#install-with-docker-on-your-computer)
+  - [Windows](#windows) · [macOS](#macos) · [Linux](#linux)
+  - [Update, stop and uninstall](#update-stop-and-uninstall)
+- [First steps](#first-steps)
+- [Settings](#settings)
+- [Backups and updates](#backups-and-updates)
+- [Features](#features)
+- [Development](#development)
+- [API](#api)
+- [License](#license)
+
+## Screenshots
 
 ![Overview: totals, the total chart with a small chart per account, and the accounts](docs/screenshot.png)
 
@@ -15,6 +33,153 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 </p>
 
 <sub>Screenshots from the demo mode: made-up sample data.</sub>
+
+## Install on Unraid
+
+### From Apps (Community Applications)
+
+1. Go to the **Apps** tab and search for **Accounts Balance Tracker**.
+2. Click it and then **Install**.
+3. Fill in **Login user** and **Login password** (recommended: the app holds financial data) and click **Apply**.
+4. Open `http://<your-unraid-ip>:8000`, or click the app's icon in the Docker tab → **WebUI**.
+
+Your data is kept in `/mnt/user/appdata/accounts-balance-tracker`. To update, use **Check for updates** in the Docker tab.
+
+### By hand, with the template
+
+If it does not show up in Apps (Community Applications refreshes its list every few hours, so a new version or app can take a while):
+
+1. Open the Unraid **Terminal** (the `>_` icon at the top right) and paste this line. It downloads the template:
+   ```bash
+   mkdir -p /boot/config/plugins/dockerMan/templates-user && curl -fsSL https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml -o /boot/config/plugins/dockerMan/templates-user/my-accounts-balance-tracker.xml
+   ```
+2. Go to **Docker → Add Container** and pick **accounts-balance-tracker** in the *Template* list.
+3. Continue from step 3 above. To get a newer version of the template itself, run the line of step 1 again.
+
+<details>
+<summary>Prefer to see it under <b>Apps → Private</b>?</summary>
+
+Run this in the terminal instead of step 1, then install it from **Apps → Private**:
+
+```bash
+mkdir -p /boot/config/plugins/community.applications/private/dodert && curl -fsSL https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml -o /boot/config/plugins/community.applications/private/dodert/accounts-balance-tracker.xml
+```
+</details>
+
+## Install with Docker on your computer
+
+You only need Docker. The steps are the same on every system: make a folder, download [`docker-compose.yml`](docker-compose.yml) into it, and start it. Your data is saved in a `data` folder next to that file.
+
+### Windows
+
+1. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/) and open it (it may ask to install or update WSL; accept and restart if it asks). Wait until it says *Engine running*.
+2. Open **PowerShell** (Start menu → type *PowerShell*) and run, one line at a time:
+   ```powershell
+   mkdir $HOME\accounts-balance-tracker
+   cd $HOME\accounts-balance-tracker
+   curl.exe -fsSL -o docker-compose.yml https://raw.githubusercontent.com/dodert/accounts-balance-tracker/main/docker-compose.yml
+   notepad docker-compose.yml
+   ```
+3. In Notepad, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, change `TZ` to your time zone if you want, save and close.
+4. Back in PowerShell:
+   ```powershell
+   docker compose up -d
+   ```
+5. Open <http://localhost:8000> in your browser.
+
+The data is in `C:\Users\<you>\accounts-balance-tracker\data`.
+
+### macOS
+
+1. Install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/) (pick *Apple silicon* or *Intel*: you can see which one in the Apple menu → *About This Mac*) and open it. Wait until it says *Engine running*.
+2. Open **Terminal** (Spotlight → type *Terminal*) and run:
+   ```bash
+   mkdir -p ~/accounts-balance-tracker && cd ~/accounts-balance-tracker
+   curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/dodert/accounts-balance-tracker/main/docker-compose.yml
+   open -e docker-compose.yml
+   ```
+3. In TextEdit, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, change `TZ` if you want, save and close.
+4. Back in Terminal:
+   ```bash
+   docker compose up -d
+   ```
+5. Open <http://localhost:8000> in your browser.
+
+The data is in `~/accounts-balance-tracker/data`.
+
+### Linux
+
+1. Install Docker Engine with the Compose plugin: follow the [guide for your distribution](https://docs.docker.com/engine/install/) (Ubuntu, Debian, Fedora…). Check it with `docker compose version`.
+2. In a terminal:
+   ```bash
+   mkdir -p ~/accounts-balance-tracker && cd ~/accounts-balance-tracker
+   curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/dodert/accounts-balance-tracker/main/docker-compose.yml
+   sed -i "s/PUID=1000/PUID=$(id -u)/; s/PGID=1000/PGID=$(id -g)/" docker-compose.yml
+   nano docker-compose.yml
+   ```
+   The `sed` line makes the data folder belong to your user. In the editor, set `AUTH_USERNAME` and `AUTH_PASSWORD` (and `TZ` if you want), then save with `Ctrl+O`, `Enter`, and leave with `Ctrl+X`.
+3. Start it:
+   ```bash
+   docker compose up -d
+   ```
+   If you get *permission denied*, put `sudo` in front, or add yourself to the `docker` group ([post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/)).
+4. Open <http://localhost:8000>, or `http://<that-machine's-ip>:8000` from another device.
+
+The data is in `~/accounts-balance-tracker/data`.
+
+<details>
+<summary>Without Compose: a single <code>docker run</code></summary>
+
+```bash
+docker run -d --name accounts-balance-tracker --restart unless-stopped -p 8000:8000 \
+  -v "$PWD/data:/data" -e PUID=$(id -u) -e PGID=$(id -g) \
+  -e AUTH_USERNAME=me -e AUTH_PASSWORD=change-me \
+  ghcr.io/dodert/accounts-balance-tracker:latest
+```
+</details>
+
+### Update, stop and uninstall
+
+Run these in the folder with `docker-compose.yml` (PowerShell on Windows, Terminal on macOS and Linux):
+
+| | |
+|---|---|
+| Update to the latest version | `docker compose pull` and then `docker compose up -d` |
+| Stop it | `docker compose down` |
+| Start it again | `docker compose up -d` |
+| See its logs | `docker compose logs -f` (`Ctrl+C` to leave) |
+| Uninstall | `docker compose down`, then delete the folder (**this deletes your data**: export a CSV first) |
+
+To use another port, change the left number in `"8000:8000"` (e.g. `"8080:8000"`) and open that port instead.
+
+## First steps
+
+1. Click **Try it with sample data** to look around with made-up data, or **+ Account** to create your first account (name, institution, type and currency).
+2. Click **Update balances** whenever you want (e.g. once a month) and write the balance of each account on that date.
+3. The totals and charts fill in as you add balances. Already have them in a spreadsheet? Use **Import / export → Import CSV** (see [Features](#features)).
+
+## Settings
+
+Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
+
+| Variable | Default | |
+|---|---|---|
+| `DEFAULT_CURRENCY` | `EUR` | Currency for new accounts and CSV rows without one; totals in several currencies are added up in it |
+| `FX_URL` | `https://api.frankfurter.app` | Exchange-rate service (Frankfurter API or a self-hosted copy of it) |
+| `DATABASE_URL` | empty | Empty = SQLite in `/data`. PostgreSQL: `postgresql+psycopg://user:pass@host:5432/balances` |
+| `AUTH_USERNAME`, `AUTH_PASSWORD` | empty | Set both to ask for a login; changing the password logs everyone out |
+| `AUTH_TOTP` | `false` | `true` also asks for a one-time code; the first login shows the QR code. Delete `.totp_secret` in `/data` to show a new one |
+| `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
+
+The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS. See also [SECURITY.md](SECURITY.md).
+
+## Backups and updates
+
+The database schema is migrated automatically on start, keeping all the data.
+
+**Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. With PostgreSQL the app cannot copy the database: run `pg_dump` before updating. Exporting a CSV now and then (**Import / export → Export CSV**) is also a good copy of everything.
+
+**File permissions**: the SQLite database and its backups are only readable by the container's user (`0600`, `PUID`), whatever `UMASK` is; databases created by older versions are fixed on start.
 
 ## Features
 
@@ -38,62 +203,23 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.
 - English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Both are saved in the browser. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
 
-## Docker
-
-Image: `ghcr.io/dodert/accounts-balance-tracker` (linux/amd64 and linux/arm64), built by GitHub Actions on every push to `main` and on `v*` git tags. Versions follow [SemVer](https://semver.org): `main` builds are the release version in `app/__init__.py` (`__version__`), so bump it in every PR (`Z` for fixes, `Y` for features). A push to `main` is tagged `latest`, `X.Y.Z`, `X.Y` and `sha-<commit>`.
-
-To try a branch before merging it: **Actions → CI → Run workflow**, pick the branch. The image is pushed as `ghcr.io/dodert/accounts-balance-tracker:<branch>`, `pre-release` and `X.Y.Z-<branch>.<run>`.
-
-**Actions → Clean up old images** and **Actions → Delete untagged images** delete old image versions (dry run by default). They need the repository to have the Admin role in the package's *Manage Actions access*.
-
-```bash
-docker run -d --name accounts-balance-tracker -p 8000:8000 \
-  -v /path/to/data:/data -e PUID=1000 -e PGID=1000 \
-  ghcr.io/dodert/accounts-balance-tracker:latest
-```
-
-Or use [`docker-compose.yml`](docker-compose.yml). Everything lives in `/data` (SQLite database and login secrets). The container runs as `PUID`:`PGID` (default `99:100`, Unraid's `nobody:users`). The database schema is migrated automatically on start, keeping all the data.
-
-**Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. With PostgreSQL the app cannot copy the database: run `pg_dump` before updating. Exporting a CSV now and then (**Import / export → Export CSV**) is also a good copy of everything.
-
-**File permissions**: the SQLite database and its backups are only readable by the container's user (`0600`, `PUID`), whatever `UMASK` is; databases created by older versions are fixed on start.
-
-| Variable | Default | |
-|---|---|---|
-| `DEFAULT_CURRENCY` | `EUR` | Currency for new accounts and CSV rows without one; totals in several currencies are added up in it |
-| `FX_URL` | `https://api.frankfurter.app` | Exchange-rate service (Frankfurter API or a self-hosted copy of it) |
-| `DATABASE_URL` | empty | Empty = SQLite in `/data`. PostgreSQL: `postgresql+psycopg://user:pass@host:5432/balances` |
-| `AUTH_USERNAME`, `AUTH_PASSWORD` | empty | Set both to ask for a login; changing the password logs everyone out |
-| `AUTH_TOTP` | `false` | `true` also asks for a one-time code; the first login shows the QR code. Delete `.totp_secret` in `/data` to show a new one |
-| `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
-
-The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
-
-## Unraid
-
-The `Sync Unraid template` workflow publishes `unraid/accounts-balance-tracker.xml` and its icon to the public repo [dodert/unraid-templates](https://github.com/dodert/unraid-templates). It needs the repository secret `TEMPLATES_TOKEN`: a fine-grained token with *Contents: Read and write* on `dodert/unraid-templates` only.
-
-1. In the Unraid terminal:
-   ```bash
-   mkdir -p /boot/config/plugins/dockerMan/templates-user && curl -fsSL https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml -o /boot/config/plugins/dockerMan/templates-user/my-accounts-balance-tracker.xml
-   ```
-   Run it again to update the template.
-2. In **Docker → Add Container**, pick `accounts-balance-tracker` from the template list.
-3. Set a login user and password and click **Apply**. Data goes to `/mnt/user/appdata/accounts-balance-tracker`.
-
-To list it in **Apps → Private** (Community Applications) instead:
-
-```bash
-mkdir -p /boot/config/plugins/community.applications/private/dodert && curl -fsSL https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml -o /boot/config/plugins/community.applications/private/dodert/accounts-balance-tracker.xml
-```
-
-## Run locally
+## Development
 
 ```bash
 pip install -r requirements-dev.txt
 DATA_DIR=./data uvicorn app.main:create_app --factory --reload
 pytest -q
 ```
+
+**Image**: `ghcr.io/dodert/accounts-balance-tracker` (linux/amd64 and linux/arm64), built by GitHub Actions on every push to `main` and on `v*` git tags. Versions follow [SemVer](https://semver.org): `main` builds are the release version in `app/__init__.py` (`__version__`), so bump it in every PR (`Z` for fixes, `Y` for features). A push to `main` is tagged `latest`, `X.Y.Z`, `X.Y` and `sha-<commit>`.
+
+**Trying a branch** before merging it: **Actions → CI → Run workflow**, pick the branch. The image is pushed as `ghcr.io/dodert/accounts-balance-tracker:<branch>`, `pre-release` and `X.Y.Z-<branch>.<run>`.
+
+**Old images**: **Actions → Clean up old images** and **Actions → Delete untagged images** delete old image versions (dry run by default). They need the repository to have the Admin role in the package's *Manage Actions access*.
+
+**Unraid template**: the `Sync Unraid template` workflow publishes `unraid/accounts-balance-tracker.xml` and its icon to the public repo [dodert/unraid-templates](https://github.com/dodert/unraid-templates). It needs the repository secret `TEMPLATES_TOKEN`: a fine-grained token with *Contents: Read and write* on `dodert/unraid-templates` only.
+
+**Screenshots**: start the app on port 8012 and run `node scripts/screenshots.js docs` (needs Playwright; see the comment at the top of the script).
 
 ## API
 
