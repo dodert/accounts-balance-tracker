@@ -16,12 +16,15 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from .db import Base, make_engine, make_sessionmaker
 from .models import Account, AccountType, Balance, FxRate, Milestone
 
 COOKIE = "abt_demo"
+# Most size of a demo database: anyone can try the demo, so its files (in the temporary folder) can't grow without end
+MAX_BYTES = 5 * 1024 * 1024
 MONTHS = 24
 
 
@@ -113,7 +116,8 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
 class Demo:
     """The demo database: created the first time it is used, deleted when the app stops."""
 
-    def __init__(self):
+    def __init__(self, max_bytes: int | None = None):
+        self.max_bytes = MAX_BYTES if max_bytes is None else max_bytes
         self._lock = threading.Lock()
         self._dir: Path | None = None
         self._engine = None
@@ -133,6 +137,12 @@ class Demo:
     def _create(self, lang: str) -> None:
         self._dir = Path(tempfile.mkdtemp(prefix="abt-demo-"))
         self._engine = make_engine(f"sqlite:///{self._dir / 'demo.db'}")
+        if self.max_bytes:
+            @event.listens_for(self._engine, "connect")
+            def _limit_size(connection, _record):
+                # Past this size SQLite refuses the write ("database or disk is full"): see main.py
+                page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+                connection.execute(f"PRAGMA max_page_count = {self.max_bytes // page_size}")
         Base.metadata.create_all(self._engine)
         self.Session = make_sessionmaker(self._engine)
         with self.Session() as db:

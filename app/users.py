@@ -25,7 +25,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, event, func, select, text
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, event, func, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -321,6 +321,12 @@ class Users:
         by_password_key = crypto.password_key(password, salt, json.loads(params))
         by_recovery_key = crypto.recovery_key(recovery, recovery_salt)
         with self.Session() as db:
+            # Claim the invitation first, in one step: of sign-ups sent at the same time with the same link, only
+            # one gets it (any error below undoes the claim, as nothing is committed)
+            claimed = db.execute(update(Invitation).where(Invitation.id == invitation.id, Invitation.used_at.is_(None))
+                                 .values(used_at=now()))
+            if claimed.rowcount != 1:
+                raise SignupError("invitation")
             if db.get(BlockedEmail, email) is not None:
                 raise SignupError("blocked")
             if db.scalar(select(User).where((User.username == username) | (User.email == email))) is not None:
@@ -328,8 +334,6 @@ class Users:
             if self.max_users and db.scalar(select(func.count()).select_from(User)) >= self.max_users:
                 raise SignupError("full")
             invitation = db.get(Invitation, invitation.id)
-            if invitation.used_at is not None:
-                raise SignupError("invitation")
             user = User(username=username, email=email, created_at=now(), kdf_salt=salt, kdf_params=params,
                         key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"",
                         last_login_at=now(), last_ip=ip, last_country=country,
