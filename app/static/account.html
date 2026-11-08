@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ASSET_VERSION}}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
+</head>
+<body class="login-page">
+  <form method="post" action="/account/password" class="login-box">
+    <h1 data-i18n="header.title">💰 My balances</h1>
+    <p class="totp-help"><span data-i18n="account.user">User:</span> <strong>{{USERNAME}}</strong></p>
+    {{MESSAGE}}
+    <label><span data-i18n="account.current_password">Current password</span> <input name="current" type="password" autocomplete="current-password" required autofocus></label>
+    <label><span data-i18n="account.new_password">New password</span> <input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    <label><span data-i18n="register.password2">Repeat the password</span> <input name="password2" type="password" autocomplete="new-password" required minlength="10"></label>
+    <p class="totp-help" data-i18n="account.password_help">Your other devices are logged out. Your recovery key does not change.</p>
+    <button type="submit" class="primary" data-i18n="account.change_password">Change password</button>
+    <a class="totp-back" href="/" data-i18n="totp.back">Back</a>
+  </form>
+  <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
+  <script src="/static/pages.js?v={{ASSET_VERSION}}"></script>
+</body>
+</html>

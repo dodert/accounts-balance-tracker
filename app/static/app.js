@@ -1062,6 +1062,8 @@ $("#demo-reset").addEventListener("click", async () => {
   state.about = await api("/api/about");
   $("#version").textContent = `v${state.about.version}`;
   $("#logout-btn").hidden = !state.about.auth;
+  $("#account-link").hidden = !state.about.user;
+  $("#account-link").textContent = state.about.user ? `👤 ${state.about.user}` : "";
   renderDemo();
   await refresh();
 })().catch(showError);

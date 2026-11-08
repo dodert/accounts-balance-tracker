@@ -16,6 +16,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
   - [Update, stop and uninstall](#update-stop-and-uninstall)
 - [First steps](#first-steps)
 - [Settings](#settings)
+- [Several users](#several-users)
 - [Backups and updates](#backups-and-updates)
 - [Features](#features)
 - [Development](#development)
@@ -170,11 +171,24 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `AUTH_USERNAME`, `AUTH_PASSWORD` | empty | Set both to ask for a login; changing the password logs everyone out |
 | `AUTH_TOTP` | `false` | `true` also asks for a one-time code; the first login shows the QR code. Delete `.totp_secret` in `/data` to show a new one |
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` | Addresses (or CIDR ranges) of the reverse proxies whose `X-Forwarded-For` / `X-Forwarded-Proto` headers are trusted. The default trusts the local network and Docker networks, so a proxy or `cloudflared` there works as is, and a client coming straight from the internet can't fake its IP. To be stricter, set only your proxy's IP |
+| `MULTI_USER` | `false` | `true` = several users, each with their own encrypted database, registered by invitation. `AUTH_USERNAME` / `AUTH_PASSWORD` are then the admin's login (the one-time code is always asked). See [Several users](#several-users) |
 | `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
 
 **Wrong logins**: after 10 wrong passwords, or 10 wrong one-time codes, from one IP in 15 minutes, that IP has to wait (`429`) until the oldest one is 15 minutes old; other IPs can still log in. A right password clears the count of its IP. Behind a reverse proxy the limit uses the real client IP only if the proxy's `X-Forwarded-For` is trusted; otherwise every visitor shares the proxy's IP and its limit. See also [SECURITY.md](SECURITY.md).
+
+## Several users
+
+With `MULTI_USER=true`, one instance serves several people, each with their own data. It is meant for sharing the app with friends or family, e.g. through a Cloudflare Tunnel.
+
+- **The admin** logs in with `AUTH_USERNAME` / `AUTH_PASSWORD` and the one-time code (always asked, set up on the first login). It goes to `/admin`, has no data of its own and can't read anyone's.
+- **Invitations**: the admin creates a link there (single use, valid for 7 days, optionally only for one email; a new one for the same email replaces the open one) and sends it. Opening a link in a browser where someone is already logged in says so, and signing up logs them out there. The person chooses a user name, email and password (at least 10 characters).
+- **Encrypted data**: each user has their own SQLite database in `/data/users/<id>.db.enc`, encrypted (AES-256-GCM) with a random key. That key is stored only encrypted with the user's password (Argon2id) and with a **recovery key** shown once at sign-up. Nobody without one of the two can read the data, the admin included. While the user is logged in the key travels in their session cookie, encrypted with the server's secret, and the database is decrypted in memory for each request.
+- **Passwords**: users change theirs in **👤 Account** (their other devices are logged out), and reset a forgotten one with the recovery key at **Forgot your password?** on the login page. **Without the password and the recovery key the data is lost**: there is no other way to open it.
+- `/data/users.db` holds the users, invitations and logged-out sessions (no balances, no account names).
+- What it does not protect: while a user is logged in, the server has their data in memory to calculate totals and charts, so whoever runs the server could change it to read it. It protects the files on disk and their backups.
+- **Backups**: copy the whole `/data` folder; the users' files stay encrypted in it. Before a schema change, each user's file is copied next to it (`<id>.db.enc.backup-<from>-to-<to>-<date>`) the first time they use the new version.
 
 ## Backups and updates
 

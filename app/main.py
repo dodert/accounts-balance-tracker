@@ -1,4 +1,5 @@
 import asyncio
+import html
 from contextlib import asynccontextmanager
 import json
 import math
@@ -10,6 +11,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -30,9 +32,13 @@ from .schemas import (
 )
 from .ratelimit import TooManyTries, TryLimit
 from .totp import Totp
+from .users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, SignupError, Users
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
+NEW_INVITE_COOKIE = "abt_new_invite"
+# Multi-user mode: reachable without logging in (with /invite/<token>)
+MULTI_USER_PUBLIC = {"/recover"}
 WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
 WRONG_PASSWORDS_PER_IP = 10
@@ -70,10 +76,20 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
         raise ValueError("AUTH_TOTP needs AUTH_USERNAME and AUTH_PASSWORD")
-    totp = Totp(settings.data_dir) if settings.auth_totp else None
-    engine = make_engine(settings.resolved_database_url)
-    SessionLocal = make_sessionmaker(engine)
-    upgrade_database(engine)
+    multi = settings.multi_user
+    if multi:
+        if not auth.enabled:
+            raise ValueError("MULTI_USER needs AUTH_USERNAME and AUTH_PASSWORD (the admin's login)")
+        # The admin has no data of its own; each user has an encrypted database (see users.py)
+        users = Users(settings.data_dir, Auth._secret(settings.data_dir), settings.auth_username)
+        totp = Totp(settings.data_dir)  # always asked to the admin
+        engine = SessionLocal = None
+    else:
+        users = None
+        totp = Totp(settings.data_dir) if settings.auth_totp else None
+        engine = make_engine(settings.resolved_database_url)
+        SessionLocal = make_sessionmaker(engine)
+        upgrade_database(engine)
     demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
     fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
 
@@ -85,6 +101,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         demo.close()  # the demo database is temporary
 
     app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan)
+    app.state.users = users
 
     def foreign_request(request: Request) -> bool:
         """Sent by a page of another origin: another website, or another app on the same host (another
@@ -103,13 +120,33 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             return Response("Cross-site request blocked", status_code=403)
         return await call_next(request)
 
-    @app.middleware("http")
-    async def require_login(request: Request, call_next):
-        if not auth.enabled or auth.is_public(request.url.path) or auth.valid_session(request.cookies.get(COOKIE)):
-            return await call_next(request)
+    def login_required(request: Request) -> Response:
         if request.url.path.startswith("/api/"):
             return JSONResponse({"detail": "Login required"}, status_code=401)
         return RedirectResponse("/login", status_code=303)
+
+    def is_admin(request: Request) -> bool:
+        return auth.valid_session(request.cookies.get(COOKIE))
+
+    @app.middleware("http")
+    async def require_login(request: Request, call_next):
+        path = request.url.path
+        if not multi:
+            if not auth.enabled or auth.is_public(path) or is_admin(request):
+                return await call_next(request)
+            return login_required(request)
+        # Multi-user: the admin pages need the admin; the rest of the app needs a user
+        if auth.is_public(path) or path in MULTI_USER_PUBLIC or path.startswith("/invite/"):
+            return await call_next(request)
+        if path == "/admin" or path.startswith("/admin/"):
+            return await call_next(request) if is_admin(request) else login_required(request)
+        session = await run_in_threadpool(users.session, request.cookies.get(USER_COOKIE))
+        if session is not None:
+            request.state.user = session
+            return await call_next(request)
+        if is_admin(request) and not path.startswith("/api/"):
+            return RedirectResponse("/admin", status_code=303)
+        return login_required(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -129,9 +166,15 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     def get_db(request: Request):
         # Demo mode uses its own database: the real one is not even opened
-        maker = demo.sessionmaker(demo_lang(request)) if in_demo(request) else SessionLocal
-        with maker() as db:
-            yield db
+        if in_demo(request):
+            with demo.sessionmaker(demo_lang(request))() as db:
+                yield db
+        elif multi:
+            with users.database(request.state.user) as db:
+                yield db
+        else:
+            with SessionLocal() as db:
+                yield db
 
     def get_account_or_404(db: Session, account_id: int) -> Account:
         account = db.get(Account, account_id)
@@ -160,16 +203,22 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     @app.get("/api/about")
     def about(request: Request):
-        with SessionLocal() as db:
-            schema = db.scalar(text("SELECT version_num FROM alembic_version"))
+        if multi:
+            database, schema = "sqlite", users.databases.head
+        else:
+            with SessionLocal() as db:
+                schema = db.scalar(text("SELECT version_num FROM alembic_version"))
+            database = engine.dialect.name
+        session = getattr(request.state, "user", None)
         return {
             "version": version,
             "commit": settings.git_sha or None,
             "ref": settings.git_ref or None,
             "build_date": settings.build_date or None,
-            "database": engine.dialect.name,
+            "database": database,
             "schema": schema,
             "auth": auth.enabled,
+            "user": session.username if session else None,
             "demo": in_demo(request),
             "default_currency": settings.default_currency,
         }
@@ -501,6 +550,19 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     asset_version = f"{version}-{settings.git_sha[:7]}" if settings.git_sha else version
     page = lambda name: (STATIC_DIR / name).read_text(encoding="utf-8").replace("{{ASSET_VERSION}}", asset_version)  # noqa: E731
     index_html, login_html, totp_html = page("index.html"), page("login.html"), page("totp.html")
+    register_html, recovery_html, recover_html = page("register.html"), page("recovery.html"), page("recover.html")
+    account_html, admin_html, message_html = page("account.html"), page("admin.html"), page("message.html")
+    english = json.loads((STATIC_DIR / "i18n" / "en.json").read_text(encoding="utf-8"))
+    login_html = login_html.replace("{{RECOVER}}", '<a class="totp-back" href="/recover" data-i18n="login.forgot">'
+                                    f'{english["login.forgot"]}</a>' if multi else "")
+
+    def fill(template: str, **values: str) -> HTMLResponse:
+        for name, value in values.items():
+            template = template.replace("{{" + name + "}}", value)
+        return HTMLResponse(template, headers={"Cache-Control": "no-store"})
+
+    def message(key: str, css: str = "login-error") -> str:
+        return f'<p class="{css}" data-i18n="{key}">{html.escape(english[key])}</p>'
 
     # Browsers and bookmark tools ask for these at the root, whatever the page links
     @app.get("/favicon.ico", include_in_schema=False)
@@ -524,6 +586,14 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         response.delete_cookie(PENDING_COOKIE)
         return response
 
+    def user_logged_in(request: Request, session, to: str = "/") -> RedirectResponse:
+        return set_user_cookie(RedirectResponse(to, status_code=303), request, session)
+
+    def set_user_cookie(response: Response, request: Request, session) -> Response:
+        response.set_cookie(USER_COOKIE, users.cookie(session), max_age=USER_SESSION_SECONDS, httponly=True,
+                            samesite="lax", secure=is_https(request))
+        return response
+
     def client_ip(request: Request) -> str:
         # The real client behind a trusted reverse proxy (uvicorn --proxy-headers, FORWARDED_ALLOW_IPS)
         return request.client.host if request.client else "unknown"
@@ -544,15 +614,23 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if not auth.enabled:
             return RedirectResponse("/", status_code=303)
         ip = client_ip(request)
+        session = None
         try:
             with password_tries.attempt(ip) as attempt:
-                if not auth.check_credentials(username, password):
+                if multi and username != auth.username:
+                    session = await run_in_threadpool(users.login, username, password, ip)
+                    ok = session is not None
+                else:
+                    ok = auth.check_credentials(username, password)
+                if not ok:
                     attempt.wrong()
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return RedirectResponse("/login?error=1", status_code=303)
         except TooManyTries as error:
             return too_many(error)
         password_tries.reset(ip)
+        if session is not None:
+            return user_logged_in(request, session)
         if not totp:
             return logged_in(request)
         # Password right: now the one-time code (or adding the secret to the app, the first time)
@@ -597,7 +675,149 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         auth.revoke(request.cookies.get(COOKIE))
         response = RedirectResponse("/login" if auth.enabled else "/", status_code=303)
         response.delete_cookie(COOKIE)
+        if multi:
+            users.revoke(request.cookies.get(USER_COOKIE))
+            response.delete_cookie(USER_COOKIE)
         return response
+
+    # --- Multi-user mode: sign-up by invitation, passwords, admin ---
+
+    def multi_only():
+        if not multi:
+            raise HTTPException(404, "Not found")
+
+    def logged_in_notice(request: Request) -> str:
+        """Who is already logged in in this browser: signing up logs them out here, so the page says it first."""
+        session = users.session(request.cookies.get(USER_COOKIE))
+        if session is None:
+            return ""
+        return (f'<p class="login-error"><span data-i18n="register.logged_in">{english["register.logged_in"]}</span> '
+                f'<strong>{html.escape(session.username)}</strong>. <span data-i18n="register.logged_in_note">'
+                f'{english["register.logged_in_note"]}</span></p>')
+
+    def signup_page(request: Request, token: str, error: str = "", username: str = "", email: str = "") -> HTMLResponse:
+        invitation = users.invitation(token)
+        if invitation is None:
+            response = fill(message_html, MESSAGE=message("register.error.invitation"))
+            response.status_code = 404
+            return response
+        return fill(register_html, TOKEN=html.escape(token), ERROR=logged_in_notice(request) + error,
+                    USERNAME=html.escape(username),
+                    EMAIL=html.escape(invitation.email or email), EMAIL_READONLY="readonly" if invitation.email else "")
+
+    @app.get("/invite/{token}", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def invite_page(request: Request, token: str):
+        return signup_page(request, token)
+
+    @app.post("/invite/{token}", include_in_schema=False, dependencies=[Depends(multi_only)])
+    async def sign_up(request: Request, token: str, username: str = Form(""), email: str = Form(""),
+                      password: str = Form(""), password2: str = Form("")):
+        if password != password2:
+            return signup_page(request, token, message("register.error.mismatch"), username, email)
+        try:
+            session, recovery = await run_in_threadpool(users.sign_up, token, username, email, password)
+        except SignupError as error:
+            if error.code == "invitation":
+                return signup_page(request, token)
+            return signup_page(request, token, message(f"register.error.{error.code}"), username, email)
+        # Whoever was logged in in this browser is logged out for good (the page said so)
+        await run_in_threadpool(users.revoke, request.cookies.get(USER_COOKIE))
+        return set_user_cookie(fill(recovery_html, KEY=html.escape(recovery)), request, session)
+
+    @app.get("/recover", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def recover_page(error: str = ""):
+        return fill(recover_html, ERROR=message("recover.error") if error else "")
+
+    @app.post("/recover", include_in_schema=False, dependencies=[Depends(multi_only)])
+    async def recover(request: Request, username: str = Form(""), recovery_key: str = Form(""),
+                      password: str = Form(""), password2: str = Form("")):
+        if password != password2:
+            return fill(recover_html, ERROR=message("register.error.mismatch"))
+        ip = client_ip(request)
+        try:
+            with password_tries.attempt(ip) as attempt:
+                try:
+                    session = await run_in_threadpool(users.recover, username, recovery_key, password)
+                except SignupError:
+                    return fill(recover_html, ERROR=message("register.error.password"))
+                if session is None:
+                    attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    return fill(recover_html, ERROR=message("recover.error"))
+        except TooManyTries as error:
+            return too_many(error)
+        return user_logged_in(request, session)
+
+    def account_page(request: Request, note: str = "") -> HTMLResponse:
+        return fill(account_html, USERNAME=html.escape(request.state.user.username), MESSAGE=note)
+
+    @app.get("/account", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def account(request: Request, changed: bool = False):
+        return account_page(request, message("account.changed", "login-ok") if changed else "")
+
+    @app.post("/account/password", include_in_schema=False, dependencies=[Depends(multi_only)])
+    async def change_password(request: Request, current: str = Form(""), password: str = Form(""),
+                              password2: str = Form("")):
+        if password != password2:
+            return account_page(request, message("register.error.mismatch"))
+        ip = client_ip(request)
+        try:
+            with password_tries.attempt(ip) as attempt:
+                try:
+                    session = await run_in_threadpool(users.change_password, request.state.user.user_id, current,
+                                                      password)
+                except SignupError:
+                    return account_page(request, message("register.error.password"))
+                if session is None:
+                    attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    return account_page(request, message("account.error"))
+        except TooManyTries as error:
+            return too_many(error)
+        return user_logged_in(request, session, "/account?changed=1")
+
+    def admin_page(new_link: str = "") -> HTMLResponse:
+        rows = "".join(
+            f'<tr><td>{html.escape(i.email) if i.email else "<em data-i18n=\"admin.anyone\">" + english["admin.anyone"] + "</em>"}</td>'
+            f"<td>{i.expires_at:%Y-%m-%d %H:%M}</td>"
+            f'<td><form method="post" action="/admin/invitations/{i.id}/cancel"><button type="submit" '
+            f'data-i18n="admin.cancel">{english["admin.cancel"]}</button></form></td></tr>'
+            for i in users.open_invitations())
+        table = (f'<table><thead><tr><th data-i18n="admin.email">{english["admin.email"]}</th>'
+                 f'<th data-i18n="admin.expires">{english["admin.expires"]}</th><th></th></tr></thead>'
+                 f"<tbody>{rows}</tbody></table>") if rows else message("admin.no_invitations", "totp-help")
+        return fill(admin_html, NEW_LINK=new_link, INVITATIONS=table)
+
+    @app.get("/admin", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def admin(request: Request, error: str = ""):
+        # The new invitation's link comes once in a short-lived cookie (Post/Redirect/Get), so reloading the
+        # page shows the list again instead of sending the form again and making another invitation
+        token = request.cookies.get(NEW_INVITE_COOKIE, "")
+        if token:
+            link = html.escape(f"{str(request.base_url).rstrip('/')}/invite/{token}")
+            note = message("admin.new_link", "totp-help") + f'<code class="totp-secret">{link}</code>'
+        else:
+            note = message("register.error.email") if error == "email" else ""
+        response = admin_page(note)
+        if token:
+            response.delete_cookie(NEW_INVITE_COOKIE, path="/admin")
+        return response
+
+    @app.post("/admin/invitations", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def create_invitation(request: Request, email: str = Form("")):
+        try:
+            token = users.invite(email)
+        except SignupError:
+            return RedirectResponse("/admin?error=email", status_code=303)
+        response = RedirectResponse("/admin", status_code=303)
+        response.set_cookie(NEW_INVITE_COOKIE, token, max_age=60, path="/admin", httponly=True, samesite="strict",
+                            secure=is_https(request))
+        return response
+
+    @app.post("/admin/invitations/{invitation_id}/cancel", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def cancel_invitation(invitation_id: int):
+        users.cancel_invitation(invitation_id)
+        return RedirectResponse("/admin", status_code=303)
 
     @app.get("/", include_in_schema=False)
     def index():
