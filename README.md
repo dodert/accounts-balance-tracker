@@ -6,18 +6,9 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 > **Note:** this project has been almost entirely vibe-coded with an AI coding assistant ([Claude Code](https://claude.com/claude-code)).
 
-![Overview: totals, the total chart with a small chart per account, and the accounts](docs/screenshot.png)
-
-<p>
-  <img src="docs/screenshot-dark.png" alt="Dark mode: every currency converted into EUR, grouped by institution, with milestones" width="58%">
-  <img src="docs/screenshot-mobile.png" alt="On a phone" width="20%">
-  <img src="docs/screenshot-update.png" alt="Update balances, grouped by institution" width="20%">
-</p>
-
-<sub>Screenshots from the demo mode: made-up sample data.</sub>
-
 ## Contents
 
+- [Screenshots](#screenshots)
 - [Install on Unraid](#install-on-unraid)
 - [Install with Docker on your computer](#install-with-docker-on-your-computer)
   - [Windows](#windows) · [macOS](#macos) · [Linux](#linux)
@@ -29,6 +20,18 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 - [Development](#development)
 - [API](#api)
 - [License](#license)
+
+## Screenshots
+
+![Overview: totals, the total chart with a small chart per account, and the accounts](docs/screenshot.png)
+
+<p>
+  <img src="docs/screenshot-dark.png" alt="Dark mode: every currency converted into EUR, grouped by institution, with milestones" width="58%">
+  <img src="docs/screenshot-mobile.png" alt="On a phone" width="20%">
+  <img src="docs/screenshot-update.png" alt="Update balances, grouped by institution" width="20%">
+</p>
+
+<sub>Screenshots from the demo mode: made-up sample data.</sub>
 
 ## Install on Unraid
 
