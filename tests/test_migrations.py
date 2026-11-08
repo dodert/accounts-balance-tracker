@@ -97,3 +97,52 @@ def test_upgrade_to_milestones_keeps_the_data(tmp_path):
         conn.execute(text("DELETE FROM accounts"))
         assert conn.scalar(text("SELECT count(*) FROM milestones")) == 0  # deleted with its account
     assert len(list(tmp_path.glob("db.sqlite.backup-0004-to-*"))) == 1
+
+
+def _mode(path):
+    return path.stat().st_mode & 0o777
+
+
+def test_new_database_is_private(tmp_path):
+    """Balances are private: the database and its WAL files are 0600 even with the default umask (022)."""
+    import os
+
+    from sqlalchemy import text
+
+    from app.db import make_engine
+
+    old = os.umask(0o022)
+    try:
+        engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")  # WAL, like the app
+        upgrade_database(engine)
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'bank', 'EUR', 0)"))
+            files = list(tmp_path.iterdir())
+            assert {p.name for p in files} >= {"db.sqlite", "db.sqlite-wal"}
+            assert {p.name: _mode(p) for p in files} == {p.name: 0o600 for p in files}
+    finally:
+        os.umask(old)
+
+
+def test_older_database_and_backups_are_made_private(tmp_path):
+    """A database and backups left readable by others (644, older versions) are made private on start, and a new
+    backup is created private."""
+    from alembic import command
+    from alembic.config import Config
+
+    from app.migrate import MIGRATIONS_DIR
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0004")
+    old_backup = tmp_path / "db.sqlite.backup-0001-to-0002-20260101-000000"
+    old_backup.write_bytes(b"")
+    for path in (tmp_path / "db.sqlite", old_backup):
+        path.chmod(0o644)
+    upgrade_database(engine)
+    files = list(tmp_path.iterdir())
+    assert len(list(tmp_path.glob("db.sqlite.backup-0004-to-*"))) == 1
+    assert {p.name: _mode(p) for p in files} == {p.name: 0o600 for p in files}
