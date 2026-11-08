@@ -121,5 +121,14 @@
   "chart.converted": "All in {currency}",
   "chart.converted_note": "{currencies} converted into {currency} at the ECB rate of each date.",
   "chart.converted_missing": "No exchange rate for {currencies}: left out.",
-  "chart.converted_stale": "Some dates use the nearest stored rate (the rate service could not be reached)."
+  "chart.converted_stale": "Some dates use the nearest stored rate (the rate service could not be reached).",
+  "milestones.title": "Milestones",
+  "milestones.hint": "Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.",
+  "milestones.amount": "Amount",
+  "milestones.description": "Description",
+  "milestones.none": "No milestones.",
+  "milestones.description_required": "Write a description",
+  "milestones.confirm_delete": "Delete this milestone?",
+  "header.add_milestone": "+ Milestone",
+  "milestones.new": "New milestone"
 }

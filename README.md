@@ -13,6 +13,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 - **Accounts** with a type, institution, currency and notes, and optionally the date their balance becomes **available** (e.g. unvested stock options: one account per vesting tranche). Until then they are flagged; the totals show two figures, the amount available now (main colour) and the total including what is not available yet (secondary colour), and the total chart also draws the available part. An institution can have several accounts, and the same name can be used in different institutions (e.g. "Payroll" at two banks). Archive the ones you close (record a 0 balance first so the history stays right).
 - **Search** in the accounts list (account, institution or type, ignoring case and accents): the accounts that do not match are dimmed, not hidden, and the charts do not change.
 - **Balances**: one per account and day; recording another on the same day replaces it. **Update balances** asks for every active account on one date at once, prefilled with the last balance. Loans and credit cards are recorded as negative balances.
+- **Milestones**: notable expenses of an account (a car, a trip…) with a date, an amount and a description, added with the **+ Milestone** button at the top or from the account's window. They show on the charts as a dotted vertical line on their date, in the account's colour; hovering the line shows its description, amount, account and institution.
 - **Totals** per currency, with the change since the previous recorded date and since the first one (amount and %). Accounts and each account's balance history show the same two changes.
 - **Several currencies added up**: with accounts in more than one currency, a first box shows everything in `DEFAULT_CURRENCY` at today's exchange rates, with the rate used and a button to refresh it. Rates are the European Central Bank's, from the free [Frankfurter API](https://frankfurter.dev) (published once per working day, around 16:00 CET). Today's rate is fetched the first time it is needed each day and stored, so later visits do not call the service; past days are stored for good. **Only the two currencies and the date are sent; amounts never leave the app**: the conversion is done locally. If the service cannot be reached, the last stored rate is used and the box says so.
 - **Charts**, for all time, 5 years, 1 year, 6 or 3 months, with a hover tooltip and a table view:
@@ -86,7 +87,7 @@ pytest -q
 
 ## API
 
-Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
+Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/milestones` (and `/api/accounts/{id}/milestones`), `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
 
 ## License
 

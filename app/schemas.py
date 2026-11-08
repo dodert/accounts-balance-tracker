@@ -78,6 +78,22 @@ class BalanceUpdate(BaseModel):
     _blanks = field_validator("note", mode="before")(_blank_is_none)
 
 
+class MilestoneIn(BaseModel):
+    date: Date
+    amount: Amount
+    description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+
+
+class MilestoneOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    account_id: int
+    date: Date
+    amount: float
+    description: str
+
+
 class BalanceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

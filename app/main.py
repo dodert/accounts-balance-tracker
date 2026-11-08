@@ -22,10 +22,10 @@ from .demo import COOKIE as DEMO_COOKIE, Demo
 from .fx import Fetcher, frankfurter, get_rate, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
-from .models import Account, Balance
+from .models import Account, Balance, Milestone
 from .schemas import (
     AccountIn, AccountOut, AccountUpdate, BalanceIn, BalanceOut, BalanceUpdate, BulkBalancesIn, BulkBalancesOut,
-    CombinedTotal, CsvImportOut, CurrencyTotal, FxRateOut, HistoryOut,
+    CombinedTotal, CsvImportOut, CurrencyTotal, FxRateOut, HistoryOut, MilestoneIn, MilestoneOut,
 )
 from .totp import Totp
 
@@ -288,6 +288,44 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     @app.delete("/api/balances/{balance_id}", status_code=204)
     def delete_balance(balance_id: int, db: Session = Depends(get_db)):
         db.delete(get_balance_or_404(db, balance_id))
+        db.commit()
+
+    # --- Milestones: notable expenses, drawn as vertical lines on the charts ---
+
+    def get_milestone_or_404(db: Session, milestone_id: int) -> Milestone:
+        milestone = db.get(Milestone, milestone_id)
+        if not milestone:
+            raise HTTPException(404, "Milestone not found")
+        return milestone
+
+    @app.get("/api/milestones", response_model=list[MilestoneOut])
+    def list_milestones(account_id: int | None = None, db: Session = Depends(get_db)):
+        stmt = select(Milestone).order_by(Milestone.date, Milestone.id)
+        if account_id is not None:
+            stmt = stmt.where(Milestone.account_id == account_id)
+        return db.scalars(stmt).all()
+
+    @app.post("/api/accounts/{account_id}/milestones", response_model=MilestoneOut, status_code=201)
+    def add_milestone(account_id: int, data: MilestoneIn, db: Session = Depends(get_db)):
+        get_account_or_404(db, account_id)
+        milestone = Milestone(account_id=account_id, **data.model_dump())
+        db.add(milestone)
+        db.commit()
+        db.refresh(milestone)
+        return milestone
+
+    @app.put("/api/milestones/{milestone_id}", response_model=MilestoneOut)
+    def update_milestone(milestone_id: int, data: MilestoneIn, db: Session = Depends(get_db)):
+        milestone = get_milestone_or_404(db, milestone_id)
+        for key, value in data.model_dump().items():
+            setattr(milestone, key, value)
+        db.commit()
+        db.refresh(milestone)
+        return milestone
+
+    @app.delete("/api/milestones/{milestone_id}", status_code=204)
+    def delete_milestone(milestone_id: int, db: Session = Depends(get_db)):
+        db.delete(get_milestone_or_404(db, milestone_id))
         db.commit()
 
     @app.post("/api/balances/bulk", response_model=BulkBalancesOut)

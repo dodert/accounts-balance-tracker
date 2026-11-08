@@ -27,6 +27,7 @@
     </details>
     <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
     <button id="add-account-btn" data-i18n="header.add_account">+ Account</button>
+    <button id="milestone-btn" data-i18n="header.add_milestone">+ Milestone</button>
     <button id="update-btn" class="primary" data-i18n="header.update">Update balances</button>
     <form id="logout-btn" method="post" action="/logout" hidden><button type="submit" data-i18n="header.logout">Log out</button></form>
   </header>
@@ -124,6 +125,26 @@
     </form>
   </dialog>
 
+  <!-- A new milestone, for any account -->
+  <dialog id="milestone-dlg">
+    <form method="dialog" id="milestone-form">
+      <h2 data-i18n="milestones.new">New milestone</h2>
+      <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
+      <label><span data-i18n="column.name">Account</span> <select name="account" id="milestone-account" required></select></label>
+      <div class="row">
+        <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="date" required><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+        <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" name="amount" required autocomplete="off"></label>
+      </div>
+      <label><span data-i18n="milestones.description">Description</span> <input name="description" required maxlength="300"></label>
+      <p class="error" id="milestone-error" hidden></p>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
   <!-- Account: details and balance history -->
   <dialog id="account-dlg">
     <form method="dialog" id="account-form">
@@ -150,6 +171,16 @@
           <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
         </div>
         <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="column.balance">Balance</th><th class="num" data-i18n="column.change">Change</th><th class="num" data-i18n="column.since_first">Since the start</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
+
+        <h3 data-i18n="milestones.title">Milestones</h3>
+        <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
+        <div class="row add-balance">
+          <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="nm-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+          <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" id="nm-amount"></label>
+          <label><span data-i18n="milestones.description">Description</span> <input id="nm-desc" maxlength="300"></label>
+          <button type="button" id="nm-add" data-i18n="account.add_balance">Add</button>
+        </div>
+        <div class="table-wrap balances-wrap"><table class="data" id="milestones-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="milestones.description">Description</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
       <p class="error" id="account-error" hidden></p>
       <menu>

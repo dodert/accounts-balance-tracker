@@ -42,6 +42,9 @@ class Account(Base):
     balances: Mapped[list["Balance"]] = relationship(
         back_populates="account", cascade="all, delete-orphan", passive_deletes=True, order_by="Balance.date",
     )
+    milestones: Mapped[list["Milestone"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan", passive_deletes=True, order_by="Milestone.date",
+    )
 
 
 class Balance(Base):
@@ -57,6 +60,20 @@ class Balance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     account: Mapped[Account] = relationship(back_populates="balances")
+
+
+class Milestone(Base):
+    """A notable expense of an account (e.g. a car, a trip), drawn as a vertical line on the charts."""
+    __tablename__ = "milestones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    description: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    account: Mapped[Account] = relationship(back_populates="milestones")
 
 
 class FxRate(Base):

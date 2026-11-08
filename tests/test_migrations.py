@@ -71,3 +71,29 @@ def test_database_from_a_newer_version_is_refused_untouched(tmp_path):
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "9999"
     assert [p.name for p in tmp_path.iterdir()] == ["db.sqlite"]  # no backup, nothing changed
+
+
+def test_upgrade_to_milestones_keeps_the_data(tmp_path):
+    """0005 adds the milestones table; the accounts and balances of a 0004 database stay."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0004")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'bank', 'EUR', 0)"))
+        conn.execute(text("INSERT INTO balances (account_id, date, amount) VALUES (1, '2026-01-01', 5)"))
+    upgrade_database(engine)
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
+        conn.execute(text("INSERT INTO milestones (account_id, date, amount, description) VALUES (1, '2026-01-10', 300, 'Car')"))
+        conn.execute(text("DELETE FROM accounts"))
+        assert conn.scalar(text("SELECT count(*) FROM milestones")) == 0  # deleted with its account
+    assert len(list(tmp_path.glob("db.sqlite.backup-0004-to-*"))) == 1
