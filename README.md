@@ -10,6 +10,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 - [Screenshots](#screenshots)
 - [Install on Unraid](#install-on-unraid)
+  - [From Apps](#from-apps-community-applications) · [By hand](#by-hand-with-the-template)
 - [Install with Docker on your computer](#install-with-docker-on-your-computer)
   - [Windows](#windows) · [macOS](#macos) · [Linux](#linux)
   - [Update, stop and uninstall](#update-stop-and-uninstall)
@@ -35,18 +36,28 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 
 ## Install on Unraid
 
+### From Apps (Community Applications)
+
+1. Go to the **Apps** tab and search for **Accounts Balance Tracker**.
+2. Click it and then **Install**.
+3. Fill in **Login user** and **Login password** (recommended: the app holds financial data) and click **Apply**.
+4. Open `http://<your-unraid-ip>:8000`, or click the app's icon in the Docker tab → **WebUI**.
+
+Your data is kept in `/mnt/user/appdata/accounts-balance-tracker`. To update, use **Check for updates** in the Docker tab.
+
+### By hand, with the template
+
+If it does not show up in Apps (Community Applications refreshes its list every few hours, so a new version or app can take a while):
+
 1. Open the Unraid **Terminal** (the `>_` icon at the top right) and paste this line. It downloads the template:
    ```bash
    mkdir -p /boot/config/plugins/dockerMan/templates-user && curl -fsSL https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml -o /boot/config/plugins/dockerMan/templates-user/my-accounts-balance-tracker.xml
    ```
 2. Go to **Docker → Add Container** and pick **accounts-balance-tracker** in the *Template* list.
-3. Fill in **Login user** and **Login password** (recommended: the app holds financial data) and click **Apply**.
-4. Open `http://<your-unraid-ip>:8000`, or click the app's icon in the Docker tab → **WebUI**.
-
-Your data is kept in `/mnt/user/appdata/accounts-balance-tracker`. To update, use **Check for updates** in the Docker tab. To get a newer version of the template itself, run the line of step 1 again.
+3. Continue from step 3 above. To get a newer version of the template itself, run the line of step 1 again.
 
 <details>
-<summary>Prefer to see it under <b>Apps → Private</b> (Community Applications)?</summary>
+<summary>Prefer to see it under <b>Apps → Private</b>?</summary>
 
 Run this in the terminal instead of step 1, then install it from **Apps → Private**:
 
