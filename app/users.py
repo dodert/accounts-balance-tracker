@@ -277,7 +277,8 @@ class Users:
 
     # --- Sign-up, login, passwords ---
 
-    def sign_up(self, token: str, username: str, email: str, password: str) -> tuple[LoggedIn, str]:
+    def sign_up(self, token: str, username: str, email: str, password: str, ip: str | None = None,
+                country: str | None = None) -> tuple[LoggedIn, str]:
         """Create the user and their empty database; returns the session and the recovery key (shown once)."""
         username, email = username.strip().lower(), email.strip().lower()
         invitation = self.invitation(token)
@@ -305,7 +306,8 @@ class Users:
             if invitation.used_at is not None:
                 raise SignupError("invitation")
             user = User(username=username, email=email, created_at=now(), kdf_salt=salt, kdf_params=params,
-                        key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"")
+                        key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"",
+                        last_login_at=now(), last_ip=ip, last_country=country)
             db.add(user)
             db.flush()  # the id ties the wrapped keys and the database to this user
             user.key_by_password = crypto.seal(by_password_key, key, key_aad(user.id))
@@ -424,3 +426,52 @@ class Users:
     def get_user(self, user_id: int) -> User | None:
         with self.Session() as db:
             return db.get(User, user_id)
+
+    # --- Admin ---
+
+    def list_users(self) -> list[tuple[User, int]]:
+        """Every user, newest first, with the size of their encrypted database in bytes."""
+        with self.Session() as db:
+            users = list(db.scalars(select(User).order_by(User.created_at.desc(), User.id.desc())))
+        return [(user, self.databases.size(user.id)) for user in users]
+
+    def set_blocked(self, user_id: int, blocked: bool) -> None:
+        """A blocked user can't log in and is logged out at once; their data is kept."""
+        with self.Session() as db:
+            user = db.get(User, user_id)
+            if user is not None:
+                user.blocked = blocked
+                db.commit()
+
+    def delete_user(self, user_id: int, block_email: bool = False) -> None:
+        """Delete the user and their database (and its backups), for good."""
+        with self.Session() as db:
+            user = db.get(User, user_id)
+            if user is None:
+                return
+            if block_email and db.get(BlockedEmail, user.email) is None:
+                db.add(BlockedEmail(email=user.email, created_at=now()))
+            db.delete(user)
+            db.commit()
+        with self.databases._lock(user_id):
+            self.databases.delete(user_id)
+
+    def blocked_emails(self) -> list[BlockedEmail]:
+        with self.Session() as db:
+            return list(db.scalars(select(BlockedEmail).order_by(BlockedEmail.email)))
+
+    def block_email(self, email: str) -> None:
+        email = email.strip().lower()
+        if not EMAIL.match(email):
+            raise SignupError("email")
+        with self.Session() as db:
+            if db.get(BlockedEmail, email) is None:
+                db.add(BlockedEmail(email=email, created_at=now()))
+                db.commit()
+
+    def unblock_email(self, email: str) -> None:
+        with self.Session() as db:
+            blocked = db.get(BlockedEmail, email.strip().lower())
+            if blocked is not None:
+                db.delete(blocked)
+                db.commit()

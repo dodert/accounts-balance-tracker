@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     # Several users, each with their own encrypted database (registration by invitation). The user and
     # password above are then the admin's, and the one-time code is always asked to the admin
     multi_user: bool = False
+    # Multi-user: download DB-IP's free country database once a month, for the admin's list of users
+    country_db: bool = True
 
-    @field_validator("auth_totp", "multi_user", mode="before")
+    @field_validator("auth_totp", "multi_user", "country_db", mode="before")
     @classmethod
     def _empty_is_false(cls, value):
         # An empty field in the Unraid template or docker-compose means "off"

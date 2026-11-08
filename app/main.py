@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import math
 from datetime import date
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo
+from .geo import Countries
 from .fx import Fetcher, frankfurter, get_rate, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
@@ -83,6 +84,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         # The admin has no data of its own; each user has an encrypted database (see users.py)
         users = Users(settings.data_dir, Auth._secret(settings.data_dir), settings.auth_username)
         totp = Totp(settings.data_dir)  # always asked to the admin
+        countries = Countries(settings.data_dir, settings.country_db)  # for the admin's list of users
         engine = SessionLocal = None
     else:
         users = None
@@ -618,7 +620,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         try:
             with password_tries.attempt(ip) as attempt:
                 if multi and username != auth.username:
-                    session = await run_in_threadpool(users.login, username, password, ip)
+                    session = await run_in_threadpool(users.login, username, password, ip,
+                                                      countries.country(ip, request.headers))
                     ok = session is not None
                 else:
                     ok = auth.check_credentials(username, password)
@@ -715,7 +718,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if password != password2:
             return signup_page(request, token, message("register.error.mismatch"), username, email)
         try:
-            session, recovery = await run_in_threadpool(users.sign_up, token, username, email, password)
+            ip = client_ip(request)
+            session, recovery = await run_in_threadpool(users.sign_up, token, username, email, password, ip,
+                                                        countries.country(ip, request.headers))
         except SignupError as error:
             if error.code == "invitation":
                 return signup_page(request, token)
@@ -776,17 +781,57 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             return too_many(error)
         return user_logged_in(request, session, "/account?changed=1")
 
+    def tr(key: str, tag: str = "span", css: str = "") -> str:
+        """A translated text: English in the HTML, replaced by the page's language in the browser."""
+        attr = f' class="{css}"' if css else ""
+        return f'<{tag}{attr} data-i18n="{key}">{html.escape(english[key])}</{tag}>'
+
+    def action(path: str, key: str, css: str = "", confirm: str = "") -> str:
+        """A button that posts to `path` (with a confirmation question when `confirm` is a text key)."""
+        extra = f' data-confirm="{confirm}"' if confirm else ""
+        return (f'<form method="post" action="{path}"{extra}><button type="submit"{f" class={css!r}" if css else ""} '
+                f'data-i18n="{key}">{html.escape(english[key])}</button></form>')
+
+    def table(headers: list[str], rows: list[list[str]], empty: str) -> str:
+        if not rows:
+            return message(empty, "totp-help")
+        head = "".join(f"<th>{tr(h) if h else ''}</th>" for h in headers)
+        body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+        return f'<div class="table-scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+
+    def when(moment) -> str:
+        return f"{moment:%Y-%m-%d %H:%M}" if moment else "—"
+
+    def size(n: int) -> str:
+        return f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / 1024 / 1024:.1f} MB"
+
     def admin_page(new_link: str = "") -> HTMLResponse:
-        rows = "".join(
-            f'<tr><td>{html.escape(i.email) if i.email else "<em data-i18n=\"admin.anyone\">" + english["admin.anyone"] + "</em>"}</td>'
-            f"<td>{i.expires_at:%Y-%m-%d %H:%M}</td>"
-            f'<td><form method="post" action="/admin/invitations/{i.id}/cancel"><button type="submit" '
-            f'data-i18n="admin.cancel">{english["admin.cancel"]}</button></form></td></tr>'
-            for i in users.open_invitations())
-        table = (f'<table><thead><tr><th data-i18n="admin.email">{english["admin.email"]}</th>'
-                 f'<th data-i18n="admin.expires">{english["admin.expires"]}</th><th></th></tr></thead>'
-                 f"<tbody>{rows}</tbody></table>") if rows else message("admin.no_invitations", "totp-help")
-        return fill(admin_html, NEW_LINK=new_link, INVITATIONS=table)
+        user_rows, total = [], 0
+        for user, db_size in users.list_users():
+            total += db_size
+            where = " · ".join(html.escape(x) for x in (user.last_ip, user.last_country) if x)
+            status = tr("admin.status_blocked", css="status-blocked") if user.blocked else tr("admin.status_active")
+            actions = (action(f"/admin/users/{user.id}/unblock", "admin.unblock") if user.blocked else
+                       action(f"/admin/users/{user.id}/block", "admin.block"))
+            actions += action(f"/admin/users/{user.id}/delete", "admin.delete", "danger", "admin.confirm_delete")
+            actions += action(f"/admin/users/{user.id}/delete?block_email=1", "admin.delete_block", "danger",
+                              "admin.confirm_delete_block")
+            user_rows.append([html.escape(user.username), html.escape(user.email), when(user.created_at),
+                              f"{when(user.last_login_at)}<br><small>{where}</small>", size(db_size), status,
+                              f'<div class="row-actions">{actions}</div>'])
+        summary = (f'<p class="totp-help">{tr("admin.user_count")}: <strong>{len(user_rows)}</strong> · '
+                   f'{tr("admin.total_size")}: <strong>{size(total)}</strong></p>')
+        invitation_rows = [[html.escape(i.email) if i.email else tr("admin.anyone", "em"), when(i.expires_at),
+                            action(f"/admin/invitations/{i.id}/cancel", "admin.cancel")]
+                           for i in users.open_invitations()]
+        blocked_rows = [[html.escape(b.email), when(b.created_at),
+                         action(f"/admin/blocked-emails/unblock?email={quote(b.email)}", "admin.unblock")]
+                        for b in users.blocked_emails()]
+        return fill(admin_html, NEW_LINK=new_link, SUMMARY=summary,
+                    USERS=table(["admin.user", "admin.email", "admin.created", "admin.last_login", "admin.size",
+                                 "admin.status", ""], user_rows, "admin.no_users"),
+                    INVITATIONS=table(["admin.email", "admin.expires", ""], invitation_rows, "admin.no_invitations"),
+                    BLOCKED=table(["admin.email", "admin.created", ""], blocked_rows, "admin.no_blocked"))
 
     @app.get("/admin", include_in_schema=False, dependencies=[Depends(multi_only)])
     def admin(request: Request, error: str = ""):
@@ -817,6 +862,34 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     @app.post("/admin/invitations/{invitation_id}/cancel", include_in_schema=False, dependencies=[Depends(multi_only)])
     def cancel_invitation(invitation_id: int):
         users.cancel_invitation(invitation_id)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/users/{user_id}/block", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def block_user(user_id: int):
+        users.set_blocked(user_id, True)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/users/{user_id}/unblock", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def unblock_user(user_id: int):
+        users.set_blocked(user_id, False)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/users/{user_id}/delete", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def delete_user(user_id: int, block_email: bool = False):
+        users.delete_user(user_id, block_email)
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/blocked-emails", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def block_email(email: str = Form("")):
+        try:
+            users.block_email(email)
+        except SignupError:
+            return admin_page(message("register.error.email"))
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/blocked-emails/unblock", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def unblock_email(email: str = Query("")):
+        users.unblock_email(email)
         return RedirectResponse("/admin", status_code=303)
 
     @app.get("/", include_in_schema=False)
