@@ -25,7 +25,7 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, select, text
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -248,6 +248,8 @@ class Users:
             raise SignupError("email")
         token = secrets.token_urlsafe(24)
         with self.Session() as db:
+            if email:  # a new invitation for an email replaces its open ones, so only the newest link works
+                db.execute(delete(Invitation).where(Invitation.email == email, Invitation.used_at.is_(None)))
             db.add(Invitation(token_hash=token_hash(token), email=email, created_at=now(),
                               expires_at=now() + timedelta(days=INVITATION_DAYS)))
             db.commit()
