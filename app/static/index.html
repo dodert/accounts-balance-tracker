@@ -27,6 +27,7 @@
     </details>
     <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
     <button id="add-account-btn" data-i18n="header.add_account">+ Account</button>
+    <button id="milestone-btn" data-i18n="header.add_milestone">+ Milestone</button>
     <button id="update-btn" class="primary" data-i18n="header.update">Update balances</button>
     <form id="logout-btn" method="post" action="/logout" hidden><button type="submit" data-i18n="header.logout">Log out</button></form>
   </header>
@@ -116,6 +117,26 @@
       <p class="hint" data-i18n="update.hint">Fill in the balance of each account on that date. Leave one empty to skip it.</p>
       <div id="update-rows"></div>
       <p class="error" id="update-error" hidden></p>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <!-- A new milestone, for any account -->
+  <dialog id="milestone-dlg">
+    <form method="dialog" id="milestone-form">
+      <h2 data-i18n="milestones.new">New milestone</h2>
+      <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
+      <label><span data-i18n="column.name">Account</span> <select name="account" id="milestone-account" required></select></label>
+      <div class="row">
+        <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="date" required><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+        <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" name="amount" required autocomplete="off"></label>
+      </div>
+      <label><span data-i18n="milestones.description">Description</span> <input name="description" required maxlength="300"></label>
+      <p class="error" id="milestone-error" hidden></p>
       <menu>
         <span class="spacer"></span>
         <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>

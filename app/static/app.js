@@ -759,6 +759,38 @@ $("#update-btn").addEventListener("click", () => {
   $("#update-dlg").showModal();
 });
 
+// New milestone, from the header: the account is picked in the dialog (grouped by institution)
+$("#milestone-btn").addEventListener("click", () => {
+  const active = state.accounts.filter((a) => !a.archived);
+  if (!active.length) { openAccount(null); return; }
+  const inst = (a) => a.institution ?? "";
+  active.sort((a, b) => (inst(a) === "") - (inst(b) === "") || inst(a).localeCompare(inst(b)) || a.name.localeCompare(b.name));
+  const groups = [...new Set(active.map(inst))];
+  $("#milestone-account").innerHTML = groups.map((g) => `<optgroup label="${esc(g || t("chart.no_institution"))}">` +
+    active.filter((a) => inst(a) === g).map((a) => `<option value="${a.id}">${esc(a.name)} (${esc(a.currency)})</option>`).join("") +
+    "</optgroup>").join("");
+  const form = $("#milestone-form");
+  form.reset();
+  setDate(form.date, today());
+  setError($("#milestone-error"), null);
+  $("#milestone-dlg").showModal();
+});
+
+$("#milestone-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const amount = parseAmount(form.amount.value);
+    if (amount === null) throw new Error(t("error.amount_required"));
+    if (!form.description.value.trim()) throw new Error(t("milestones.description_required"));
+    await api(`/api/accounts/${form.account.value}/milestones`, { json: { date: getDate(form.date), amount, description: form.description.value } });
+    $("#milestone-dlg").close();
+    await refresh();
+  } catch (err) {
+    setError($("#milestone-error"), err);
+  }
+});
+
 $("#update-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {

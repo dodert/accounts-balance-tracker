@@ -128,5 +128,7 @@
   "milestones.description": "Descripción",
   "milestones.none": "No hay hitos.",
   "milestones.description_required": "Escribe una descripción",
-  "milestones.confirm_delete": "¿Borrar este hito?"
+  "milestones.confirm_delete": "¿Borrar este hito?",
+  "header.add_milestone": "+ Hito",
+  "milestones.new": "Nuevo hito"
 }
