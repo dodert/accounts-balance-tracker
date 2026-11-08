@@ -13,7 +13,7 @@ def add(client, account_id, day, amount, note=None):
 def test_health_and_about(client):
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0004" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0005" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
@@ -167,3 +167,25 @@ def test_available_from(client):
     cleared = client.patch(f"/api/accounts/{options['id']}", json={"available_from": ""}).json()
     assert cleared["available_from"] is None
     assert client.get("/api/summary").json()[0]["available"] == 1160
+
+
+def test_milestones(client):
+    a = client.post("/api/accounts", json={"name": "Savings"}).json()
+    r = client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": "12500", "description": "  New car "})
+    assert r.status_code == 201
+    m = r.json()
+    assert (m["account_id"], m["date"], m["amount"], m["description"]) == (a["id"], "2026-03-10", 12500, "New car")
+    assert client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": 1, "description": " "}).status_code == 422
+    assert client.post("/api/accounts/999/milestones", json={"date": "2026-03-10", "amount": 1, "description": "x"}).status_code == 404
+
+    m = client.put(f"/api/milestones/{m['id']}", json={"date": "2026-03-11", "amount": 12000, "description": "Car"}).json()
+    assert (m["date"], m["amount"], m["description"]) == ("2026-03-11", 12000, "Car")
+    assert [x["id"] for x in client.get("/api/milestones").json()] == [m["id"]]
+    assert client.get("/api/milestones", params={"account_id": 999}).json() == []
+
+    assert client.delete(f"/api/milestones/{m['id']}").status_code == 204
+    assert client.get("/api/milestones").json() == []
+    # Deleting the account deletes its milestones
+    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": 1, "description": "x"})
+    client.delete(f"/api/accounts/{a['id']}")
+    assert client.get("/api/milestones").json() == []

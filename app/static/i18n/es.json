@@ -121,5 +121,12 @@
   "chart.converted": "Todas en {currency}",
   "chart.converted_note": "{currencies} convertido a {currency} con el tipo del BCE de cada fecha.",
   "chart.converted_missing": "Sin tipo de cambio para {currencies}: no se incluye.",
-  "chart.converted_stale": "Algunas fechas usan el tipo guardado más cercano (no se pudo consultar el servicio)."
+  "chart.converted_stale": "Algunas fechas usan el tipo guardado más cercano (no se pudo consultar el servicio).",
+  "milestones.title": "Hitos",
+  "milestones.hint": "Gastos dignos de mención (un coche, un viaje…). Salen en las gráficas como una línea vertical punteada en su fecha.",
+  "milestones.amount": "Importe",
+  "milestones.description": "Descripción",
+  "milestones.none": "No hay hitos.",
+  "milestones.description_required": "Escribe una descripción",
+  "milestones.confirm_delete": "¿Borrar este hito?"
 }

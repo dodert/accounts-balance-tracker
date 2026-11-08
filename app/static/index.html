@@ -150,6 +150,16 @@
           <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
         </div>
         <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="column.balance">Balance</th><th class="num" data-i18n="column.change">Change</th><th class="num" data-i18n="column.since_first">Since the start</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
+
+        <h3 data-i18n="milestones.title">Milestones</h3>
+        <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
+        <div class="row add-balance">
+          <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="nm-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+          <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" id="nm-amount"></label>
+          <label><span data-i18n="milestones.description">Description</span> <input id="nm-desc" maxlength="300"></label>
+          <button type="button" id="nm-add" data-i18n="account.add_balance">Add</button>
+        </div>
+        <div class="table-wrap balances-wrap"><table class="data" id="milestones-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="milestones.description">Description</th><th></th></tr></thead><tbody></tbody></table></div>
       </div>
       <p class="error" id="account-error" hidden></p>
       <menu>

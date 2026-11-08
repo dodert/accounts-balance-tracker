@@ -4,6 +4,18 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 const ACCOUNT_TYPES = ["bank", "savings", "investment", "pension", "crypto", "cash", "loan", "other"];
 const SERIES_SLOTS = 16; // categorical colours; past these they repeat (never grey)
 const slotColor = (slot) => `var(--s${((slot - 1) % SERIES_SLOTS) + 1})`;
+// An account's colour: by its place among all the accounts (the same in every chart)
+const accountColor = (id) => slotColor(state.accounts.map((a) => a.id).sort((a, b) => a - b).indexOf(id) + 1);
+
+// The milestones of these accounts, to draw on a chart: each one in its account's colour and currency
+function milestonesFor(ids) {
+  return state.milestones.filter((m) => ids.includes(m.account_id)).map((m) => {
+    const account = state.accounts.find((a) => a.id === m.account_id);
+    return { ...m, color: accountColor(m.account_id), currency: account?.currency, account: account?.name };
+  });
+}
+const milestoneText = (m, withAccount) =>
+  `${fmtDate(m.date)} · ${m.description} · ${money(m.amount, m.currency)}${withAccount && m.account ? ` (${m.account})` : ""}`;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const api = async (path, opts = {}) => {
@@ -27,7 +39,7 @@ const api = async (path, opts = {}) => {
 const ALL_CURRENCIES = "*";
 // CONVERTED: every account converted into the default currency (each date at that date's rate), on one chart
 const CONVERTED = "=";
-const state = { about: null, accounts: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
+const state = { about: null, accounts: [], milestones: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
 
 // Chart grouping (by account or by institution), remembered in this browser
 function savedGroup() {
@@ -202,6 +214,10 @@ async function loadTotals() {
 
 // --- Accounts ---
 
+async function loadMilestones() {
+  state.milestones = await api("/api/milestones");
+}
+
 async function loadAccounts() {
   state.accounts = await api("/api/accounts");
   renderAccounts();
@@ -330,7 +346,7 @@ function accountSeries(h) {
     const slot = ids.indexOf(a.account_id) + 1;
     return {
       // In the converted chart, an account in another currency says which one
-      account_id: a.account_id, name: a.name, values: a.values, slot, archived: a.archived,
+      account_id: a.account_id, ids: [a.account_id], name: a.name, values: a.values, slot, archived: a.archived,
       detail: [account?.institution, a.currency && a.currency !== h.currency ? a.currency : ""].filter(Boolean).join(" · "),
       available_from: account?.available_from ?? null,
       color: slotColor(slot),
@@ -360,7 +376,7 @@ function institutionSeries(h) {
     const start = h.isConverted ? firstValue(values) : day ? firsts.filter((a) => a.first_date === day).reduce((sum, a) => sum + a.first_balance, 0) : firstValue(values);
     const slot = i + 1;
     return {
-      account_id: `i:${key}`, name: key || t("chart.no_institution"), values, slot, start,
+      account_id: `i:${key}`, ids: members.map((a) => a.account_id), name: key || t("chart.no_institution"), values, slot, start,
       detail: t(members.length === 1 ? "chart.one_account" : "chart.n_accounts", { n: members.length }),
       archived: members.every((a) => a.archived),
       color: slotColor(slot),
@@ -470,6 +486,14 @@ function drawChart(box, opts) {
       svg("text", { x: xm + 4, y: pad.top + 10, class: "avail-label" }, root).textContent = opts.marker.label;
     }
   }
+  // Milestones (notable expenses): a dotted vertical line on their date, in their account's colour
+  const milestones = (opts.milestones ?? []).map((m) => ({ ...m, time: Date.parse(`${m.date}T00:00:00Z`) }))
+    .filter((m) => m.time >= t0 && m.time <= t1);
+  for (const m of milestones) {
+    const xm = x(m.time);
+    svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "milestone-line", style: `stroke: ${m.color}` }, root);
+    svg("path", { d: `M${xm - 4},${pad.top - 7}L${xm + 4},${pad.top - 7}L${xm},${pad.top - 1}Z`, style: `fill: ${m.color}` }, root);
+  }
   // Total last, so it is drawn over the accounts
   const order = [...series].sort((a, b) => Number(!!a.total) - Number(!!b.total));
   order.forEach((s, n) => {
@@ -513,7 +537,11 @@ function drawChart(box, opts) {
       if (v !== null) { marks[i].setAttribute("cx", cx); marks[i].setAttribute("cy", y(v)); }
     });
     const rows = series.filter((s) => s.values[idx] !== null).sort((a, b) => Number(!!b.total) - Number(!!a.total) || b.values[idx] - a.values[idx]);
-    $("#tooltip").innerHTML = `<div class="tt-date">${esc(fmtDate(dates[idx]))}</div>` + opts.tooltip(idx, rows);
+    // The milestones since the previous date, under the amounts
+    const since = idx > 0 ? times[idx - 1] : -Infinity;
+    const notes = milestones.filter((m) => m.time > since && m.time <= times[idx]).map((m) =>
+      `<div class="tt-milestone"><span class="swatch" style="background: ${m.color}"></span> ${esc(milestoneText(m, opts.milestoneAccounts))}</div>`).join("");
+    $("#tooltip").innerHTML = `<div class="tt-date">${esc(fmtDate(dates[idx]))}</div>` + opts.tooltip(idx, rows) + notes;
     placeTooltip(e);
   });
 }
@@ -577,6 +605,7 @@ function renderBlock(h, el) {
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
     drawChart(box, {
       dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") },
+      milestones: milestonesFor(h.accounts.map((a) => a.account_id)), milestoneAccounts: true,
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
     });
@@ -592,6 +621,7 @@ function renderBlock(h, el) {
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
       dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,
+      milestones: milestonesFor(h.accounts.map((a) => a.account_id)), milestoneAccounts: true,
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join("") +
@@ -638,7 +668,7 @@ let resizeTimer;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
 
 async function refresh() {
-  await Promise.all([loadAccounts(), loadTotals()]);
+  await Promise.all([loadAccounts(), loadTotals(), loadMilestones()]);
   await loadHistory();
 }
 
@@ -663,6 +693,7 @@ function drawAccountChart(box, a, h, small) {
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   drawChart(box, {
     dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
+    milestones: milestonesFor(a.ids ?? []), milestoneAccounts: (a.ids ?? []).length > 1,
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,
     axis: (ticks) => axisLabels(ticks, cur),
@@ -766,6 +797,10 @@ async function openAccount(id) {
     setDate($("#nb-date"), today());
     $("#nb-amount").value = "";
     $("#nb-note").value = "";
+    setDate($("#nm-date"), today());
+    $("#nm-amount").value = "";
+    $("#nm-desc").value = "";
+    renderMilestones();
     await loadBalances();
   }
   $("#account-dlg").showModal();
@@ -797,6 +832,48 @@ $("#nb-add").addEventListener("click", async () => {
     $("#nb-note").value = "";
     setError($("#account-error"), null);
     await Promise.all([loadBalances(), refresh()]);
+  } catch (err) {
+    setError($("#account-error"), err);
+  }
+});
+
+// The account's milestones, newest first
+function renderMilestones() {
+  const account = state.editing;
+  const list = state.milestones.filter((m) => m.account_id === account.id).reverse();
+  $("#milestones-table thead").hidden = !list.length;
+  $("#milestones-table tbody").innerHTML = list.length ? list.map((m) => `
+    <tr>
+      <td>${esc(fmtDate(m.date))}</td>
+      <td class="num">${esc(money(m.amount, account.currency))}</td>
+      <td class="note">${esc(m.description)}</td>
+      <td class="actions"><button type="button" class="icon danger" data-delete="${m.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
+    </tr>`).join("") : `<tr><td class="hint">${esc(t("milestones.none"))}</td></tr>`;
+}
+
+$("#nm-add").addEventListener("click", async () => {
+  try {
+    const amount = parseAmount($("#nm-amount").value);
+    if (amount === null) throw new Error(t("error.amount_required"));
+    if (!$("#nm-desc").value.trim()) throw new Error(t("milestones.description_required"));
+    await api(`/api/accounts/${state.editing.id}/milestones`, { json: { date: getDate($("#nm-date")), amount, description: $("#nm-desc").value } });
+    $("#nm-amount").value = "";
+    $("#nm-desc").value = "";
+    setError($("#account-error"), null);
+    await refresh();
+    renderMilestones();
+  } catch (err) {
+    setError($("#account-error"), err);
+  }
+});
+
+$("#milestones-table").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-delete]");
+  if (!btn || !confirm(t("milestones.confirm_delete"))) return;
+  try {
+    await api(`/api/milestones/${btn.dataset.delete}`, { method: "DELETE" });
+    await refresh();
+    renderMilestones();
   } catch (err) {
     setError($("#account-error"), err);
   }

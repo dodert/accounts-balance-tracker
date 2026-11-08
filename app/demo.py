@@ -16,7 +16,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .db import Base, make_engine, make_sessionmaker
-from .models import Account, AccountType, Balance, FxRate
+from .models import Account, AccountType, Balance, FxRate, Milestone
 
 COOKIE = "abt_demo"
 MONTHS = 24
@@ -35,11 +35,15 @@ class Sample:
     available_in_days: int | None = None  # locked until then (e.g. unvested stock options)
     closed_month: int | None = None       # closed with a 0 balance and archived
     note: dict[str, str] | None = None
+    # Notable expenses: (months after the start of the history, amount, description by language)
+    milestones: tuple = ()
 
 
 SAMPLES = [
-    Sample({"en": "Current account", "es": "Cuenta corriente"}, "Banco Aurora", AccountType.bank, "EUR", 2400, 30, 300),
-    Sample({"en": "Savings", "es": "Ahorro"}, "Banco Aurora", AccountType.savings, "EUR", 18000, 400, 60),
+    Sample({"en": "Current account", "es": "Cuenta corriente"}, "Banco Aurora", AccountType.bank, "EUR", 2400, 30, 300,
+           milestones=((15, 1800, {"en": "Summer holidays", "es": "Vacaciones de verano"}),)),
+    Sample({"en": "Savings", "es": "Ahorro"}, "Banco Aurora", AccountType.savings, "EUR", 18000, 400, 60,
+           milestones=((9, 12500, {"en": "New car", "es": "Coche nuevo"}),)),
     Sample({"en": "Credit card", "es": "Tarjeta de crédito"}, "Banco Aurora", AccountType.loan, "EUR", -450, 0, 300),
     Sample({"en": "Salary account", "es": "Cuenta nómina"}, "Caja Litoral", AccountType.bank, "EUR", 2600, 40, 250),
     Sample({"en": "Mortgage", "es": "Hipoteca"}, "Caja Litoral", AccountType.loan, "EUR", -96000, 480, 0),
@@ -91,6 +95,10 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
                 amount = 0
             account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
             value += sample.monthly + rng.uniform(-sample.noise, sample.noise)
+            for month, cost, description in sample.milestones:
+                if month == n:  # the expense, a few days into the month, and the balance drops by it
+                    account.milestones.append(Milestone(date=day + timedelta(days=12), amount=Decimal(cost), description=description[lang]))
+                    value -= cost
     # A sample USD/EUR rate from yesterday, so the combined total works offline too: today's real
     # rate is still fetched (only the two currencies are sent) and replaces it when it can be
     yesterday = today - timedelta(days=1)
