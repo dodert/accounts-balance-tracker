@@ -168,6 +168,8 @@ menu { display: flex; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 .update-row .u-input { display: flex; align-items: center; gap: .35rem; width: 11rem; }
 .update-row input { text-align: right; font-variant-numeric: tabular-nums; }
 .update-row .cur { color: var(--muted); font-size: .8rem; }
+.update-group { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: .9rem 0 .1rem; }
+.update-group:first-child { margin-top: .25rem; }
 #update-rows { max-height: 55vh; overflow-y: auto; margin-bottom: .5rem; }
 #csv-result { white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 

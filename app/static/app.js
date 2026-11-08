@@ -715,9 +715,13 @@ $("#update-btn").addEventListener("click", () => {
   if (!active.length) { openAccount(null); return; }
   const form = $("#update-form");
   setDate(form.date, today());
-  $("#update-rows").innerHTML = active.map((a) => `
+  // Sorted by institution, then by name, with a heading per institution (accounts without one last)
+  const inst = (a) => a.institution ?? "";
+  active.sort((a, b) => (inst(a) === "") - (inst(b) === "") || inst(a).localeCompare(inst(b)) || a.name.localeCompare(b.name));
+  $("#update-rows").innerHTML = active.map((a, i) => (i === 0 || inst(a) !== inst(active[i - 1])
+    ? `<h3 class="update-group">${esc(inst(a) || t("chart.no_institution"))}</h3>` : "") + `
     <label class="update-row">
-      <span class="u-name">${esc(a.name)}${a.institution ? ` <span class="detail">· ${esc(a.institution)}</span>` : ""} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
+      <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
       <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
     </label>`).join("");
   setError($("#update-error"), null);
