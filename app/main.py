@@ -38,6 +38,7 @@ from .users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, Databas
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
+NEW_INVITE_COOKIE = "abt_new_invite"
 # Multi-user mode: reachable without logging in (with /invite/<token>)
 MULTI_USER_PUBLIC = {"/recover"}
 # Multi-user mode: these start the demo, also without an account
@@ -739,32 +740,44 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         if not multi:
             raise HTTPException(404, "Not found")
 
-    def signup_page(token: str, error: str = "", username: str = "", email: str = "") -> HTMLResponse:
+    def logged_in_notice(request: Request) -> str:
+        """Who is already logged in in this browser: signing up logs them out here, so the page says it first."""
+        session = users.session(request.cookies.get(USER_COOKIE))
+        if session is None:
+            return ""
+        return (f'<p class="login-error"><span data-i18n="register.logged_in">{english["register.logged_in"]}</span> '
+                f'<strong>{html.escape(session.username)}</strong>. <span data-i18n="register.logged_in_note">'
+                f'{english["register.logged_in_note"]}</span></p>')
+
+    def signup_page(request: Request, token: str, error: str = "", username: str = "", email: str = "") -> HTMLResponse:
         invitation = users.invitation(token)
         if invitation is None:
             response = fill(message_html, MESSAGE=message("register.error.invitation"))
             response.status_code = 404
             return response
-        return fill(register_html, TOKEN=html.escape(token), ERROR=error, USERNAME=html.escape(username),
+        return fill(register_html, TOKEN=html.escape(token), ERROR=logged_in_notice(request) + error,
+                    USERNAME=html.escape(username),
                     EMAIL=html.escape(invitation.email or email), EMAIL_READONLY="readonly" if invitation.email else "")
 
     @app.get("/invite/{token}", include_in_schema=False, dependencies=[Depends(multi_only)])
-    def invite_page(token: str):
-        return signup_page(token)
+    def invite_page(request: Request, token: str):
+        return signup_page(request, token)
 
     @app.post("/invite/{token}", include_in_schema=False, dependencies=[Depends(multi_only)])
     async def sign_up(request: Request, token: str, username: str = Form(""), email: str = Form(""),
                       password: str = Form(""), password2: str = Form("")):
         if password != password2:
-            return signup_page(token, message("register.error.mismatch"), username, email)
+            return signup_page(request, token, message("register.error.mismatch"), username, email)
         try:
             ip = client_ip(request)
             session, recovery = await run_in_threadpool(users.sign_up, token, username, email, password, ip,
                                                         countries.country(ip, request.headers))
         except SignupError as error:
             if error.code == "invitation":
-                return signup_page(token)
-            return signup_page(token, message(f"register.error.{error.code}"), username, email)
+                return signup_page(request, token)
+            return signup_page(request, token, message(f"register.error.{error.code}"), username, email)
+        # Whoever was logged in in this browser is logged out for good (the page said so)
+        await run_in_threadpool(users.revoke, request.cookies.get(USER_COOKIE))
         return set_user_cookie(fill(recovery_html, KEY=html.escape(recovery)), request, session)
 
     @app.get("/recover", include_in_schema=False, dependencies=[Depends(multi_only)])
@@ -885,17 +898,30 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                     BLOCKED=table(["admin.email", "admin.created", ""], blocked_rows, "admin.no_blocked"))
 
     @app.get("/admin", include_in_schema=False, dependencies=[Depends(multi_only)])
-    def admin():
-        return admin_page()
+    def admin(request: Request, error: str = ""):
+        # The new invitation's link comes once in a short-lived cookie (Post/Redirect/Get), so reloading the
+        # page shows the list again instead of sending the form again and making another invitation
+        token = request.cookies.get(NEW_INVITE_COOKIE, "")
+        if token:
+            link = html.escape(f"{str(request.base_url).rstrip('/')}/invite/{token}")
+            note = message("admin.new_link", "totp-help") + f'<code class="totp-secret">{link}</code>'
+        else:
+            note = message("register.error.email") if error == "email" else ""
+        response = admin_page(note)
+        if token:
+            response.delete_cookie(NEW_INVITE_COOKIE, path="/admin")
+        return response
 
     @app.post("/admin/invitations", include_in_schema=False, dependencies=[Depends(multi_only)])
     def create_invitation(request: Request, email: str = Form("")):
         try:
             token = users.invite(email)
         except SignupError:
-            return admin_page(message("register.error.email"))
-        link = html.escape(f"{str(request.base_url).rstrip('/')}/invite/{token}")
-        return admin_page(message("admin.new_link", "totp-help") + f'<code class="totp-secret">{link}</code>')
+            return RedirectResponse("/admin?error=email", status_code=303)
+        response = RedirectResponse("/admin", status_code=303)
+        response.set_cookie(NEW_INVITE_COOKIE, token, max_age=60, path="/admin", httponly=True, samesite="strict",
+                            secure=is_https(request))
+        return response
 
     @app.post("/admin/invitations/{invitation_id}/cancel", include_in_schema=False, dependencies=[Depends(multi_only)])
     def cancel_invitation(invitation_id: int):
