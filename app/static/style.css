@@ -99,6 +99,8 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .detail { color: var(--muted); font-weight: normal; }
 .chart .line.dashed { stroke-dasharray: 6 4; stroke-width: 2; }
 .chart .milestone-line { stroke-width: 1.5; stroke-dasharray: 2 3; opacity: .9; }
+.chart .milestone-line.hover { stroke-width: 3; opacity: 1; }
+.tt-ms-where { color: var(--muted); font-size: .78rem; margin-top: .15rem; }
 .tt-milestone { color: var(--muted); font-size: .78rem; border-top: 1px dashed var(--border); margin-top: .25rem; padding-top: .25rem; }
 .chart .avail-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
 .chart .avail-label { fill: var(--muted); font-size: 11px; }

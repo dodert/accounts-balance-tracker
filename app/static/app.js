@@ -11,11 +11,18 @@ const accountColor = (id) => slotColor(state.accounts.map((a) => a.id).sort((a, 
 function milestonesFor(ids) {
   return state.milestones.filter((m) => ids.includes(m.account_id)).map((m) => {
     const account = state.accounts.find((a) => a.id === m.account_id);
-    return { ...m, color: accountColor(m.account_id), currency: account?.currency, account: account?.name };
+    return { ...m, color: accountColor(m.account_id), currency: account?.currency, account: account?.name, institution: account?.institution };
   });
 }
-const milestoneText = (m, withAccount) =>
-  `${fmtDate(m.date)} · ${m.description} · ${money(m.amount, m.currency)}${withAccount && m.account ? ` (${m.account})` : ""}`;
+// "15 mar 2026 · New car · 12.500 € (Savings · Banco Aurora)"
+const milestoneWhere = (m) => [m.account, m.institution].filter(Boolean).join(" · ");
+const milestoneText = (m) =>
+  `${fmtDate(m.date)} · ${m.description} · ${money(m.amount, m.currency)}${m.account ? ` (${milestoneWhere(m)})` : ""}`;
+// The tooltip of a milestone line: description, amount, account and institution
+const milestoneTip = (m) => `
+  <div class="tt-date">⚑ ${esc(fmtDate(m.date))}</div>
+  <div class="tt-row"><span class="swatch" style="background: ${m.color}"></span><span class="tt-name">${esc(m.description)}</span><span class="tt-value">${esc(money(m.amount, m.currency))}</span></div>
+  ${m.account ? `<div class="tt-ms-where">${esc(milestoneWhere(m))}</div>` : ""}`;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const api = async (path, opts = {}) => {
@@ -490,8 +497,8 @@ function drawChart(box, opts) {
   const milestones = (opts.milestones ?? []).map((m) => ({ ...m, time: Date.parse(`${m.date}T00:00:00Z`) }))
     .filter((m) => m.time >= t0 && m.time <= t1);
   for (const m of milestones) {
-    const xm = x(m.time);
-    svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "milestone-line", style: `stroke: ${m.color}` }, root);
+    const xm = (m.x = x(m.time));
+    m.line = svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "milestone-line", style: `stroke: ${m.color}` }, root);
     svg("path", { d: `M${xm - 4},${pad.top - 7}L${xm + 4},${pad.top - 7}L${xm},${pad.top - 1}Z`, style: `fill: ${m.color}` }, root);
   }
   // Total last, so it is drawn over the accounts
@@ -522,11 +529,22 @@ function drawChart(box, opts) {
   hit.addEventListener("pointerleave", () => {
     cross.setAttribute("visibility", "hidden");
     marks.forEach((m) => m.setAttribute("visibility", "hidden"));
+    milestones.forEach((m) => m.line.classList.remove("hover"));
     $("#tooltip").hidden = true;
   });
   hit.addEventListener("pointermove", (e) => {
     const rect = root.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * width;
+    // On a milestone line (within 6 screen pixels): only that milestone, with its amount, account and institution
+    const near = milestones.filter((m) => Math.abs(m.x - px) * (rect.width / width) <= 6);
+    milestones.forEach((m) => m.line.classList.toggle("hover", near.includes(m)));
+    if (near.length) {
+      cross.setAttribute("visibility", "hidden");
+      marks.forEach((m) => m.setAttribute("visibility", "hidden"));
+      $("#tooltip").innerHTML = near.map(milestoneTip).join("");
+      placeTooltip(e);
+      return;
+    }
     let idx = 0;
     times.forEach((time, i) => { if (Math.abs(x(time) - px) < Math.abs(x(times[idx]) - px)) idx = i; });
     const cx = x(times[idx]);
@@ -540,7 +558,7 @@ function drawChart(box, opts) {
     // The milestones since the previous date, under the amounts
     const since = idx > 0 ? times[idx - 1] : -Infinity;
     const notes = milestones.filter((m) => m.time > since && m.time <= times[idx]).map((m) =>
-      `<div class="tt-milestone"><span class="swatch" style="background: ${m.color}"></span> ${esc(milestoneText(m, opts.milestoneAccounts))}</div>`).join("");
+      `<div class="tt-milestone"><span class="swatch" style="background: ${m.color}"></span> ${esc(milestoneText(m))}</div>`).join("");
     $("#tooltip").innerHTML = `<div class="tt-date">${esc(fmtDate(dates[idx]))}</div>` + opts.tooltip(idx, rows) + notes;
     placeTooltip(e);
   });
@@ -605,7 +623,7 @@ function renderBlock(h, el) {
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
     drawChart(box, {
       dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") },
-      milestones: milestonesFor(h.accounts.map((a) => a.account_id)), milestoneAccounts: true,
+      milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
     });
@@ -621,7 +639,7 @@ function renderBlock(h, el) {
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
       dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,
-      milestones: milestonesFor(h.accounts.map((a) => a.account_id)), milestoneAccounts: true,
+      milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join("") +
@@ -693,7 +711,7 @@ function drawAccountChart(box, a, h, small) {
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   drawChart(box, {
     dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
-    milestones: milestonesFor(a.ids ?? []), milestoneAccounts: (a.ids ?? []).length > 1,
+    milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,
     axis: (ticks) => axisLabels(ticks, cur),
