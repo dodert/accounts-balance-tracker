@@ -169,6 +169,7 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `DATABASE_URL` | empty | Empty = SQLite in `/data`. PostgreSQL: `postgresql+psycopg://user:pass@host:5432/balances` |
 | `AUTH_USERNAME`, `AUTH_PASSWORD` | empty | Set both to ask for a login; changing the password logs everyone out |
 | `AUTH_TOTP` | `false` | `true` also asks for a one-time code; the first login shows the QR code. Delete `.totp_secret` in `/data` to show a new one |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` | Addresses (or CIDR ranges) of the reverse proxies whose `X-Forwarded-For` / `X-Forwarded-Proto` headers are trusted. The default trusts the local network and Docker networks, so a proxy or `cloudflared` there works as is, and a client coming straight from the internet can't fake its IP. To be stricter, set only your proxy's IP |
 | `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS. See also [SECURITY.md](SECURITY.md).
