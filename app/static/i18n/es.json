@@ -139,6 +139,8 @@
   "register.password2": "Repite la contraseña",
   "register.password_help": "Al menos 10 caracteres. Si la olvidas, solo la clave de recuperación que verás a continuación podrá abrir tus datos.",
   "register.submit": "Crear cuenta",
+  "register.logged_in": "Ya has iniciado sesión en este navegador como",
+  "register.logged_in_note": "Al crear esta cuenta se cerrará esa sesión aquí.",
   "register.error.invitation": "Este enlace de invitación no es válido: ya se ha usado, ha caducado o se ha cancelado. Pide uno nuevo.",
   "register.error.username": "El nombre de usuario debe tener de 3 a 32 letras, números, puntos, guiones o guiones bajos, y empezar por letra o número.",
   "register.error.email": "Ese email no parece correcto.",

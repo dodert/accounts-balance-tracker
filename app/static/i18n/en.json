@@ -139,6 +139,8 @@
   "register.password2": "Repeat the password",
   "register.password_help": "At least 10 characters. If you forget it, only the recovery key shown next can open your data.",
   "register.submit": "Create account",
+  "register.logged_in": "You are already logged in in this browser as",
+  "register.logged_in_note": "Creating this account will log that user out here.",
   "register.error.invitation": "This invitation link is not valid: it has been used, has expired or was cancelled. Ask for a new one.",
   "register.error.username": "The user name must have 3 to 32 letters, digits, dots, dashes or underscores, and start with a letter or digit.",
   "register.error.email": "That email does not look right.",

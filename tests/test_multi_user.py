@@ -149,6 +149,47 @@ def test_invitation_for_one_email(setup, tmp_path):
         assert db.execute("SELECT email FROM users").fetchall() == [("carla@example.com",)]
 
 
+def test_reloading_the_admin_page_does_not_invite_again(setup, tmp_path):
+    app, admin = setup
+    res = admin.post("/admin/invitations", data={"email": "dani@example.com"}, follow_redirects=False)
+    assert res.status_code == 303
+    page = admin.get("/admin").text
+    assert "/invite/" in page
+    # A reload is a GET: no new invitation, and the link is not shown again
+    assert "/invite/" not in admin.get("/admin").text
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        assert db.execute("SELECT count(*) FROM invitations").fetchone() == (1,)
+    assert "login-error" in admin.post("/admin/invitations", data={"email": "not-an-email"}).text
+
+
+def test_a_new_invitation_for_an_email_replaces_the_open_one(setup, tmp_path):
+    app, admin = setup
+    old, new = invite(admin, "eva@example.com"), invite(admin, "eva@example.com")
+    assert TestClient(app).get(f"/invite/{old}").status_code == 404
+    assert TestClient(app).get(f"/invite/{new}").status_code == 200
+    invite(admin)
+    invite(admin)  # invitations for anyone are not replaced
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        assert db.execute("SELECT count(*) FROM invitations").fetchone() == (3,)
+
+
+def test_signing_up_in_a_logged_in_browser_says_it_and_logs_out(setup):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    old_cookie = client.cookies[USER_COOKIE]
+    token = invite(admin)
+    page = client.get(f"/invite/{token}").text
+    assert 'data-i18n="register.logged_in"' in page and "<strong>ana</strong>" in page
+    assert 'data-i18n="register.logged_in"' not in TestClient(app).get(f"/invite/{token}").text
+    client.post(f"/invite/{token}", data={"username": "bea", "email": "bea@example.com", "password": "bea-password",
+                                          "password2": "bea-password"})
+    assert client.get("/api/about").json()["user"] == "bea"
+    # The old session is logged out for good, even if its cookie was kept
+    other = TestClient(app)
+    other.cookies.set(USER_COOKIE, old_cookie)
+    assert other.get("/api/about").status_code == 401
+
+
 def test_sign_up_checks(setup, tmp_path):
     app, admin = setup
     token = invite(admin)
