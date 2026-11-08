@@ -3,7 +3,7 @@ import json
 import re
 import sqlite3
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -682,3 +682,156 @@ def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
             return res.status_code, max(stalls)
     status, longest = asyncio.run(run())
     assert status == 200 and longest < 0.3
+
+
+# --- A new data key on each password change or recovery ---
+
+def data_key_of(app, client) -> bytes:
+    return app.state.users.session(client.cookies[USER_COOKIE]).key
+
+
+def opens(app, user_id: int, key: bytes) -> bool:
+    path = app.state.users.databases.path(user_id)
+    try:
+        crypto.unseal(key, path.read_bytes(), db_aad(user_id))
+        return True
+    except crypto.WrongKey:
+        return False
+
+
+@pytest.mark.parametrize("how", ["password", "recovery"])
+def test_a_new_password_re_encrypts_the_data_with_a_new_key(setup, how):
+    app, admin = setup
+    client, res = sign_up(app, invite(admin))
+    key = recovery_key(res)
+    client.post("/api/accounts", json={"name": "Kept", "type": "bank"})
+    user_id = app.state.users.session(client.cookies[USER_COOKIE]).user_id
+    # A backup (as made before a schema migration) is re-encrypted too
+    path = app.state.users.databases.path(user_id)
+    backup = path.with_name(path.name + ".backup-0005-to-0006-20260101-000000")
+    backup.write_bytes(path.read_bytes())
+    old = data_key_of(app, client)  # e.g. read from a stolen cookie
+
+    if how == "password":
+        client.post("/account/password", data={"current": "ana-password", "password": "new-password-1",
+                                               "password2": "new-password-1"})
+    else:
+        client.post("/recover", data={"username": "ana", "recovery_key": key, "password": "new-password-1",
+                                      "password2": "new-password-1"})
+    new = data_key_of(app, client)
+    assert new != old and opens(app, user_id, new) and not opens(app, user_id, old)
+    assert crypto.unseal(new, backup.read_bytes(), db_aad(user_id))
+    assert [a["name"] for a in client.get("/api/accounts").json()] == ["Kept"]
+    # The recovery key saved at sign-up keeps working, and the data is still there
+    other = TestClient(app)
+    other.post("/recover", data={"username": "ana", "recovery_key": key, "password": "newer-password",
+                                 "password2": "newer-password"})
+    assert [a["name"] for a in other.get("/api/accounts").json()] == ["Kept"]
+
+
+def test_accounts_from_before_data_keys_keep_working_and_move_on_password_change(setup):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    client.post("/api/accounts", json={"name": "Kept", "type": "bank"})
+    users = app.state.users
+    # Turn it into an account of the previous version: no data key apart, the account key encrypts the database
+    from app.users import User, data_key_aad, key_aad
+    with users.Session() as db:
+        user = db.scalar(__import__("sqlalchemy").select(User).where(User.username == "ana"))
+        kek = crypto.password_key("ana-password", user.kdf_salt, json.loads(user.kdf_params))
+        account_key = crypto.unseal(kek, user.key_by_password, key_aad(user.id))
+        data_key = crypto.unseal(account_key, user.key_by_account, data_key_aad(user.id))
+        path = users.databases.path(user.id)
+        plain = crypto.unseal(data_key, path.read_bytes(), db_aad(user.id))
+        path.write_bytes(crypto.seal(account_key, plain, db_aad(user.id)))
+        user.key_by_account = None
+        db.commit()
+        user_id = user.id
+
+    legacy = TestClient(app)
+    legacy.post("/login", data={"username": "ana", "password": "ana-password"})
+    assert [a["name"] for a in legacy.get("/api/accounts").json()] == ["Kept"]
+    legacy.post("/account/password", data={"current": "ana-password", "password": "new-password-1",
+                                           "password2": "new-password-1"})
+    assert users.get_user(user_id).key_by_account is not None
+    assert not opens(app, user_id, account_key)
+    assert [a["name"] for a in legacy.get("/api/accounts").json()] == ["Kept"]
+
+
+def test_a_re_encryption_cut_short_never_loses_the_data(setup):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    client.post("/api/accounts", json={"name": "Kept", "type": "bank"})
+    databases = app.state.users.databases
+    user_id, old = app.state.users.session(client.cookies[USER_COOKIE]).user_id, data_key_of(app, client)
+    new = crypto.new_key()
+    pending = databases.path(user_id).with_name(f"{user_id}.db.enc.rekey")
+
+    # The new key was never saved (users.db failed): the old file stays in use
+    with pytest.raises(RuntimeError):
+        with databases.rekey(user_id, old, new):
+            raise RuntimeError("users.db could not be written")
+    assert pending.exists()
+    assert [a["name"] for a in client.get("/api/accounts").json()] == ["Kept"]
+    assert not pending.exists()
+
+    # The new key was saved but the app stopped before the new file replaced the old one: opening with it finishes
+    pending.write_bytes(crypto.seal(new, crypto.unseal(old, databases.path(user_id).read_bytes(), db_aad(user_id)),
+                                    db_aad(user_id)))
+    with databases.open(user_id, new) as db:
+        assert db.scalar(__import__("sqlalchemy").text("SELECT name FROM accounts")) == "Kept"
+    assert not pending.exists() and opens(app, user_id, new)
+
+
+def test_users_db_from_before_gets_the_new_column_after_a_backup(tmp_path):
+    import sqlite3
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    sign_up(app, invite(admin))
+    with sqlite3.connect(tmp_path / "users.db") as connection:
+        connection.execute("ALTER TABLE users DROP COLUMN key_by_account")
+    connection.close()
+    make_app(tmp_path)  # starts again: adds the column
+    with sqlite3.connect(tmp_path / "users.db") as connection:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(users)")]
+        names = [row[0] for row in connection.execute("SELECT username FROM users")]
+    connection.close()
+    assert "key_by_account" in columns and names == ["ana"]
+    backups = list(tmp_path.glob("users.db.backup-*"))
+    assert len(backups) == 1 and backups[0].stat().st_mode & 0o777 == 0o600
+
+
+# --- Demos anyone can start: limits ---
+
+def test_demos_started_from_one_address_are_limited(setup):
+    import app.main as main
+    app, _ = setup
+    for _ in range(main.DEMOS_PER_IP):
+        assert TestClient(app, client=("203.0.113.5", 1)).post("/api/demo").status_code == 204
+    blocked = TestClient(app, client=("203.0.113.5", 1)).get("/demo", follow_redirects=False)
+    assert blocked.status_code == 429 and int(blocked.headers["Retry-After"]) > 0
+    # The same visitor keeps their demo; other addresses can still start one
+    assert TestClient(app, client=("198.51.100.5", 1)).post("/api/demo").status_code == 204
+
+
+def test_demos_share_the_rates_and_each_visitor_can_ask_for_a_few(tmp_path):
+    import app.main as main
+    from tests.test_fx import FakeRates
+    rates = FakeRates()
+    app = create_app(Settings(data_dir=tmp_path, auth_username=ADMIN["username"], auth_password=ADMIN["password"],
+                              multi_user=True, country_db=False), fx_fetcher=rates)
+    first = TestClient(app, client=("203.0.113.1", 1))
+    first.post("/api/demo")
+    assert first.get("/api/history/converted").status_code == 200
+    asked = len(rates.calls)
+    assert asked > 0
+    # Another visitor's new demo uses the rates already fetched
+    second = TestClient(app, client=("198.51.100.1", 1))
+    second.post("/api/demo")
+    assert second.get("/api/history/converted").status_code == 200
+    assert len(rates.calls) == asked
+    # Past the limit, a visitor's new days are not asked to the service (stored rates are used instead)
+    start = date(2000, 1, 1)
+    for n in range(main.FX_FETCHES_PER_DEMO_IP + 20):
+        assert second.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}").status_code == 200
+    assert len(rates.calls) == asked + main.FX_FETCHES_PER_DEMO_IP

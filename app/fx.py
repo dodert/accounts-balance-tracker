@@ -9,8 +9,11 @@ If the service cannot be reached, the last stored rate for the pair is used, mar
 """
 import json
 import logging
+import threading
+import time
 import urllib.parse
 import urllib.request
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -128,3 +131,38 @@ def rates_for_days(db: Session, fetch: Fetcher, base: str, quote: str, days) -> 
 
 def to_rate(row: FxRate, stale: bool = False) -> Rate:
     return Rate(row.base, row.quote, row.day, Decimal(row.rate), row.rate_date, row.fetched_at, stale)
+
+
+class SharedRates:
+    """Rates fetched once for every demo database (each demo is a new, empty database, so without this every
+    visitor would fetch the same rates again). A past day's rate never changes, so it is kept; today's
+    ("latest") is kept TODAY_SECONDS. At most MAX_ENTRIES, the least recently used go first."""
+
+    TODAY_SECONDS = 600
+    MAX_ENTRIES = 20_000
+
+    def __init__(self, fetch: Fetcher, clock=time.monotonic):
+        self._fetch, self._clock = fetch, clock
+        self._cache: OrderedDict[tuple, tuple[tuple[Decimal, date], float | None]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def fetcher(self, allow: Callable[[], bool] | None = None) -> Fetcher:
+        """A Fetcher that answers from the shared cache, and asks `allow()` before each request to the service:
+        when it says no, the request fails (and the rates already stored are used instead)."""
+        def fetch(base: str, quote: str, day: date | None) -> tuple[Decimal, date]:
+            key = (base, quote, day)
+            with self._lock:
+                entry = self._cache.get(key)
+                if entry is not None and (entry[1] is None or entry[1] > self._clock()):
+                    self._cache.move_to_end(key)
+                    return entry[0]
+            if allow is not None and not allow():
+                raise RuntimeError("too many exchange-rate requests from this visitor")
+            value = self._fetch(base, quote, day)
+            with self._lock:
+                self._cache[key] = (value, None if day is not None else self._clock() + self.TODAY_SECONDS)
+                self._cache.move_to_end(key)
+                while len(self._cache) > self.MAX_ENTRIES:
+                    self._cache.popitem(last=False)
+            return value
+        return fetch
