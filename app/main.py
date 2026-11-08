@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import json
+import math
 from datetime import date
 from urllib.parse import urlsplit
 from decimal import Decimal
@@ -27,13 +28,19 @@ from .schemas import (
     AccountIn, AccountOut, AccountUpdate, BalanceIn, BalanceOut, BalanceUpdate, BulkBalancesIn, BulkBalancesOut,
     CombinedTotal, CsvImportOut, CurrencyTotal, FxRateOut, HistoryOut, MilestoneIn, MilestoneOut,
 )
+from .ratelimit import TooManyTries, TryLimit
 from .totp import Totp
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_CSV_BYTES = 20 * 1024 * 1024
-# Login and one-time code tries waiting their turn at most; more are turned away without being checked
-MAX_WAITING_LOGINS = 10
 WRONG_PASSWORD_DELAY = 1  # seconds
+# Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
+WRONG_PASSWORDS_PER_IP = 10
+WRONG_CODES_PER_IP = 10
+# Wrong one-time codes from all IPs together (only reachable with the right password), so that many
+# IPs can't guess the 6 digits between them
+WRONG_CODES_TOTAL = 30
+LOGIN_WINDOW = 15 * 60
 # Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -504,8 +511,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     def apple_touch_icon():
         return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png", media_type="image/png")
 
-    login_lock = asyncio.Lock()
-    waiting_logins = 0
+    password_tries = TryLimit(WRONG_PASSWORDS_PER_IP, LOGIN_WINDOW)
+    code_tries = TryLimit(WRONG_CODES_PER_IP, LOGIN_WINDOW, allowed_total=WRONG_CODES_TOTAL)
 
     def is_https(request: Request) -> bool:
         return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
@@ -517,29 +524,14 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         response.delete_cookie(PENDING_COOKIE)
         return response
 
-    wrong_codes = 0  # wrong one-time codes in a row, for the whole app
+    def client_ip(request: Request) -> str:
+        # The real client behind a trusted reverse proxy (uvicorn --proxy-headers, FORWARDED_ALLOW_IPS)
+        return request.client.host if request.client else "unknown"
 
-    class Busy(Exception):
-        pass
-
-    @asynccontextmanager
-    async def login_turn():
-        """One password or code check at a time for the whole app, and a wrong one keeps the turn
-        during its delay: parallel requests wait in line, so guessing can't be sped up by sending
-        many at once. Past a few waiting, the rest are turned away without being checked."""
-        nonlocal waiting_logins
-        if waiting_logins >= MAX_WAITING_LOGINS:
-            raise Busy
-        waiting_logins += 1
-        try:
-            async with login_lock:
-                yield
-        finally:
-            waiting_logins -= 1
-
-    def busy() -> Response:
-        return Response("Too many login attempts, try again in a minute", status_code=429,
-                        headers={"Retry-After": "60"})
+    def too_many(error: TooManyTries) -> Response:
+        minutes = math.ceil(error.retry_after / 60)
+        return Response(f"Too many wrong tries, try again in {minutes} minute{'s' if minutes > 1 else ''}",
+                        status_code=429, headers={"Retry-After": str(error.retry_after)})
 
     @app.get("/login", include_in_schema=False)
     def login_page(request: Request):
@@ -551,13 +543,16 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     async def login(request: Request, username: str = Form(""), password: str = Form("")):
         if not auth.enabled:
             return RedirectResponse("/", status_code=303)
+        ip = client_ip(request)
         try:
-            async with login_turn():
+            with password_tries.attempt(ip) as attempt:
                 if not auth.check_credentials(username, password):
+                    attempt.wrong()
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return RedirectResponse("/login?error=1", status_code=303)
-        except Busy:
-            return busy()
+        except TooManyTries as error:
+            return too_many(error)
+        password_tries.reset(ip)
         if not totp:
             return logged_in(request)
         # Password right: now the one-time code (or adding the secret to the app, the first time)
@@ -580,19 +575,18 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     @app.post("/login/totp", include_in_schema=False)
     async def totp_login(request: Request, code: str = Form("")):
-        nonlocal wrong_codes
         if not totp or not auth.valid_pending(request.cookies.get(PENDING_COOKIE)):
             return RedirectResponse("/login", status_code=303)
+        ip = client_ip(request)
         try:
-            async with login_turn():
+            with code_tries.attempt(ip) as attempt:
                 if not totp.verify(code):
-                    # 1 s for the first few, then doubling up to a minute
-                    wrong_codes += 1
-                    await asyncio.sleep(WRONG_PASSWORD_DELAY * min(60, 2 ** max(0, wrong_codes - 5)))
+                    attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return RedirectResponse("/login/totp?error=1", status_code=303)
-        except Busy:
-            return busy()
-        wrong_codes = 0
+        except TooManyTries as error:
+            return too_many(error)
+        code_tries.reset(ip)
         if not totp.confirmed:
             totp.confirm()
         return logged_in(request)

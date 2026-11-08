@@ -169,32 +169,67 @@ def guess_in_parallel(app, path, field_values, extra=None):
     return asyncio.run(run())
 
 
-def test_parallel_password_guesses_wait_in_line(tmp_path, monkeypatch):
-    import time
+def test_parallel_password_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
     wrong = [({"username": "admin", "password": f"guess{i}"}, f"guess{i}") for i in range(14)]
-    start = time.monotonic()
     results = guess_in_parallel(app, "/login", wrong + [({"username": "admin", "password": "s3cret"}, "s3cret")])
-    # Only the first ones waiting are checked, one after the other with the delay; the rest are turned away
+    # While one try is being checked (and waits its delay), the others from the same IP are turned away
     checked = [r for r in results if r[1] == 303]
-    assert len(checked) == main.MAX_WAITING_LOGINS
-    assert time.monotonic() - start >= main.MAX_WAITING_LOGINS * 0.05
-    assert all(r[2] == "/login?error=1" for r in checked)
-    # The right password came after the queue was full: turned away without being checked, not logged in
+    assert len(checked) == 1 and checked[0][2] == "/login?error=1"
     assert dict((r[0], r[1]) for r in results)["s3cret"] == 429
 
 
-def test_parallel_code_guesses_wait_in_line(tmp_path, monkeypatch):
+def test_too_many_wrong_passwords_lock_out_that_ip_only(tmp_path, monkeypatch):
     import app.main as main
-    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.01)
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
+    app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
+    attacker = TestClient(app, client=("203.0.113.7", 50000))
+    for i in range(main.WRONG_PASSWORDS_PER_IP):
+        bad = attacker.post("/login", data={"username": "admin", "password": f"guess{i}"}, follow_redirects=False)
+        assert bad.headers["location"] == "/login?error=1"
+    # Now even the right password is not checked from that IP
+    blocked = attacker.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
+    assert blocked.status_code == 429 and "abt_session" not in blocked.cookies
+    assert 0 < int(blocked.headers["Retry-After"]) <= main.LOGIN_WINDOW
+    # Everyone else can still log in
+    owner = TestClient(app, client=("198.51.100.2", 50000))
+    ok = owner.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
+    assert ok.headers["location"] == "/" and "abt_session" in ok.cookies
+
+
+def test_a_right_password_forgets_the_wrong_ones_of_that_ip(tmp_path, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
+    client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
+    for _ in range(2):
+        for i in range(main.WRONG_PASSWORDS_PER_IP - 1):
+            client.post("/login", data={"username": "admin", "password": f"typo{i}"})
+        ok = client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
+        assert ok.headers["location"] == "/"
+
+
+def test_parallel_code_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     client = totp_client(tmp_path)
     client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
     pending = {"abt_pending": client.cookies["abt_pending"]}
     guesses = [({"code": f"{i:06d}"}, i) for i in range(20)]
     results = guess_in_parallel(client.app, "/login/totp", guesses, pending)
-    assert sum(r[1] == 429 for r in results) == 20 - main.MAX_WAITING_LOGINS
+    assert sum(r[1] == 429 for r in results) == 19
+
+
+def test_too_many_wrong_codes_lock_out_that_ip(tmp_path, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
+    client = totp_client(tmp_path)
+    client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
+    for i in range(main.WRONG_CODES_PER_IP):
+        client.post("/login/totp", data={"code": f"{i:06d}"}, follow_redirects=False)
+    blocked = client.post("/login/totp", data={"code": current_code(tmp_path)}, follow_redirects=False)
+    assert blocked.status_code == 429 and "abt_session" not in blocked.cookies
 
 
 def test_security_headers(tmp_path):

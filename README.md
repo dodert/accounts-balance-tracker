@@ -172,7 +172,9 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `FORWARDED_ALLOW_IPS` | `127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` | Addresses (or CIDR ranges) of the reverse proxies whose `X-Forwarded-For` / `X-Forwarded-Proto` headers are trusted. The default trusts the local network and Docker networks, so a proxy or `cloudflared` there works as is, and a client coming straight from the internet can't fake its IP. To be stricter, set only your proxy's IP |
 | `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
 
-The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS. See also [SECURITY.md](SECURITY.md).
+The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
+
+**Wrong logins**: after 10 wrong passwords, or 10 wrong one-time codes, from one IP in 15 minutes, that IP has to wait (`429`) until the oldest one is 15 minutes old; other IPs can still log in. A right password clears the count of its IP. Behind a reverse proxy the limit uses the real client IP only if the proxy's `X-Forwarded-For` is trusted; otherwise every visitor shares the proxy's IP and its limit. See also [SECURITY.md](SECURITY.md).
 
 ## Backups and updates
 
