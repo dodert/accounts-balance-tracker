@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ASSET_VERSION}}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
+</head>
+<body class="login-page">
+  <form method="post" action="/invite/{{TOKEN}}" class="login-box">
+    <h1 data-i18n="header.title">💰 My balances</h1>
+    <p class="totp-help" data-i18n="register.help">You have been invited. Choose a user name and a password: your data is encrypted with it.</p>
+    {{ERROR}}
+    <label><span data-i18n="register.username">User name</span> <input name="username" value="{{USERNAME}}" autocomplete="username" autocapitalize="none" required minlength="3" maxlength="32" autofocus></label>
+    <label><span data-i18n="register.email">Email</span> <input name="email" type="email" value="{{EMAIL}}" autocomplete="email" required {{EMAIL_READONLY}}></label>
+    <label><span data-i18n="login.password">Password</span> <input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    <label><span data-i18n="register.password2">Repeat the password</span> <input name="password2" type="password" autocomplete="new-password" required minlength="10"></label>
+    <p class="totp-help" data-i18n="register.password_help">At least 10 characters. If you forget it, only the recovery key shown next can open your data.</p>
+    <button type="submit" class="primary" data-i18n="register.submit">Create account</button>
+  </form>
+  <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
+  <script src="/static/pages.js?v={{ASSET_VERSION}}"></script>
+</body>
+</html>

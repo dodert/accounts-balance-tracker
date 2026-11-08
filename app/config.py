@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     auth_password: str = ""
     # Also ask for a one-time code from an authenticator app (needs the user and password above)
     auth_totp: bool = False
+    # Several users, each with their own encrypted database (registration by invitation). The user and
+    # password above are then the admin's, and the one-time code is always asked to the admin
+    multi_user: bool = False
 
-    @field_validator("auth_totp", mode="before")
+    @field_validator("auth_totp", "multi_user", mode="before")
     @classmethod
     def _empty_is_false(cls, value):
         # An empty field in the Unraid template or docker-compose means "off"

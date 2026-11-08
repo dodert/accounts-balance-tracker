@@ -200,6 +200,12 @@ footer a { color: inherit; }
 .totp-qr { background: #fff; border-radius: 8px; padding: .5rem; width: 200px; margin: 0 auto .6rem; }
 .totp-qr svg { display: block; width: 100%; height: auto; }
 .totp-secret { display: block; text-align: center; font-size: .95rem; letter-spacing: .05em; margin-bottom: 1rem; user-select: all; overflow-wrap: anywhere; }
+#account-link { color: var(--muted); text-decoration: none; font-size: .9rem; }
+.admin-box { width: min(100%, 40rem); }
+.admin-box h2 { font-size: 1rem; margin: 1.2rem 0 .5rem; }
+.admin-box table { width: 100%; border-collapse: collapse; font-size: .85rem; margin-bottom: 1rem; }
+.admin-box th, .admin-box td { text-align: left; padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+.login-ok { color: var(--muted); font-size: .85rem; margin: 0 0 .4rem; }
 .totp-back { text-align: center; margin-top: .8rem; font-size: .85rem; color: var(--muted); }
 
 @media (max-width: 600px) {
