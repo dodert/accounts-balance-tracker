@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DATA_DIR=/data \
-    PORT=8000 \
+    PORT=80 \
     PUID=99 \
     PGID=100 \
     UMASK=022 \
@@ -34,9 +34,9 @@ LABEL org.opencontainers.image.title="Accounts Balance Tracker" \
       org.opencontainers.image.version="${VERSION}"
 
 VOLUME /data
-EXPOSE 8000
+EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/api/health', timeout=4)"
+  CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"80\")}/api/health', timeout=4)"
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["sh", "-c", "exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port \"$PORT\" --proxy-headers"]

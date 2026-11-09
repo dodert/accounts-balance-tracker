@@ -13,9 +13,9 @@
   <Icon>https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.png</Icon>
   <DonateLink>https://ko-fi.com/dodert</DonateLink>
   <DonateText>Support development on Ko-fi</DonateText>
-  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.xml</TemplateURL>
-  <Config Name="WebUI port" Target="8000" Default="8000" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="WebUI port" Target="80" Default="8085" Mode="tcp" Description="Port of the web interface on the server (bridge network). Upgrading from 0.21 or older: the container port is now 80 (it was 8000)" Type="Port" Display="always" Required="true" Mask="false">8085</Config>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/accounts-balance-tracker" Mode="rw" Description="Database" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/accounts-balance-tracker</Config>
   <Config Name="Default currency" Target="DEFAULT_CURRENCY" Default="EUR" Mode="" Description="Currency for new accounts and for the total of all currencies (ISO 4217 code: EUR, USD, GBP...)" Type="Variable" Display="always" Required="false" Mask="false">EUR</Config>
   <Config Name="Exchange-rate service" Target="FX_URL" Default="https://api.frankfurter.app" Mode="" Description="Exchange-rate service (Frankfurter API or a self-hosted copy of it). Only currencies and dates are sent, never amounts" Type="Variable" Display="always" Required="false" Mask="false">https://api.frankfurter.app</Config>

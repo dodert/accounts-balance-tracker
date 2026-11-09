@@ -42,7 +42,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
 1. Go to the **Apps** tab and search for **Accounts Balance Tracker**.
 2. Click it and then **Install**.
 3. Fill in **Login user** and **Login password** (recommended: the app holds financial data) and click **Apply**.
-4. Open `http://<your-unraid-ip>:8000`, or click the app's icon in the Docker tab → **WebUI**.
+4. Open `http://<your-unraid-ip>:8085`, or click the app's icon in the Docker tab → **WebUI**.
 
 Your data is kept in `/mnt/user/appdata/accounts-balance-tracker`. To update, use **Check for updates** in the Docker tab.
 
@@ -86,7 +86,7 @@ You only need Docker. The steps are the same on every system: make a folder, dow
    ```powershell
    docker compose up -d
    ```
-5. Open <http://localhost:8000> in your browser.
+5. Open <http://localhost:8085> in your browser.
 
 The data is in `C:\Users\<you>\accounts-balance-tracker\data`.
 
@@ -104,7 +104,7 @@ The data is in `C:\Users\<you>\accounts-balance-tracker\data`.
    ```bash
    docker compose up -d
    ```
-5. Open <http://localhost:8000> in your browser.
+5. Open <http://localhost:8085> in your browser.
 
 The data is in `~/accounts-balance-tracker/data`.
 
@@ -124,7 +124,7 @@ The data is in `~/accounts-balance-tracker/data`.
    docker compose up -d
    ```
    If you get *permission denied*, put `sudo` in front, or add yourself to the `docker` group ([post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/)).
-4. Open <http://localhost:8000>, or `http://<that-machine's-ip>:8000` from another device.
+4. Open <http://localhost:8085>, or `http://<that-machine's-ip>:8085` from another device.
 
 The data is in `~/accounts-balance-tracker/data`.
 
@@ -132,7 +132,7 @@ The data is in `~/accounts-balance-tracker/data`.
 <summary>Without Compose: a single <code>docker run</code></summary>
 
 ```bash
-docker run -d --name accounts-balance-tracker --restart unless-stopped -p 8000:8000 \
+docker run -d --name accounts-balance-tracker --restart unless-stopped -p 8085:80 \
   -v "$PWD/data:/data" -e PUID=$(id -u) -e PGID=$(id -g) \
   -e AUTH_USERNAME=me -e AUTH_PASSWORD=change-me \
   ghcr.io/dodert/accounts-balance-tracker:latest
@@ -151,7 +151,7 @@ Run these in the folder with `docker-compose.yml` (PowerShell on Windows, Termin
 | See its logs | `docker compose logs -f` (`Ctrl+C` to leave) |
 | Uninstall | `docker compose down`, then delete the folder (**this deletes your data**: export it first with **Import / export → Export everything (JSON)**) |
 
-To use another port, change the left number in `"8000:8000"` (e.g. `"8080:8000"`) and open that port instead.
+To use another port, change the left number in `"8085:80"` (e.g. `"8080:80"`) and open that port instead. The app listens on port 80 inside the container (`PORT`); with `network_mode: host` set `PORT` to a free port (e.g. `8085`), since the host's port 80 is usually taken.
 
 ## First steps
 
@@ -177,7 +177,7 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
 | `FX_DAILY_LIMIT` | `30` | Multi-user only: most requests a day to the exchange-rate service, for all users together (then the stored rates are used) |
 | `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
-| `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
+| `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `80` | `PORT` is the port inside the container; change it only with host networking |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
 
@@ -204,6 +204,8 @@ With `MULTI_USER=true`, one instance serves several people, each with their own 
 ## Backups and updates
 
 The database schema is migrated automatically on start, keeping all the data.
+
+**Updating from 0.21 or older**: the app now listens on port **80** inside the container (it was 8000). After updating, change the container side of the port mapping, or the web page will not open: in Unraid, edit the container and set the *WebUI port*'s **Container Port** to `80` (the host port can stay as it was); with Compose, change `"8000:8000"` to `"8000:80"` (or `"8085:80"`); with `docker run`, `-p 8000:80`.
 
 **Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. Exporting now and then with **Import / export → Export everything (JSON)** is also a good copy of everything (accounts with all their details, balances and milestones); the CSV export only has the balances.
 
