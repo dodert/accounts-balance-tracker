@@ -8,7 +8,7 @@ connection = config.attributes["connection"]
 context.configure(
     connection=connection,
     target_metadata=Base.metadata,
-    render_as_batch=connection.dialect.name == "sqlite",
+    render_as_batch=True,  # SQLite changes a table by rebuilding it
 )
 with context.begin_transaction():
     context.run_migrations()

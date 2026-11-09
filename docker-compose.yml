@@ -12,8 +12,6 @@ services:
       - TZ=Europe/Madrid
       # Currency for new accounts
       - DEFAULT_CURRENCY=EUR
-      # Optional: use PostgreSQL instead of SQLite
-      # - DATABASE_URL=postgresql+psycopg://balances:balances@postgres:5432/balances
       # Login: set both to turn it on (recommended: this app holds financial data)
       - AUTH_USERNAME=
       - AUTH_PASSWORD=

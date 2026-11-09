@@ -8,10 +8,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     data_dir: Path = Path("/data")
-    # Empty -> SQLite file in data_dir. Example Postgres:
-    # postgresql+psycopg://user:pass@host:5432/balances
-    database_url: str = ""
-
     # Currency for new accounts (ISO 4217 code); totals in several currencies are added up in it
     default_currency: str = "EUR"
     # Exchange rates (European Central Bank, through the Frankfurter API)
@@ -60,8 +56,7 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
-        if self.database_url:
-            return self.database_url
+        """The database: a SQLite file in data_dir."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         return f"sqlite:///{self.data_dir / 'balances.db'}"
 

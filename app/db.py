@@ -7,19 +7,15 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str):
-    is_sqlite = url.startswith("sqlite")
-    engine = create_engine(
-        url,
-        connect_args={"check_same_thread": False} if is_sqlite else {},
-        pool_pre_ping=not is_sqlite,
-    )
-    if is_sqlite:
-        @event.listens_for(engine, "connect")
-        def _sqlite_pragmas(dbapi_conn, _):
-            cur = dbapi_conn.cursor()
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA journal_mode=WAL")
-            cur.close()
+    """A SQLite engine (the only database the app uses), with foreign keys on and WAL."""
+    engine = create_engine(url, connect_args={"check_same_thread": False})
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.close()
     return engine
 
 
