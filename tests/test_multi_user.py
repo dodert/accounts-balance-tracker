@@ -877,7 +877,7 @@ def test_demos_never_ask_the_rate_service(tmp_path):
     assert rates.calls == []
 
 
-def test_todays_rate_is_asked_again_at_most_hourly_until_the_days_own_rate(tmp_path):
+def test_todays_rate_is_asked_again_every_3_hours_until_the_days_own_rate(tmp_path):
     from app.fx import SharedRates
     from tests.test_fx import FakeRates
     now = [1_000_000.0]
@@ -890,7 +890,10 @@ def test_todays_rate_is_asked_again_at_most_hourly_until_the_days_own_rate(tmp_p
     fetch = store.fetcher()
     fetch("USD", "EUR", None)
     fetch("USD", "EUR", None)
-    assert len(rates.calls) == 1  # yesterday's rate, asked less than an hour ago
+    assert len(rates.calls) == 1  # yesterday's rate, asked less than 3 hours ago
+    now[0] += 2 * 3600
+    fetch("USD", "EUR", None)
+    assert len(rates.calls) == 1
     now[0] += 3601
     rates_by_day["date"] = today  # the ECB has published today's
     fetch("USD", "EUR", None)

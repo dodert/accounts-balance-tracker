@@ -5,7 +5,8 @@ days; the ECB publishes them once per working day, around 16:00 CET). They are k
 pair and day: the `fx_rates` table of the database (single user), or the shared DATA_DIR/rates.db
 (multi-user, see SharedRates):
 - a past day never changes, so it is fetched once;
-- today's rate is fetched the first time it is needed each day, and again only when asked (refresh).
+- today's rate is fetched the first time it is needed each day, again when it is more than 3 hours old (until the
+  ECB has published the day's own rate), and when asked (refresh).
 Every conversion of the app (the combined total and the chart of every currency in the default one) uses
 today's rate. If the service cannot be reached, the last stored rate is used, marked as stale.
 Only currencies and dates are ever sent, never amounts.
@@ -29,6 +30,9 @@ from sqlalchemy.orm import Session
 from .models import FxRate
 
 log = logging.getLogger(__name__)
+
+# Today's rate is asked again when the stored one is older than this (until the ECB publishes the day's own rate)
+REFRESH = timedelta(hours=3)
 
 # (base, quote, day or None for the latest) -> (rate, the day the rate is from)
 Fetcher = Callable[[str, str, date | None], tuple[Decimal, date]]
@@ -133,9 +137,16 @@ def get_rate(store, fetch: Fetcher, base: str, quote: str, day: date | None = No
     return rate
 
 
-def is_fresh(row: Rate | None, today: date) -> bool:
-    """A stored rate needs no new request: a past day never changes, today's is fetched once a day."""
-    return row is not None and (row.day < today or row.fetched_at.date() == today)
+def is_fresh(row: Rate | None, today: date, now: datetime | None = None) -> bool:
+    """A stored rate needs no new request: a past day never changes. Today's is asked again when it is more than
+    REFRESH old (without pressing the refresh button), unless it is already the day's own rate, which the ECB
+    publishes once (around 16:00 CET) and never changes."""
+    if row is None:
+        return False
+    if row.day < today:
+        return True
+    now = now or datetime.now()
+    return row.fetched_at.date() == today and (row.rate_date >= today or now - row.fetched_at < REFRESH)
 
 
 def to_rate(row: FxRate, stale: bool = False) -> Rate:
@@ -151,7 +162,7 @@ class SharedRates:
     are used. A past day never changes. Today's rate is asked again at most once every LATEST_SECONDS, and not
     at all once the day's own rate (published by the ECB around 16:00 CET) is stored."""
 
-    LATEST_SECONDS = 3600
+    LATEST_SECONDS = REFRESH.total_seconds()
 
     def __init__(self, path: Path, fetch: Fetcher, daily_limit: int, clock=time.time, today=date.today):
         self._fetch, self.daily_limit, self._clock, self._today = fetch, daily_limit, clock, today

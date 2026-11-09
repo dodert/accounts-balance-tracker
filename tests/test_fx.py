@@ -46,6 +46,23 @@ def test_combined_total_fetches_once_a_day(fx):
     assert refreshed["total"] == 1475 and len(rates.calls) == 2
 
 
+def test_todays_rate_is_asked_again_after_3_hours(fx, tmp_path):
+    import sqlite3
+    from datetime import datetime
+    client, rates = fx
+    client.get("/api/summary/combined")
+    client.get("/api/summary/combined")
+    assert len(rates.calls) == 1
+    with sqlite3.connect(tmp_path / "balances.db") as db:  # stored 2 hours ago: still used
+        db.execute("UPDATE fx_rates SET fetched_at = ?", ((datetime.now() - timedelta(hours=2)).isoformat(" "),))
+    client.get("/api/summary/combined")
+    assert len(rates.calls) == 1
+    with sqlite3.connect(tmp_path / "balances.db") as db:  # 3 hours ago: asked again on the next visit
+        db.execute("UPDATE fx_rates SET fetched_at = ?", ((datetime.now() - timedelta(hours=3, minutes=1)).isoformat(" "),))
+    client.get("/api/summary/combined")
+    assert len(rates.calls) == 2
+
+
 def test_rate_for_a_past_day_is_stored_for_good(fx):
     client, rates = fx
     day = "2025-06-02"
