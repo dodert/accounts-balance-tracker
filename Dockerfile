@@ -39,4 +39,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"80\")}/api/health', timeout=4)"
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["sh", "-c", "exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port \"$PORT\" --proxy-headers"]
+# One process only (--workers 1, whatever WEB_CONCURRENCY says): the login limits, the demos, the per-user
+# database locks live in this process's memory; more processes would each have their own
+CMD ["sh", "-c", "exec uvicorn app.main:create_app --factory --host 0.0.0.0 --port \"$PORT\" --proxy-headers --workers 1"]

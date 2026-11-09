@@ -4,14 +4,19 @@
 The secret is created on first use and kept in DATA_DIR/.totp_secret. Until a first code has been
 entered the app shows it (as a QR code and as text) after the password, so it can be added to the
 app; after that only the code is asked. Deleting the file shows a new secret at the next login.
+
+The file also keeps the step of the last code accepted, so a code is accepted only once, also after a
+restart: a code seen over someone's shoulder can't be used again within its 90 seconds.
 """
 import base64
 import hashlib
 import hmac
 import io
 import json
+import os
 import secrets
 import struct
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -35,7 +40,7 @@ def code_at(secret: str, counter: int) -> str:
 class Totp:
     def __init__(self, data_dir: Path):
         self.path = data_dir / ".totp_secret"
-        self._last_counter = -1  # a code is accepted once, so a code seen over a shoulder can't be replayed
+        self._lock = threading.Lock()  # two codes checked at once can't both take the same step
         self._load()  # creates the secret on first start
 
     def _load(self) -> dict:
@@ -50,9 +55,17 @@ class Totp:
         return data
 
     def _save(self, data: dict) -> None:
+        """Written to a new file (0600 from the start) that then replaces the old one: a stop half way through
+        never leaves a damaged file, which would stop the app."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data))
-        self.path.chmod(0o600)
+        new = self.path.with_name(self.path.name + ".new")
+        descriptor = os.open(new, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w") as file:
+            file.write(json.dumps(data))
+            file.flush()
+            os.fsync(file.fileno())
+        os.chmod(new, 0o600)
+        os.replace(new, self.path)
 
     @property
     def confirmed(self) -> bool:
@@ -68,14 +81,18 @@ class Totp:
         if not (code.isdigit() and len(code) == DIGITS):
             return False
         current = int((now if now is not None else time.time()) // STEP)
-        for counter in (current - 1, current, current + 1):
-            if counter > self._last_counter and hmac.compare_digest(code, code_at(self.secret, counter)):
-                self._last_counter = counter
-                return True
+        with self._lock:
+            data = self._load()
+            last = data.get("last_counter", -1)  # a code is accepted once, also after a restart
+            for counter in (current - 1, current, current + 1):
+                if counter > last and hmac.compare_digest(code, code_at(data["secret"], counter)):
+                    self._save({**data, "last_counter": counter})
+                    return True
         return False
 
     def confirm(self) -> None:
-        self._save({"secret": self.secret, "confirmed": True})
+        with self._lock:
+            self._save({**self._load(), "confirmed": True})
 
     def uri(self, account: str) -> str:
         label = quote(f"{ISSUER}:{account}", safe=":")
