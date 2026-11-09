@@ -15,13 +15,10 @@ INDEX = "uq_account_name_institution"
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name == "sqlite":
-        # SQLite: the unique constraint on name has no name; give it one so the table can be rebuilt without it
-        with op.batch_alter_table("accounts", recreate="always",
-                                  naming_convention={"uq": "uq_%(table_name)s_%(column_0_name)s"}) as batch:
-            batch.drop_constraint("uq_accounts_name", type_="unique")
-    else:
-        op.drop_constraint("accounts_name_key", "accounts", type_="unique")
+    # SQLite: the unique constraint on name has no name; give it one so the table can be rebuilt without it
+    with op.batch_alter_table("accounts", recreate="always",
+                              naming_convention={"uq": "uq_%(table_name)s_%(column_0_name)s"}) as batch:
+        batch.drop_constraint("uq_accounts_name", type_="unique")
     # One account per name and institution (no institution counts as one more)
     op.create_index(INDEX, "accounts", ["name", sa.text("coalesce(institution, '')")], unique=True)
 
