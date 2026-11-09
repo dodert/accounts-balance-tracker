@@ -3,3 +3,6 @@
 
 # Tests: a one-line description for every test (#87)
 a54d05f38c385c88fccc3c432ca171aca65da159
+
+# Lint: ruff's mechanical fixes (#100)
+50092d6330cbd0dffb238e04721a5c7ed380cdbb
