@@ -1,0 +1,82 @@
+{#- The admin's page (multi-user mode). Autoescaped: every value from the database is escaped here.
+    The texts are English, replaced by the page's language in the browser (data-i18n). -#}
+{%- macro tr(key, tag="span", css="") -%}
+<{{ tag }}{% if css %} class="{{ css }}"{% endif %} data-i18n="{{ key }}">{{ en[key] }}</{{ tag }}>
+{%- endmacro -%}
+{%- macro message(key, css="login-error") -%}
+<p class="{{ css }}" data-i18n="{{ key }}">{{ en[key] }}</p>
+{%- endmacro -%}
+{%- macro action(path, key, css="", confirm="") -%}
+<form method="post" action="{{ path }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}><button type="submit"{% if css %} class="{{ css }}"{% endif %} data-i18n="{{ key }}">{{ en[key] }}</button></form>
+{%- endmacro -%}
+{%- macro head(headers) -%}
+<thead><tr>{% for h in headers %}<th>{% if h %}{{ tr(h) }}{% endif %}</th>{% endfor %}</tr></thead>
+{%- endmacro -%}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="asset-version" content="{{ asset_version }}">
+  <title>Accounts Balance Tracker</title>
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="theme-color" content="#0a66c2">
+  <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body class="login-page">
+  <div class="login-box admin-box">
+    <h1 data-i18n="admin.title">Administration</h1>
+    <h2 data-i18n="admin.users">Users</h2>
+    <p class="totp-help">{{ tr("admin.user_count") }}: <strong>{{ users|length }}{% if max_users %} / {{ max_users }}{% endif %}</strong> · {{ tr("admin.total_size") }}: <strong>{{ total_size }}</strong></p>
+    {% if users %}
+    <div class="table-scroll"><table>{{ head(["admin.user", "admin.email", "admin.created", "admin.last_login", "admin.size", "admin.expires", "admin.status", ""]) }}<tbody>
+    {%- for u in users %}
+      <tr><td>{{ u.username }}</td><td>{{ u.email }}</td><td>{{ u.created }}</td><td>{{ u.last_login }}<br><small>{{ u.where }}</small></td><td>{{ u.size }}</td>
+        <td>{% if u.never_expires %}{{ tr("admin.never") }}{% else %}{{ u.expires }}{% if u.days_left is not none %}<br><small>{{ u.days_left }} d</small>{% endif %}{% endif %}<form method="post" action="/admin/users/{{ u.id }}/extend" class="extend"><input name="days" type="number" min="1" max="3650" value="{{ default_days }}" aria-label="days"><button type="submit" data-i18n="admin.extend">{{ en["admin.extend"] }}</button></form>
+          {%- if not u.never_expires %}{{ action("/admin/users/%d/no-expiry"|format(u.id), "admin.no_expiry") }}{% endif %}</td>
+        <td>{% if u.expired %}{{ tr("admin.status_expired", css="status-blocked") }}{% elif u.blocked %}{{ tr("admin.status_blocked", css="status-blocked") }}{% else %}{{ tr("admin.status_active") }}{% endif %}</td>
+        <td><div class="row-actions">
+          {%- if u.blocked %}{{ action("/admin/users/%d/unblock"|format(u.id), "admin.unblock") }}{% else %}{{ action("/admin/users/%d/block"|format(u.id), "admin.block") }}{% endif -%}
+          {{ action("/admin/users/%d/delete"|format(u.id), "admin.delete", "danger", "admin.confirm_delete") -}}
+          {{ action("/admin/users/%d/delete?block_email=1"|format(u.id), "admin.delete_block", "danger", "admin.confirm_delete_block") -}}
+        </div></td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+    {% else %}{{ message("admin.no_users", "totp-help") }}{% endif %}
+    <h2 data-i18n="admin.invitations">Invitations</h2>
+    {% if new_link %}{{ message("admin.new_link", "totp-help") }}<code class="totp-secret">{{ new_link }}</code>{% endif %}
+    {% if error %}{{ message(error) }}{% endif %}
+    <form method="post" action="/admin/invitations">
+      <label><span data-i18n="admin.invite_email">Email (optional: only this email can use the link)</span> <input name="email" type="email"></label>
+      <button type="submit" class="primary" data-i18n="admin.invite">Create invitation link</button>
+    </form>
+    <h3 data-i18n="admin.open_invitations">Open invitations</h3>
+    {% if invitations %}
+    <div class="table-scroll"><table>{{ head(["admin.email", "admin.expires", ""]) }}<tbody>
+    {%- for i in invitations %}
+      <tr><td>{% if i.email %}{{ i.email }}{% else %}{{ tr("admin.anyone", "em") }}{% endif %}</td><td>{{ i.expires }}</td><td>{{ action("/admin/invitations/%d/cancel"|format(i.id), "admin.cancel") }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+    {% else %}{{ message("admin.no_invitations", "totp-help") }}{% endif %}
+    <h2 data-i18n="admin.blocked_emails">Blocked emails</h2>
+    <p class="totp-help" data-i18n="admin.blocked_help">These emails can't create an account, even with an invitation.</p>
+    {% if blocked %}
+    <div class="table-scroll"><table>{{ head(["admin.email", "admin.created", ""]) }}<tbody>
+    {%- for b in blocked %}
+      <tr><td>{{ b.email }}</td><td>{{ b.created }}</td><td>{{ action("/admin/blocked-emails/unblock?email=" ~ (b.email|urlencode), "admin.unblock") }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+    {% else %}{{ message("admin.no_blocked", "totp-help") }}{% endif %}
+    <form method="post" action="/admin/blocked-emails">
+      <label><span data-i18n="admin.email">Email</span> <input name="email" type="email" required></label>
+      <button type="submit" data-i18n="admin.block_email">Block email</button>
+    </form>
+    <form method="post" action="/logout"><button type="submit" data-i18n="header.logout">Log out</button></form>
+    <p class="attribution"><a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a></p>
+  </div>
+  <script src="/static/i18n.js?v={{ asset_version }}"></script>
+  <script src="/static/pages.js?v={{ asset_version }}"></script>
+</body>
+</html>
