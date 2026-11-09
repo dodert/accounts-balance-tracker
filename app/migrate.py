@@ -11,7 +11,8 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"  # each user's data (balances.db, users/<id>.db.enc)
+USERS_MIGRATIONS_DIR = Path(__file__).parent / "migrations_users"  # users.db (multi-user mode)
 log = logging.getLogger(__name__)
 PRIVATE = 0o600  # balances are private: only the app's user can read the database and its backups
 
@@ -85,8 +86,14 @@ def _backup_sqlite(engine: Engine, label: str) -> Path | None:
     return target
 
 
-def upgrade_database(engine: Engine) -> None:
-    """Bring the schema to the latest revision (runs on every start).
+def alembic_config(migrations: Path = MIGRATIONS_DIR) -> Config:
+    config = Config()
+    config.set_main_option("script_location", str(migrations))
+    return config
+
+
+def upgrade_database(engine: Engine, migrations: Path = MIGRATIONS_DIR) -> None:
+    """Bring the schema to the latest revision of the `migrations` tree (runs on every start).
 
     Before migrating an existing database, a SQLite one is backed up next to it (see backup_sqlite).
     A SQLite database and its backups are kept private (0600, see restrict_permissions).
@@ -100,8 +107,7 @@ def upgrade_database(engine: Engine) -> None:
         if database.parent.is_dir():
             _create_private(database)
         restrict_permissions(database)
-    config = Config()
-    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    config = alembic_config(migrations)
     scripts = ScriptDirectory.from_config(config)
     head = scripts.get_current_head()
     with engine.connect() as connection:
@@ -112,7 +118,7 @@ def upgrade_database(engine: Engine) -> None:
             raise RuntimeError(
                 f"The database is from a newer version of the app (schema {current}; this version knows up to {head}). "
                 "Run that newer version (or a later one), or restore a backup made before it migrated "
-                "(balances.db.backup-* in the data folder). The database was not changed.")
+                f"({database.name if database else 'the database'}.backup-* in the data folder). The database was not changed.")
         if current is not None and current != head:
             backup = backup_sqlite(engine, current, head)
             if backup:
@@ -124,7 +130,7 @@ def upgrade_database(engine: Engine) -> None:
                 config.attributes["connection"] = connection
                 command.upgrade(config, "head")
                 if connection.execute(text("PRAGMA foreign_key_check")).first():
-                    raise RuntimeError("Migration left balances without an account; nothing was changed")
+                    raise RuntimeError("Migration left rows pointing to nothing (e.g. balances without an account); nothing was changed")
         finally:
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.commit()
