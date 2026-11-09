@@ -172,3 +172,12 @@ def test_change_the_language(page):
     page.select_option("#lang-select", "es")
     page.click("#settings-form button[type=submit]")
     page.locator("#update-btn", has_text="Actualizar").wait_for()
+
+
+def test_the_page_sends_its_local_date(page):
+    """Each API call carries the browser's own date, which the server uses as "today"."""
+    with page.expect_request(lambda r: "/api/" in r.url) as first:
+        open_app(page)
+    local = page.evaluate("(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1)"
+                          ".padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })()")
+    assert first.value.headers.get("x-local-date") == local

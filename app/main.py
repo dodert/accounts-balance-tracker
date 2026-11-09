@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy.exc import OperationalError
 
 from . import __version__, middleware
+from .clock import LocalDateMiddleware
 from .auth import Auth
 from .config import Settings, settings as default_settings
 from .db import make_engine, make_sessionmaker
@@ -109,6 +110,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         raise error
 
     middleware.install(app, ctx)
+    app.add_middleware(LocalDateMiddleware)  # outermost: "today" is the browser's date (clock.py)
     for area in (info, demo_routes, accounts, balances, milestones, rates, transfer, login, admin):
         app.include_router(area.router(ctx))
 

@@ -177,7 +177,8 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
 | `FX_DAILY_LIMIT` | `30` | Multi-user only: most requests a day to the exchange-rate service, for all users together (then the stored rates are used) |
 | `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
-| `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `80` | `PORT` is the port inside the container; change it only with host networking |
+| `TZ` | `Etc/UTC` | The server's time zone (e.g. `Europe/Madrid`): the date of backups and logs, and "today" for a client that doesn't send its own date. The page sends the browser's date with each call, so for what you see (which accounts are available today, today's exchange rate) "today" is your own day, whatever this says |
+| `PUID`, `PGID`, `PORT` | `99`, `100`, `80` | `PORT` is the port inside the container; change it only with host networking |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
 

@@ -1,5 +1,5 @@
 // The charts: total, one small chart per account, percent view and the maximized dialog.
-import { api } from "./api.js";
+import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
 import { axisLabels, changeCell, compactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
@@ -34,7 +34,7 @@ export function sinceDate() {
   if (months === "all") return null;
   const d = new Date();
   d.setMonth(d.getMonth() - Number(months));
-  return d.toISOString().slice(0, 10);
+  return localDate(d); // local, like today(): toISOString() would give the UTC date
 }
 
 export async function loadHistory() {
