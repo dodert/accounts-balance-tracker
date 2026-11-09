@@ -89,11 +89,13 @@ def open_app(page):
 
 
 def test_the_page_loads_with_no_data(page):
-    """The page loads its modules, shows the version and the 'no accounts yet' message."""
+    """The page loads its modules, shows the version, the time zone and the 'no accounts yet' message."""
     open_app(page)
     assert page.locator("#version").text_content().startswith("v")
     assert page.locator("#empty").is_visible()
     assert page.locator("#empty .hint").text_content().startswith("No accounts yet")
+    zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+    assert page.locator("#tz-badge").text_content() == f"🕒 {zone.replace('_', ' ')}"  # the browser's time zone
 
 
 def test_add_an_account_and_a_balance(page):
@@ -199,3 +201,17 @@ def test_typed_amounts_become_exact_cents(page):
         page.click("#update-form button[type=submit]")
     assert [i["amount"] for i in sent.value.post_data_json["items"]] == [123456790, 10]
     page.locator("#totals .tile-value", has_text="1,234,568.00").wait_for()  # 1,234,567.90 + 0.10
+
+
+def test_the_dates_follow_the_time_zone_chosen_in_the_settings(page):
+    """With another time zone chosen in the settings, the page sends the date of that zone."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    open_app(page)
+    page.click("#settings-btn")
+    page.locator("#tz-select option[value='Pacific/Kiritimati']").wait_for(state="attached")
+    page.select_option("#tz-select", "Pacific/Kiritimati")  # UTC+14
+    with page.expect_request(lambda r: "/api/" in r.url) as sent:
+        page.click("#settings-form button[type=submit]")
+    assert sent.value.headers.get("x-local-date") == datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+    page.locator("#tz-badge", has_text="Pacific/Kiritimati").wait_for()  # shown next to the title

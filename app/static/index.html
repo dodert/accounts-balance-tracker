@@ -17,6 +17,7 @@
        data-i18n-placeholder / -title / -aria-label set those attributes. -->
   <header>
     <h1 data-i18n="header.title">💰 My balances</h1>
+    <button type="button" id="tz-badge" class="tz-badge"></button>
     <span class="spacer"></span>
     <details class="menu" id="data-menu">
       <summary class="button" data-i18n="header.data_menu">Import / export</summary>
@@ -243,6 +244,7 @@
       <h2 data-i18n="settings.title">Settings</h2>
       <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
       <label><span data-i18n="settings.locale">Date and number format</span> <select name="locale" id="locale-select"></select></label>
+      <label><span data-i18n="settings.time_zone">Time zone</span> <select name="time_zone" id="tz-select"></select></label>
       <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
       <fieldset class="demo-setting">
         <legend data-i18n="demo.title">Demo mode</legend>

@@ -81,7 +81,7 @@ You only need Docker. The steps are the same on every system: make a folder, dow
    curl.exe -fsSL -o docker-compose.yml https://raw.githubusercontent.com/dodert/accounts-balance-tracker/main/docker-compose.yml
    notepad docker-compose.yml
    ```
-3. In Notepad, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, change `TZ` to your time zone if you want, save and close.
+3. In Notepad, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, save and close.
 4. Back in PowerShell:
    ```powershell
    docker compose up -d
@@ -99,7 +99,7 @@ The data is in `C:\Users\<you>\accounts-balance-tracker\data`.
    curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/dodert/accounts-balance-tracker/main/docker-compose.yml
    open -e docker-compose.yml
    ```
-3. In TextEdit, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, change `TZ` if you want, save and close.
+3. In TextEdit, write a user and a password after `AUTH_USERNAME=` and `AUTH_PASSWORD=`, save and close.
 4. Back in Terminal:
    ```bash
    docker compose up -d
@@ -118,7 +118,7 @@ The data is in `~/accounts-balance-tracker/data`.
    sed -i "s/PUID=1000/PUID=$(id -u)/; s/PGID=1000/PGID=$(id -g)/" docker-compose.yml
    nano docker-compose.yml
    ```
-   The `sed` line makes the data folder belong to your user. In the editor, set `AUTH_USERNAME` and `AUTH_PASSWORD` (and `TZ` if you want), then save with `Ctrl+O`, `Enter`, and leave with `Ctrl+X`.
+   The `sed` line makes the data folder belong to your user. In the editor, set `AUTH_USERNAME` and `AUTH_PASSWORD`, then save with `Ctrl+O`, `Enter`, and leave with `Ctrl+X`.
 3. Start it:
    ```bash
    docker compose up -d
@@ -177,7 +177,6 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
 | `FX_DAILY_LIMIT` | `30` | Multi-user only: most requests a day to the exchange-rate service, for all users together (then the stored rates are used) |
 | `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
-| `TZ` | `Etc/UTC` | The server's time zone (e.g. `Europe/Madrid`): the date of backups and logs, and "today" for a client that doesn't send its own date. The page sends the browser's date with each call, so for what you see (which accounts are available today, today's exchange rate) "today" is your own day, whatever this says |
 | `PUID`, `PGID`, `PORT` | `99`, `100`, `80` | `PORT` is the port inside the container; change it only with host networking |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
@@ -237,7 +236,7 @@ The database schema is migrated automatically on start, keeping all the data.
 - **JSON export / import (everything)**: **Import / export → Export everything (JSON)** downloads all the data (accounts with all their fields, including notes, archived and accounts without balances, plus balances and milestones). **Import JSON** takes such a file in one of two ways: *merge* adds only what is not there yet (an account is found by its name and institution; a balance for the same account and date, or the same milestone, is not imported and is listed), and *replace* deletes all the current data and leaves exactly the file's, after asking for confirmation and copying the database first (`balances.db.backup-before-import-<date>`, or `<id>.db.enc.backup-before-import-<date>` in multi-user mode, encrypted; the 3 newest are kept). A file with any error changes nothing.
 - **Demo mode** (**⚙ → Demo mode**, the *Try it with sample data* button when there are no accounts yet, or the link `/demo`): the app with made-up sample data (several institutions and accounts, EUR and USD, stock options not available yet, a mortgage, a closed account, two years of history), to show it to other people or to see how it works. The sample data lives in its own temporary database, apart from the real one, which is not read or changed while a browser is in demo mode; a banner shows it, with buttons to reset the sample data and to leave the demo. It is per browser (a cookie) and needs the login like the rest of the app. A demo's data is limited to 5 MB, and CSV or JSON files imported into it to 1 MB. In multi-user mode, one address (IPv6: one /64) can start 10 demos an hour; demos never ask the exchange-rate service: they use the rates already stored.
 - **Optional login** with a user and password, and optionally a one-time code from an authenticator app.
-- English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Both are saved in the browser. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
+- English and Spanish interface (**⚙ → Language**), and a separate **date and number format** (Spain, UK, US, Germany...) that dates, amounts and the date boxes follow; by default it goes with the language. Dates are in your **time zone** (⚙ → Time zone): the browser's by default, or another one you pick; "today", the default date of new balances, and the export file names follow it. The three are saved in the browser. The server itself always runs in UTC. To add a language, copy `app/static/i18n/en.json` to `<code>.json` and translate it.
 
 ## Development
 
