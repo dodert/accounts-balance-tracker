@@ -37,6 +37,26 @@ jobs:
       - name: Test report
         if: ${{ !cancelled() }}
         run: python scripts/test_summary.py test-results.xml >> "$GITHUB_STEP_SUMMARY"
+      # A screenshot of the page at the end of each end-to-end test, passed or failed: the run's Artifacts
+      - name: Screenshots of the end-to-end tests
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-screenshots
+          path: test-screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+      # The same screenshots in one page, uploaded unzipped
+      - name: Screenshots page
+        if: ${{ !cancelled() && hashFiles('test-screenshots/*.png') != '' }}
+        run: python scripts/e2e_gallery.py test-results.xml test-screenshots e2e-screenshots.html
+      - name: Upload the screenshots page
+        if: ${{ !cancelled() && hashFiles('test-screenshots/*.png') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: e2e-screenshots.html
+          archive: false
+          retention-days: 14
 
   docker:
     needs: test

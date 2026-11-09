@@ -3,17 +3,24 @@
 They need `pip install playwright` and `python -m playwright install chromium`. Without them they are
 skipped, unless E2E=1 (as in the CI), which turns that into a failure. PLAYWRIGHT_CHROMIUM can point to a
 Chromium binary to use instead of Playwright's own.
+
+After each test, passed or failed, the whole page is saved as test-screenshots/<test>.png (the CI keeps the
+folder as an artifact of the run).
 """
 import os
+import re
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
 from app.config import Settings
 from app.demo import SAMPLES
 from app.main import create_app
+
+SCREENSHOTS = Path(__file__).resolve().parent.parent / "test-screenshots"
 
 if os.environ.get("E2E"):
     from playwright import sync_api as playwright_api
@@ -60,8 +67,9 @@ def browser():
 
 
 @pytest.fixture
-def page(browser, server):
-    """A fresh browser page on the app, in English, failing the test on any JavaScript error."""
+def page(browser, server, request):
+    """A fresh browser page on the app, in English, failing the test on any JavaScript error. Its screenshot is
+    saved when the test ends, also when it failed."""
     context = browser.new_context(base_url=server, viewport={"width": 1280, "height": 900})
     context.add_init_script("localStorage.setItem('abt-lang', 'en')")
     tab = context.new_page()
@@ -69,6 +77,8 @@ def page(browser, server):
     tab.on("pageerror", lambda error: errors.append(str(error)))
     tab.on("dialog", lambda dialog: dialog.accept())  # confirm() questions: yes
     yield tab
+    SCREENSHOTS.mkdir(exist_ok=True)
+    tab.screenshot(path=SCREENSHOTS / f"{re.sub(r'[^\w.-]', '_', request.node.name)}.png", full_page=True)
     context.close()
     assert errors == [], errors
 
