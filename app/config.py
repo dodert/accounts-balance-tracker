@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     data_dir: Path = Path("/data")
-    # Empty -> SQLite file in data_dir. Example Postgres:
-    # postgresql+psycopg://user:pass@host:5432/balances
+    # The database is a SQLite file in data_dir. PostgreSQL is no longer supported: this is only read to stop
+    # with an explanation if an older setup still points to one (see check_database_url)
     database_url: str = ""
 
     # Currency for new accounts (ISO 4217 code); totals in several currencies are added up in it
@@ -60,10 +60,25 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
+        check_database_url(self.database_url)
         if self.database_url:
             return self.database_url
         self.data_dir.mkdir(parents=True, exist_ok=True)
         return f"sqlite:///{self.data_dir / 'balances.db'}"
+
+
+POSTGRES_REMOVED = (
+    "DATABASE_URL points to a database that is not SQLite ({scheme}). PostgreSQL is no longer supported "
+    "(version 0.19.0): the data is now always a SQLite file in the data folder. To move your data, without losing "
+    "any: 1) run the previous version (0.18.x) with this DATABASE_URL and use Import / export -> Export everything "
+    "(JSON); 2) remove DATABASE_URL and start this version; 3) use Import / export -> Import JSON (replace or merge). "
+    "Nothing was changed in that database.")
+
+
+def check_database_url(url: str) -> None:
+    """Only SQLite: a PostgreSQL (or other) URL stops the app, explaining how to move the data."""
+    if url and not url.startswith("sqlite"):
+        raise RuntimeError(POSTGRES_REMOVED.format(scheme=url.split(":", 1)[0]))
 
 
 settings = Settings()

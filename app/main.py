@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import __version__
 from .auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS, Auth
-from .config import Settings, settings as default_settings
+from .config import Settings, check_database_url, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .json_io import export_json, import_json, parse_backup
 from .db import make_engine, make_sessionmaker
@@ -105,6 +105,7 @@ def log_to_console() -> None:
 
 def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None = None) -> FastAPI:
     log_to_console()
+    check_database_url(settings.database_url)  # before touching anything: PostgreSQL is no longer supported
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
         raise ValueError("AUTH_TOTP needs AUTH_USERNAME and AUTH_PASSWORD")
@@ -289,7 +290,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         else:
             with SessionLocal() as db:
                 schema = db.scalar(text("SELECT version_num FROM alembic_version"))
-            database = engine.dialect.name
+            database = "sqlite"
         session = getattr(request.state, "user", None)
         expires = None
         if session is not None:
@@ -694,9 +695,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             saved = users.databases.backup_before_import(request.state.user.user_id)
         else:
             saved = backup_sqlite_before_import(engine)
-            if saved is None:  # PostgreSQL: the app cannot copy it
-                raise HTTPException(409, "Replacing needs a backup first, and the app can only make one of a SQLite "
-                                         "database: use merge, or back up with pg_dump and import into an empty database")
+            if saved is None:  # an in-memory database (tests): nothing on disk to copy
+                return
         logging.getLogger(__name__).warning("Backup made before replacing all the data with an import: %s", saved.name)
 
     @app.post("/api/import/json", response_model=JsonImportOut)

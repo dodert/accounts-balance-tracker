@@ -7,8 +7,9 @@ from app.config import Settings
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "unraid" / "accounts-balance-tracker.xml"
-# Set at build time or fixed by the container, not by the user
-NOT_USER_SETTINGS = {"data_dir", "app_version", "git_sha", "git_ref", "build_date"}
+# Set at build time or fixed by the container, not by the user; database_url is only read to stop the app if an
+# older setup still points to PostgreSQL (no longer supported), so it is not offered
+NOT_USER_SETTINGS = {"data_dir", "app_version", "git_sha", "git_ref", "build_date", "database_url"}
 # Container variables the template offers on purpose (PORT is the port mapping, UMASK keeps its default)
 CONTAINER_VARS = {"PUID", "PGID", "TZ", "FORWARDED_ALLOW_IPS"}
 

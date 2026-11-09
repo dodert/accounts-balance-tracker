@@ -110,12 +110,9 @@ def upgrade_database(engine: Engine) -> None:
                 "Run that newer version (or a later one), or restore a backup made before it migrated "
                 "(balances.db.backup-* in the data folder). The database was not changed.")
         if current is not None and current != head:
-            if sqlite:
-                backup = backup_sqlite(engine, current, head)
-                if backup:
-                    log.warning("Database backed up to %s before migrating it from %s to %s", backup, current, head)
-            else:
-                log.warning("Migrating the database from %s to %s (back it up with pg_dump before updating)", current, head)
+            backup = backup_sqlite(engine, current, head)
+            if backup:
+                log.warning("Database backed up to %s before migrating it from %s to %s", backup, current, head)
         if sqlite:
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
             connection.commit()
