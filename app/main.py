@@ -25,7 +25,7 @@ from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
 from .geo import Countries
-from .fx import DbStore, Fetcher, SharedRates, SharedStore, frankfurter, get_rate, own_rates, rates_for_days
+from .fx import DbStore, Fetcher, SharedRates, SharedStore, frankfurter, get_rate, own_rates
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance, Milestone
@@ -91,7 +91,19 @@ def account_out(account: Account) -> AccountOut:
 DUPLICATE_NAME = "An account with that name already exists in that institution"
 
 
+def log_to_console() -> None:
+    """The app's own messages (e.g. where each exchange rate came from) in the container log, next to uvicorn's."""
+    app_log = logging.getLogger("app")
+    if not app_log.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+        app_log.addHandler(handler)
+        app_log.setLevel(logging.INFO)
+        app_log.propagate = False
+
+
 def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None = None) -> FastAPI:
+    log_to_console()
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
         raise ValueError("AUTH_TOTP needs AUTH_USERNAME and AUTH_PASSWORD")
@@ -593,9 +605,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     @app.get("/api/history/converted", response_model=HistoryOut)
     def get_history_converted(request: Request, since: date | None = None):
-        """Every account in the default currency, each date at that date's rate. Only the currencies
-        and the dates are sent to the rate service (all the dates of a currency in one request); the
-        amounts are converted here."""
+        """Every account in the default currency at TODAY's rate, on every date: what the balances are worth now,
+        without the changes of the exchange rate. Only the currencies are sent to the rate service; the amounts
+        are converted here."""
         target = settings.default_currency
         with open_db(request) as db:
             accounts = accounts_with_balances(db)
@@ -606,26 +618,27 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         with rate_source(request, fallback) as (store, fetch):
             for currency in sorted({a.currency for a in accounts} - {target}):
                 try:
-                    rates[currency], old = rates_for_days(store, fetch, currency, target, set(all_dates) | set(dates))
+                    rate = get_rate(store, fetch, currency, target)
                 except LookupError:
                     missing.append(currency)
                     continue
+                rates[currency] = rate.rate
                 converted.append(currency)
-                stale = stale or old
+                stale = stale or rate.stale
         used = [a for a in accounts if a.currency == target or a.currency in rates]
 
-        def convert(account, days, amounts):
+        def convert(account, amounts):
             if account.currency == target:
                 return amounts
-            return [None if v is None else v * rates[account.currency][d] for d, v in zip(days, amounts)]
+            return [None if v is None else v * rates[account.currency] for v in amounts]
 
         def totals(per_account, days):
             total = [sum((v[n] for v in per_account.values() if v[n] is not None), Decimal(0)) for n in range(len(days))]
             return total, available_totals(used, days, per_account)
 
-        per_account = {a.id: convert(a, dates, values[a.id]) for a in used}
+        per_account = {a.id: convert(a, values[a.id]) for a in used}
         total, available = totals(per_account, dates)
-        all_per_account = {a.id: convert(a, all_dates, all_values[a.id]) for a in used}
+        all_per_account = {a.id: convert(a, all_values[a.id]) for a in used}
         all_total, all_available = totals(all_per_account, all_dates)
         money = lambda v: None if v is None else float(round(v, 2))  # noqa: E731
         return HistoryOut(

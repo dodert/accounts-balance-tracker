@@ -5,9 +5,9 @@ days; the ECB publishes them once per working day, around 16:00 CET). They are k
 pair and day: the `fx_rates` table of the database (single user), or the shared DATA_DIR/rates.db
 (multi-user, see SharedRates):
 - a past day never changes, so it is fetched once;
-- today's rate is fetched the first time it is needed each day, and again only when asked (refresh);
-- the rates of many days (a converted history) are asked in ONE request for the whole range.
-If the service cannot be reached, the stored rate nearest in time is used, marked as stale.
+- today's rate is fetched the first time it is needed each day, and again only when asked (refresh).
+Every conversion of the app (the combined total and the chart of every currency in the default one) uses
+today's rate. If the service cannot be reached, the last stored rate is used, marked as stale.
 Only currencies and dates are ever sent, never amounts.
 """
 import json
@@ -15,10 +15,8 @@ import logging
 import sqlite3
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
-from bisect import bisect_right
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -34,88 +32,20 @@ log = logging.getLogger(__name__)
 
 # (base, quote, day or None for the latest) -> (rate, the day the rate is from)
 Fetcher = Callable[[str, str, date | None], tuple[Decimal, date]]
-# A fetcher may also have `days(base, quote, set of days) -> {day: (rate, the day the rate is from)}`, which asks
-# for all of them at once (see frankfurter); without it, each day is asked on its own
-RANGE_MARGIN = timedelta(days=7)  # a range starts this much earlier, so its first day has a working day before it
-
-
-class RangeUnsupported(Exception):
-    """The service did not understand a request for a range of days: ask day by day instead."""
 
 
 def frankfurter(url: str) -> Fetcher:
-    base_url = url.rstrip("/")
-
-    def get(path: str, base: str, quote: str) -> dict:
-        query = urllib.parse.urlencode({"from": base, "to": quote})
-        request = urllib.request.Request(f"{base_url}/{path}?{query}", headers={"User-Agent": "accounts-balance-tracker"})
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return json.load(response)
-
     def fetch(base: str, quote: str, day: date | None) -> tuple[Decimal, date]:
-        data = get(day.isoformat() if day else "latest", base, quote)
-        return Decimal(str(data["rates"][quote])), date.fromisoformat(data["date"])
-
-    def days(base: str, quote: str, wanted: set[date]) -> dict[date, tuple[Decimal, date]]:
-        """Every day of `wanted` in one request (a time series from a week before the first to the last)."""
-        start, end = min(wanted) - RANGE_MARGIN, max(wanted)
-        try:
-            data = get(f"{start.isoformat()}..{end.isoformat()}", base, quote)
-            published = sorted((date.fromisoformat(day), Decimal(str(rates[quote])))
-                               for day, rates in data["rates"].items())
-        except urllib.error.HTTPError as error:
-            if error.code in (400, 404, 422):
-                raise RangeUnsupported(f"HTTP {error.code}") from None
-            raise
-        except (KeyError, TypeError, ValueError, AttributeError) as error:
-            raise RangeUnsupported(f"unexpected answer: {error!r}") from None
-        return resolve(published, wanted)
-
-    fetch.days = days
+        query = urllib.parse.urlencode({"from": base, "to": quote})
+        request = urllib.request.Request(f"{url.rstrip('/')}/{day.isoformat() if day else 'latest'}?{query}",
+                                         headers={"User-Agent": "accounts-balance-tracker"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.load(response)
+        rate, rate_date = Decimal(str(data["rates"][quote])), date.fromisoformat(data["date"])
+        log.info("Exchange rate %s/%s for %s: %s, asked to the service (ECB %s)", base, quote, day or "today",
+                 rate, rate_date)
+        return rate, rate_date
     return fetch
-
-
-def resolve(published: list[tuple[date, Decimal]], wanted) -> dict[date, tuple[Decimal, date]]:
-    """For each wanted day, the rate of the last working day on or before it (rates are published on working days
-    only); days with none before them are left out."""
-    published_days = [day for day, _ in published]
-    out = {}
-    for day in wanted:
-        i = bisect_right(published_days, day)
-        if i:
-            out[day] = (published[i - 1][1], published_days[i - 1])
-    return out
-
-
-def fetch_days(fetch: Fetcher, base: str, quote: str, wanted: set[date],
-               take: Callable[[], bool] = lambda: True) -> dict[date, tuple[Decimal, date]]:
-    """The rates of `wanted` days: in one request if the fetcher can, else one request per day. `take` is called
-    before each request and False stops (a daily limit). Day by day, the first failure stops too; what was
-    fetched until then is returned (the caller uses the nearest stored rate for the rest), or the error raised
-    if nothing was."""
-    if not wanted:
-        return {}
-    days = getattr(fetch, "days", None)
-    if days is not None:
-        if not take():
-            raise RuntimeError("daily limit of requests to the rate service reached")
-        try:
-            return days(base, quote, set(wanted))
-        except RangeUnsupported as error:
-            log.warning("The rate service did not answer a range of days (%s): asking day by day", error)
-    today = date.today()
-    out = {}
-    for day in sorted(wanted):
-        try:
-            if not take():
-                raise RuntimeError("daily limit of requests to the rate service reached")
-            out[day] = fetch(base, quote, None if day >= today else day)
-        except Exception as error:
-            if not out:
-                raise
-            log.warning("Could not fetch the %s/%s rate for %s: %s", base, quote, day, error)
-            break
-    return out
 
 
 @dataclass
@@ -185,6 +115,8 @@ def get_rate(store, fetch: Fetcher, base: str, quote: str, day: date | None = No
     rows = store.stored(base, quote)
     row = rows.get(day)
     if is_fresh(row, today) and not refresh:
+        log.info("Exchange rate %s/%s for %s: %s, from the stored rates (ECB %s)", base, quote, day, row.rate,
+                 row.rate_date)
         return row
     try:
         value, rate_date = fetch(base, quote, None if day == today else day)
@@ -193,6 +125,8 @@ def get_rate(store, fetch: Fetcher, base: str, quote: str, day: date | None = No
         last = row or (rows[max(rows)] if rows else None)
         if last is None:
             raise LookupError(f"No exchange rate for {base}/{quote}: {exc}") from None
+        log.warning("Exchange rate %s/%s for %s: %s, the last stored one (ECB %s)", base, quote, day, last.rate,
+                    last.rate_date)
         return replace(last, stale=True)
     rate = Rate(base, quote, day, value, rate_date, datetime.now())
     store.save([rate])
@@ -202,49 +136,6 @@ def get_rate(store, fetch: Fetcher, base: str, quote: str, day: date | None = No
 def is_fresh(row: Rate | None, today: date) -> bool:
     """A stored rate needs no new request: a past day never changes, today's is fetched once a day."""
     return row is not None and (row.day < today or row.fetched_at.date() == today)
-
-
-def rates_for_days(store, fetch: Fetcher, base: str, quote: str, days) -> tuple[dict[date, Decimal], bool]:
-    """The rate on each of `days` (to draw a history converted into another currency), and whether
-    some of them are not that day's own rate (the service could not be reached).
-
-    Stored rates are used; the others are asked for in one request (see fetch_days), and kept. Days
-    still without a rate take the stored rate nearest to them. Raises LookupError when nothing is
-    stored for the pair and the service cannot be reached."""
-    base, quote = base.upper(), quote.upper()
-    today = date.today()
-    if base == quote:
-        return {d: Decimal(1) for d in days}, False
-    rows = store.stored(base, quote)
-    wanted = {min(d, today) for d in days}
-    missing = {day for day in wanted if not is_fresh(rows.get(day), today)}
-    if missing:
-        try:
-            fetched = fetch_days(fetch, base, quote, missing)
-        except Exception as exc:
-            log.warning("Could not fetch the %s/%s rates for %d days: %s", base, quote, len(missing), exc)
-            fetched = {}
-        now = datetime.now()
-        new = [Rate(base, quote, day, value, rate_date, now) for day, (value, rate_date) in fetched.items()]
-        rows.update({rate.day: rate for rate in new})
-        store.save(new)
-    out: dict[date, Decimal] = {}
-    pending: list[date] = []
-    old = False
-    for d in sorted(set(days)):
-        row = rows.get(min(d, today))
-        if row is None:
-            pending.append(d)
-            continue
-        out[d] = Decimal(row.rate)
-        old = old or not is_fresh(row, today)  # today's rate from an earlier day: the service is down
-    if pending:
-        if not rows:
-            raise LookupError(f"No exchange rate for {base}/{quote}")
-        for d in pending:
-            nearest = min(rows, key=lambda r: abs((r - d).days))
-            out[d] = Decimal(rows[nearest].rate)
-    return out, old or bool(pending)
 
 
 def to_rate(row: FxRate, stale: bool = False) -> Rate:
@@ -305,10 +196,6 @@ class SharedRates:
     def _key(self, day: date | None) -> str:
         return "latest" if day is None or day >= self._today() else day.isoformat()
 
-    def _take_request_locked(self) -> bool:
-        with self._lock:
-            return self._take_request()
-
     def _store(self, base: str, quote: str, day: date | None, rate: Decimal, rate_date: date) -> None:
         self._db.execute("INSERT OR REPLACE INTO rates VALUES (?, ?, ?, ?, ?, ?, ?)",
                          (base, quote, self._key(day), str(rate), rate_date.isoformat(), self._clock(),
@@ -333,6 +220,8 @@ class SharedRates:
             with self._lock:
                 stored = self._stored(base, quote, day)
                 if stored is not None:
+                    log.info("Exchange rate %s/%s for %s: %s, from the shared store (ECB %s)", base, quote,
+                             day or "today", *stored)
                     return stored
                 if not network:
                     raise LookupError("not stored: demos use only stored exchange rates")
@@ -344,31 +233,4 @@ class SharedRates:
                 self._db.commit()
             return rate, rate_date
 
-        def days(base: str, quote: str, wanted: set[date]) -> dict[date, tuple[Decimal, date]]:
-            """The stored ones, and the rest in one request to the service (one of the daily limit)."""
-            today = self._today()
-            out, missing = {}, set()
-            with self._lock:
-                for day in wanted:
-                    stored = self._stored(base, quote, None if day >= today else day)
-                    if stored is not None:
-                        out[day] = stored
-                    else:
-                        missing.add(day)
-            if not missing or not network:
-                return out
-            try:
-                fetched = fetch_days(self._fetch, base, quote, missing, take=self._take_request_locked)
-            except Exception as error:
-                if not out:
-                    raise
-                log.warning("Could not fetch the %s/%s rates: %s", base, quote, error)
-                return out
-            with self._lock:
-                for day, (rate, rate_date) in fetched.items():
-                    self._store(base, quote, day, rate, rate_date)
-                self._db.commit()
-            return out | fetched
-
-        fetch.days = days
         return fetch

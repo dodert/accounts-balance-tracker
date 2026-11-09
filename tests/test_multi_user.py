@@ -837,7 +837,7 @@ def test_users_share_the_exchange_rates(tmp_path):
     assert ana.get("/api/history/converted").status_code == 200
     assert ana.get("/api/summary/combined").json()["missing"] == []
     asked = len(rates.calls)
-    assert asked == 4  # the three days and today
+    assert asked == 1  # today's rate, for the chart and the total
     # Another user with the same currencies and dates: nothing asked again
     usd_account(bea)
     assert bea.get("/api/history/converted").status_code == 200
