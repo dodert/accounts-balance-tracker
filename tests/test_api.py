@@ -11,6 +11,7 @@ def add(client, account_id, day, amount, note=None):
 
 
 def test_health_and_about(client):
+    """The health check, the app info and the main page answer."""
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
     assert about["schema"] == "0005" and about["default_currency"] == "EUR" and about["auth"] is False
@@ -19,6 +20,7 @@ def test_health_and_about(client):
 
 
 def test_account_crud(client):
+    """Accounts can be created, edited, archived and deleted, with their fields checked."""
     account = make_account(client, "  Main  ", type="savings", institution="ING")
     assert account["name"] == "Main" and account["currency"] == "EUR" and account["balance"] is None
     assert client.post("/api/accounts", json={"name": "Main", "institution": "ING"}).status_code == 409
@@ -37,6 +39,7 @@ def test_account_crud(client):
 
 
 def test_balances_one_per_day(client):
+    """An account has one balance per day: a second one that day replaces it."""
     account = make_account(client)
     add(client, account["id"], "2026-01-31", "1000.50")
     add(client, account["id"], "2026-02-28", 1200)
@@ -58,6 +61,7 @@ def test_balances_one_per_day(client):
 
 
 def test_bulk_update(client):
+    """Several balances can be saved at once for one date; bad or repeated accounts are refused."""
     a, b = make_account(client, "A"), make_account(client, "B")
     res = client.post("/api/balances/bulk", json={"date": "2026-03-01", "items": [
         {"account_id": a["id"], "amount": 100}, {"account_id": b["id"], "amount": -20}]})
@@ -71,6 +75,7 @@ def test_bulk_update(client):
 
 
 def test_summary_and_history(client):
+    """The summary and the chart history add up the balances per currency and date."""
     bank = make_account(client, "Bank")
     broker = make_account(client, "Broker", type="investment")
     usd = make_account(client, "US", currency="USD")
@@ -101,6 +106,7 @@ def test_summary_and_history(client):
 
 
 def test_archived_accounts_still_count_in_history(client):
+    """Archived accounts still count in the history, not in the current summary."""
     old = make_account(client, "Old")
     add(client, old["id"], "2026-01-01", 300)
     add(client, old["id"], "2026-02-01", 0)
@@ -111,6 +117,7 @@ def test_archived_accounts_still_count_in_history(client):
 
 
 def test_cross_site_post_blocked(client):
+    """Other websites can't change data; the app itself and plain clients can."""
     res = client.post("/api/accounts", json={"name": "X"}, headers={"sec-fetch-site": "cross-site"})
     assert res.status_code == 403
     # Same site but another origin (e.g. another app on the same host, another port): blocked too
@@ -129,12 +136,14 @@ def test_cross_site_post_blocked(client):
 
 
 def test_account_notes_have_a_maximum_length(client):
+    """Account notes are limited to 5000 characters."""
     assert client.post("/api/accounts", json={"name": "X", "notes": "a" * 5001}).status_code == 422
     account = make_account(client, "Y", notes="a" * 5000)
     assert client.patch(f"/api/accounts/{account['id']}", json={"notes": "b" * 5001}).status_code == 422
 
 
 def test_account_names_are_unique_per_institution(client):
+    """Two accounts can share a name only in different institutions."""
     ing = make_account(client, "Payroll", institution="ING")
     bbva = make_account(client, "Payroll", institution="BBVA")
     plain = make_account(client, "Payroll")
@@ -145,6 +154,7 @@ def test_account_names_are_unique_per_institution(client):
 
 
 def test_available_from(client):
+    """Money not available yet (a future date) counts in the total, not in the available amount."""
     from datetime import date, timedelta
 
     future = (date.today() + timedelta(days=30)).isoformat()
@@ -170,6 +180,7 @@ def test_available_from(client):
 
 
 def test_milestones(client):
+    """Milestones can be created, edited, listed and deleted, and go with their account."""
     a = client.post("/api/accounts", json={"name": "Savings"}).json()
     r = client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": "12500", "description": "  New car "})
     assert r.status_code == 201
@@ -192,6 +203,7 @@ def test_milestones(client):
 
 
 def test_accounts_show_last_previous_and_first_balance(client):
+    """Each account shows its last, previous and first balance."""
     ids = [client.post("/api/accounts", json={"name": n}).json()["id"] for n in ("None", "One", "Three")]
     client.post(f"/api/accounts/{ids[1]}/balances", json={"date": "2026-01-31", "amount": 10})
     for day, amount in [("2026-03-31", 30), ("2026-01-31", 10), ("2026-02-28", 20)]:

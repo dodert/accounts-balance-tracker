@@ -9,10 +9,12 @@ from app.main import create_app
 
 
 def test_month_starts():
+    """The demo's month helper gives the first day of the last months."""
     assert month_starts(date(2026, 2, 15), 3) == [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)]
 
 
 def test_demo_never_touches_real_data(client):
+    """The demo uses its own sample data and never reads or changes the real data."""
     real = client.post("/api/accounts", json={"name": "My real account", "currency": "EUR"}).json()
     client.post(f"/api/accounts/{real['id']}/balances", json={"date": "2026-01-01", "amount": 1234.56})
     assert client.get("/api/about").json()["demo"] is False
@@ -37,6 +39,7 @@ def test_demo_never_touches_real_data(client):
 
 
 def test_demo_covers_the_features(client):
+    """The demo data shows every feature (currencies, locked money, loans, archived...)."""
     client.post("/api/demo?lang=en")
     accounts = client.get("/api/accounts").json()
     by_institution = {}
@@ -54,6 +57,7 @@ def test_demo_covers_the_features(client):
 
 
 def test_demo_reset_undoes_changes(client):
+    """Resetting the demo brings back the original sample data."""
     client.post("/api/demo")
     first = client.get("/api/accounts").json()[0]
     client.delete(f"/api/accounts/{first['id']}")
@@ -63,10 +67,12 @@ def test_demo_reset_undoes_changes(client):
 
 
 def test_reset_needs_demo_mode(client):
+    """Resetting the demo outside demo mode is refused."""
     assert client.post("/api/demo/reset").status_code == 409
 
 
 def test_demo_link(client):
+    """The /demo link starts the demo in the given language."""
     response = client.get("/demo?lang=es", follow_redirects=False)
     assert response.status_code == 303 and response.headers["location"] == "/"
     assert client.get("/api/about").json()["demo"] is True
@@ -74,6 +80,7 @@ def test_demo_link(client):
 
 
 def test_demo_needs_login(tmp_path):
+    """With a login set, the demo needs it too (single-user mode)."""
     app = create_app(Settings(data_dir=tmp_path, auth_username="u", auth_password="p"))
     with TestClient(app) as c:
         assert c.post("/api/demo").status_code == 401
@@ -81,6 +88,7 @@ def test_demo_needs_login(tmp_path):
 
 
 def test_demo_combined_total_in_default_currency(tmp_path):
+    """The demo's total in the default currency asks only for the exchange rate."""
     asked = []
 
     def fetch(base, quote, day):
@@ -98,6 +106,7 @@ def test_demo_combined_total_in_default_currency(tmp_path):
 
 
 def test_demo_combined_total_offline(tmp_path):
+    """The demo's combined total works without network, with its sample rate."""
     def offline(base, quote, day):
         raise OSError("no network")
 

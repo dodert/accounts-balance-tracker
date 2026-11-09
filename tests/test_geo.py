@@ -23,6 +23,7 @@ def countries(tmp_path, table=None):
 
 
 def test_cloudflare_header_when_it_comes_with_the_client_ip(tmp_path):
+    """Cloudflare's country header is used only when it belongs to the client's IP."""
     c = countries(tmp_path)
     assert c.country("203.0.113.9", {"cf-connecting-ip": "203.0.113.9", "cf-ipcountry": "es"}) == "ES"
     # Not for another IP (someone faking the header), nor "unknown" (XX)
@@ -31,6 +32,7 @@ def test_cloudflare_header_when_it_comes_with_the_client_ip(tmp_path):
 
 
 def test_local_database(tmp_path):
+    """The country comes from the local IP database; private addresses have none."""
     c = countries(tmp_path, {"8.8.8.8": {"country": {"iso_code": "US"}}, "1.1.1.1": {}})
     assert c.country("8.8.8.8", {}) == "US"
     assert c.country("1.1.1.1", {}) is None
@@ -39,10 +41,12 @@ def test_local_database(tmp_path):
 
 
 def test_no_database_means_no_country(tmp_path):
+    """Without the IP database there is no country, and no error."""
     assert countries(tmp_path).country("8.8.8.8", {}) is None
 
 
 def test_refresh_tries_this_month_then_the_previous_one(tmp_path):
+    """The IP database download tries this month's file, then last month's, without failing."""
     asked = []
 
     def fetch(url, target: Path):
@@ -55,6 +59,7 @@ def test_refresh_tries_this_month_then_the_previous_one(tmp_path):
 
 
 def test_previous_month():
+    """The previous month is worked out correctly, also across a year."""
     from datetime import date
     assert previous_month(date(2026, 1, 5)) == "2025-12"
     assert previous_month(date(2026, 11, 2)) == "2026-10"

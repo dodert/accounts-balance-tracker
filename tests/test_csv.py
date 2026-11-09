@@ -2,6 +2,7 @@ from app.csv_io import parse_amount
 
 
 def test_parse_amount():
+    """Amounts are read in both 1.234,56 and 1,234.56 styles, with or without a symbol."""
     assert str(parse_amount("1.234,56")) == "1234.56"
     assert str(parse_amount("1,234.56")) == "1234.56"
     assert str(parse_amount("-50")) == "-50.00"
@@ -9,6 +10,7 @@ def test_parse_amount():
 
 
 def test_import_creates_accounts_and_never_overwrites_balances(client):
+    """A CSV import creates accounts and balances, lists bad lines and never overwrites a balance."""
     csv = (
         "cuenta;tipo;moneda;fecha;saldo;nota\n"
         "ING;savings;EUR;31/01/2026;1.000,50;\n"
@@ -37,6 +39,7 @@ def test_import_creates_accounts_and_never_overwrites_balances(client):
 
 
 def test_export_round_trip(client, tmp_path):
+    """A CSV export imported into another database gives the same accounts and balances."""
     a = client.post("/api/accounts", json={"name": "Cash, wallet", "type": "cash", "available_from": "2027-01-01"}).json()
     client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 12.5, "note": "x"})
     res = client.get("/api/export/csv")
@@ -55,11 +58,13 @@ def test_export_round_trip(client, tmp_path):
 
 
 def test_import_rejects_files_without_required_columns(client):
+    """A CSV without the required columns is refused."""
     res = client.post("/api/import/csv", files={"file": ("x.csv", b"foo,bar\n1,2\n", "text/csv")})
     assert res.status_code == 422 and "account" in res.json()["detail"]
 
 
 def test_import_finds_accounts_by_name_and_institution(client):
+    """The CSV import matches accounts by name and institution."""
     csv = (
         "account,institution,date,amount\n"
         "Payroll,ING,2026-01-31,100\n"
@@ -80,6 +85,7 @@ def test_import_finds_accounts_by_name_and_institution(client):
 
 
 def test_export_neutralizes_formulas_and_import_reads_them_back(client, tmp_path):
+    """Texts that a spreadsheet would run as formulas are made safe on export and read back on import."""
     account = client.post("/api/accounts", json={"name": "=HYPERLINK(\"http://x\")", "institution": "@bank"}).json()
     client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": -450, "note": "+1 call"})
     text = client.get("/api/export/csv").text

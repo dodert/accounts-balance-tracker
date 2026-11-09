@@ -10,6 +10,7 @@ def make_client(tmp_path, **auth):
 
 
 def test_no_login_when_not_configured(tmp_path):
+    """Without a username and password the app is open and has no login page."""
     client = make_client(tmp_path)
     assert client.get("/api/accounts").status_code == 200
     assert client.get("/api/about").json()["auth"] is False
@@ -17,11 +18,13 @@ def test_no_login_when_not_configured(tmp_path):
 
 
 def test_only_one_variable_is_an_error(tmp_path):
+    """Setting only the username (or only the password) stops the app with an error."""
     with pytest.raises(ValueError, match="AUTH_USERNAME and AUTH_PASSWORD"):
         make_client(tmp_path, auth_username="admin")
 
 
 def test_login_required(tmp_path):
+    """With a login set, everything needs it except the login page, its files and the health check."""
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     assert client.get("/api/accounts").status_code == 401
     assert client.get("/api/export/csv", follow_redirects=False).status_code == 401
@@ -35,6 +38,7 @@ def test_login_required(tmp_path):
 
 
 def test_wrong_password_then_login_and_logout(tmp_path):
+    """A wrong password is refused; logging out ends the session, also for a copied cookie."""
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     bad = client.post("/login", data={"username": "admin", "password": "nope"}, follow_redirects=False)
     assert bad.headers["location"] == "/login?error=1" and "abt_session" not in bad.cookies
@@ -56,6 +60,7 @@ def test_wrong_password_then_login_and_logout(tmp_path):
 
 
 def test_logout_keeps_other_devices_logged_in(tmp_path):
+    """Logging out on one device leaves the others logged in."""
     phone = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     pc = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     phone.post("/login", data={"username": "admin", "password": "s3cret"})
@@ -66,6 +71,7 @@ def test_logout_keeps_other_devices_logged_in(tmp_path):
 
 
 def test_session_survives_restart_but_not_password_change(tmp_path):
+    """A session survives a restart but ends when the password changes."""
     first = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     first.post("/login", data={"username": "admin", "password": "s3cret"})
     cookie = first.cookies["abt_session"]
@@ -81,6 +87,7 @@ def test_session_survives_restart_but_not_password_change(tmp_path):
 
 
 def test_forged_cookie_with_huge_expiry_is_rejected_not_a_crash(tmp_path):
+    """A forged session cookie is refused without crashing the app."""
     client = TestClient(create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="pw")))
     for forged in ("9" * 5000).encode() + b".00.abc", b"9999999999.00.d\xe9adbeef":
         assert client.get("/api/accounts", headers={"cookie": b"abt_session=" + forged}).status_code == 401
@@ -100,6 +107,7 @@ def current_code(tmp_path, offset=0):
 
 
 def test_totp_setup_then_code_required(tmp_path):
+    """With two-factor on, the code is set up once and then asked after the password."""
     client = totp_client(tmp_path)
     # Without the password first, the code page sends back to the login
     assert client.get("/login/totp", follow_redirects=False).headers["location"] == "/login"
@@ -127,11 +135,13 @@ def test_totp_setup_then_code_required(tmp_path):
 
 
 def test_totp_needs_login(tmp_path):
+    """Two-factor without a username and password is an error."""
     with pytest.raises(ValueError, match="AUTH_TOTP"):
         make_client(tmp_path, auth_totp=True)
 
 
 def test_totp_secret_survives_restart(tmp_path):
+    """The two-factor secret is kept across restarts."""
     totp_client(tmp_path)
     secret = (tmp_path / ".totp_secret").read_text()
     totp_client(tmp_path)
@@ -139,6 +149,7 @@ def test_totp_secret_survives_restart(tmp_path):
 
 
 def test_pending_cookie_cannot_be_turned_into_a_session(tmp_path):
+    """The half-way cookie (password done, code pending) can't be used as a session."""
     client = totp_client(tmp_path)
     client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
     expires, signature = client.cookies["abt_pending"].split(".")
@@ -148,6 +159,7 @@ def test_pending_cookie_cannot_be_turned_into_a_session(tmp_path):
 
 
 def test_damaged_totp_secret_stops_the_app_instead_of_showing_a_new_one(tmp_path):
+    """A damaged two-factor secret stops the app instead of offering a new one."""
     totp_client(tmp_path)
     (tmp_path / ".totp_secret").write_text("{not json")
     with pytest.raises(ValueError, match="damaged"):
@@ -170,6 +182,7 @@ def guess_in_parallel(app, path, field_values, extra=None):
 
 
 def test_parallel_password_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
+    """Password guesses sent at once from one IP are checked one at a time."""
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
@@ -182,6 +195,7 @@ def test_parallel_password_guesses_from_one_ip_are_checked_one_at_a_time(tmp_pat
 
 
 def test_too_many_wrong_passwords_lock_out_that_ip_only(tmp_path, monkeypatch):
+    """Too many wrong passwords lock out that IP only, for a while."""
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
@@ -200,6 +214,7 @@ def test_too_many_wrong_passwords_lock_out_that_ip_only(tmp_path, monkeypatch):
 
 
 def test_a_right_password_forgets_the_wrong_ones_of_that_ip(tmp_path, monkeypatch):
+    """Logging in correctly clears the wrong tries of that IP."""
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
@@ -211,6 +226,7 @@ def test_a_right_password_forgets_the_wrong_ones_of_that_ip(tmp_path, monkeypatc
 
 
 def test_parallel_code_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
+    """Two-factor code guesses sent at once from one IP are checked one at a time."""
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     client = totp_client(tmp_path)
@@ -222,6 +238,7 @@ def test_parallel_code_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, m
 
 
 def test_too_many_wrong_codes_lock_out_that_ip(tmp_path, monkeypatch):
+    """Too many wrong two-factor codes lock out that IP."""
     import app.main as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     client = totp_client(tmp_path)
@@ -233,6 +250,7 @@ def test_too_many_wrong_codes_lock_out_that_ip(tmp_path, monkeypatch):
 
 
 def test_security_headers(tmp_path):
+    """Every answer has the security headers (CSP, no frames, HSTS over HTTPS)."""
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret", api_docs=True)
     for res in (client.get("/login"), client.get("/api/accounts"), client.get("/static/style.css")):
         assert "frame-ancestors 'none'" in res.headers["content-security-policy"]
@@ -251,6 +269,7 @@ def test_security_headers(tmp_path):
 
 
 def test_the_api_docs_are_off_by_default(tmp_path):
+    """The API docs pages don't exist unless API_DOCS is on."""
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     client.post("/login", data={"username": "admin", "password": "s3cret"})
     for path in ("/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"):
