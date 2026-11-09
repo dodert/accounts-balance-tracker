@@ -243,8 +243,11 @@ The database schema is migrated automatically on start, keeping all the data.
 ```bash
 pip install -r requirements-dev.txt
 DATA_DIR=./data uvicorn app.main:create_app --factory --reload
+python -m playwright install chromium   # once, for the end-to-end tests
 pytest -q
 ```
+
+**Frontend**: plain JavaScript modules in `app/static/js/` (no build step), one per part of the page: `main.js` starts it, `api.js`, `format.js`, `totals.js`, `accounts.js`, `charts.js`, `dialogs.js`, `settings.js`, `demo.js`. The page loads them from `/static/v/<version>/js/`, so a new version is never mixed with old copies in the browser's cache. `tests/test_e2e.py` drives the real page in Chromium (load, add an account and a balance, update balances, CSV import, demo with its charts, language); without Playwright those tests are skipped.
 
 **Image**: `ghcr.io/dodert/accounts-balance-tracker` (linux/amd64 and linux/arm64), built by GitHub Actions on every push to `main` and on `v*` git tags. Versions follow [SemVer](https://semver.org): `main` builds are the release version in `app/__init__.py` (`__version__`), so bump it in every PR (`Z` for fixes, `Y` for features). A push to `main` is tagged `latest`, `X.Y.Z`, `X.Y` and `sha-<commit>`.
 

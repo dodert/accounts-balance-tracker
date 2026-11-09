@@ -40,7 +40,7 @@ def test_every_key_used_by_the_page_exists():
     html = "".join((STATIC / name).read_text(encoding="utf-8") for name in (
         "index.html", "login.html", "totp.html", "register.html", "recovery.html", "recover.html", "account.html",
         "message.html"))
-    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    js = "".join(path.read_text(encoding="utf-8") for path in sorted((STATIC / "js").glob("*.js")))
     used = set(re.findall(r'data-i18n(?:-[a-z-]+)?="([^"]+)"', html))
     # The admin's page is a Jinja template: its keys are also the quoted ones given to its macros
     admin = (STATIC.parent / "templates" / "admin.html").read_text(encoding="utf-8")
@@ -55,4 +55,4 @@ def test_account_types_match_the_model():
     """The account types in the page match the ones in the database model."""
     from app.models import AccountType
     assert DYNAMIC["type"] == [t.value for t in AccountType]
-    assert f"const ACCOUNT_TYPES = {json.dumps(DYNAMIC['type'])};" in (STATIC / "app.js").read_text()
+    assert f"const ACCOUNT_TYPES = {json.dumps(DYNAMIC['type'])};" in (STATIC / "js" / "state.js").read_text()

@@ -214,3 +214,12 @@ def test_accounts_show_last_previous_and_first_balance(client):
                    "One": (10, "2026-01-31", None, None, None, None),
                    "Three": (30, "2026-03-31", 20, "2026-02-28", 10, "2026-01-31")}
     assert client.get(f"/api/accounts/{ids[2]}").json()["previous_balance"] == 20
+
+
+def test_the_page_loads_its_modules_by_version(client):
+    """The page loads its JavaScript modules from an address with the app's version in it."""
+    version = client.get("/api/about").json()["version"]
+    assert f'src="/static/v/{version}/js/main.js"' in client.get("/").text
+    module = client.get(f"/static/v/{version}/js/main.js")
+    assert module.status_code == 200 and "javascript" in module.headers["content-type"]
+    assert client.get(f"/static/v/{version}/js/nothing.js").status_code == 404

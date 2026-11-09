@@ -27,8 +27,13 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      # -v: one line per test in the log; the JUnit report becomes a table on the run's Summary page
+      # Chromium for the end-to-end tests (tests/test_e2e.py), with the system libraries it needs
+      - run: python -m playwright install --with-deps chromium
+      # -v: one line per test in the log; the JUnit report becomes a table on the run's Summary page.
+      # E2E=1: the end-to-end tests fail instead of being skipped if the browser can't start
       - run: pytest -v --junitxml=test-results.xml
+        env:
+          E2E: "1"
       - name: Test report
         if: ${{ !cancelled() }}
         run: python scripts/test_summary.py test-results.xml >> "$GITHUB_STEP_SUMMARY"
