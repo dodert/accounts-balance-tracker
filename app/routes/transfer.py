@@ -1,13 +1,13 @@
 """Export and import: CSV (balances) and JSON (everything)."""
 import asyncio
 import logging
-from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
+from .. import clock
 from ..csv_io import export_csv, import_csv
 from ..deps import Context
 from ..json_io import export_json, import_json, parse_backup
@@ -29,7 +29,7 @@ def router(ctx: Context) -> APIRouter:
 
     @router.get("/api/export/csv")
     def export(db: Session = Depends(get_db)):
-        filename = f"balances-{date.today().isoformat()}.csv"
+        filename = f"balances-{clock.today().isoformat()}.csv"
         return Response(export_csv(db), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
@@ -52,7 +52,7 @@ def router(ctx: Context) -> APIRouter:
 
     @router.get("/api/export/json")
     def export_all(db: Session = Depends(get_db)):
-        filename = f"balances-{date.today().isoformat()}.json"
+        filename = f"balances-{clock.today().isoformat()}.json"
         return Response(export_json(db, version), media_type="application/json; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 

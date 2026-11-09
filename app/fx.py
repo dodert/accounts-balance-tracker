@@ -27,6 +27,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import clock
 from .models import FxRate
 
 log = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ def get_rate(store, fetch: Fetcher, base: str, quote: str, day: date | None = No
     """The rate to convert `base` into `quote` on `day` (default today). Raises LookupError when there
     is no stored rate for the pair and the service cannot be reached."""
     base, quote = base.upper(), quote.upper()
-    today = date.today()
+    today = clock.today()  # the user's date
     day = min(day or today, today)
     if base == quote:
         return Rate(base, quote, day, Decimal(1), day, datetime.now())
@@ -146,7 +147,8 @@ def is_fresh(row: Rate | None, today: date, now: datetime | None = None) -> bool
     if row.day < today:
         return True
     now = now or datetime.now()
-    return row.fetched_at.date() == today and (row.rate_date >= today or now - row.fetched_at < REFRESH)
+    # fetched_at is the server's clock: "asked today" is the server's day, not the user's (clock.py)
+    return row.fetched_at.date() == now.date() and (row.rate_date >= today or now - row.fetched_at < REFRESH)
 
 
 def to_rate(row: FxRate, stale: bool = False) -> Rate:

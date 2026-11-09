@@ -15,6 +15,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import clock
 from .models import Account, Balance
 
 Series = list[tuple[date, Decimal]]  # an account's balances, oldest first
@@ -105,7 +106,7 @@ def currency_totals(ledger: Ledger) -> list[dict]:
     for currency in sorted({a.currency for a in ledger.accounts}):
         group = [a for a in ledger.accounts if a.currency == currency]
         dates, totals, per_account = history(subset(ledger, group))
-        today = date.today()
+        today = clock.today()
         available = sum((v[-1] for a in group if (v := per_account[a.id]) and v[-1] is not None and is_available(a, today)), Decimal(0))
         out.append({
             "currency": currency,

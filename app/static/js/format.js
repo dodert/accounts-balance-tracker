@@ -1,4 +1,5 @@
 // Formatting and reading amounts, dates and changes in the user's regional format.
+import { localDate } from "./api.js";
 import { $, $$, esc } from "./dom.js";
 
 // --- Formatting ---
@@ -24,10 +25,7 @@ export function axisLabels(ticks, currency) {
 export const amountText = (value) => (value === null || value === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(value));
 export const signedMoney = (value, currency) => (value > 0 ? "+" : "") + money(value, currency);
 export const fmtDate = (iso, opts = { dateStyle: "medium" }) => (iso ? new Intl.DateTimeFormat(fmtLocale(), { ...opts, timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`)) : "");
-export const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+export const today = () => localDate();
 
 // Date fields: a text box in the regional format (31/12/2026, 12/31/2026, 31.12.2026...), since the
 // browser's own date box always uses the browser's language, plus a button for its calendar
