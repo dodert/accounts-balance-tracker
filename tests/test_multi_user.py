@@ -25,9 +25,9 @@ def fast_argon2(monkeypatch):
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
 
 
-def make_app(tmp_path):
+def make_app(tmp_path, **settings):
     return create_app(Settings(data_dir=tmp_path, auth_username=ADMIN["username"], auth_password=ADMIN["password"],
-                               multi_user=True, country_db=False))
+                               multi_user=True, country_db=False, **settings))
 
 
 def admin_client(app, tmp_path):
@@ -898,3 +898,17 @@ def test_todays_rate_is_asked_again_at_most_hourly_until_the_days_own_rate(tmp_p
     now[0] += 5 * 3600
     fetch("USD", "EUR", None)
     assert len(rates.calls) == 2  # today's own rate: not asked again today
+
+
+def test_the_api_docs_need_an_account_also_in_the_demo(tmp_path):
+    app = make_app(tmp_path, api_docs=True)
+    admin = admin_client(app, tmp_path)
+    visitor = TestClient(app)
+    visitor.post("/api/demo")
+    assert visitor.get("/api/accounts").status_code == 200  # the demo itself works
+    for path in ("/docs", "/redoc", "/docs/oauth2-redirect"):
+        res = visitor.get(path, follow_redirects=False)
+        assert res.status_code == 303 and res.headers["location"] == "/login"
+    assert visitor.get("/openapi.json", follow_redirects=False).status_code == 303
+    user, _ = sign_up(app, invite(admin))
+    assert user.get("/docs").status_code == 200 and "paths" in user.get("/openapi.json").json()

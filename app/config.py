@@ -41,8 +41,10 @@ class Settings(BaseSettings):
     # Multi-user: most requests a day to the exchange-rate service, for everybody together (the rates are shared).
     # 90 = a limit of 100 a day minus a margin of 10 for single-user installs on the same IP
     fx_daily_limit: int = 90
+    # Interactive API docs (/docs, /redoc) and the schema (/openapi.json): off by default, so production does not show the API
+    api_docs: bool = False
 
-    @field_validator("auth_totp", "multi_user", "country_db", mode="before")
+    @field_validator("auth_totp", "multi_user", "country_db", "api_docs", mode="before")
     @classmethod
     def _empty_is_false(cls, value):
         # An empty field in the Unraid template or docker-compose means "off"

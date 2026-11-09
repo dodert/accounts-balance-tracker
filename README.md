@@ -177,6 +177,7 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `MAX_USERS` | `100` | Multi-user only: most users that can sign up (the admin is not counted) |
 | `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
 | `FX_DAILY_LIMIT` | `90` | Multi-user only: most requests a day to the exchange-rate service, for all users together (then the stored rates are used) |
+| `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
 | `PUID`, `PGID`, `TZ`, `PORT` | `99`, `100`, `Etc/UTC`, `8000` | |
 
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
@@ -251,7 +252,7 @@ pytest -q
 
 ## API
 
-Interactive docs at `/docs`. Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/milestones` (and `/api/accounts/{id}/milestones`), `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
+Interactive docs at `/docs` when `API_DOCS=true` (off by default). Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/milestones` (and `/api/accounts/{id}/milestones`), `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
 
 ## License
 
