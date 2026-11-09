@@ -146,8 +146,8 @@ def router(ctx: Context) -> APIRouter:
         if multi:
             users.revoke(request.cookies.get(USER_COOKIE))
             response.delete_cookie(USER_COOKIE)
-            visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
-            set_demo(response, request, False)
+        visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
+        set_demo(response, request, False)
         return response
 
     # --- Multi-user mode: sign-up by invitation, passwords, admin ---

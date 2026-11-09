@@ -17,7 +17,7 @@ from .clock import LocalDateMiddleware, use_utc
 from .config import Settings
 from .config import settings as default_settings
 from .db import make_engine, make_sessionmaker
-from .demo import Demo, VisitorDemos
+from .demo import VisitorDemos
 from .deps import STATIC_DIR, Context, Pages
 from .fx import Fetcher, SharedRates, frankfurter
 from .geo import Countries
@@ -66,8 +66,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         engine = make_engine(settings.resolved_database_url)
         SessionLocal = make_sessionmaker(engine)
         upgrade_database(engine)
-    demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
-    visitor_demos = VisitorDemos()  # multi-user mode: one per visitor, usable without an account
+    visitor_demos = VisitorDemos()  # sample data in temporary databases, one per browser in demo mode
     fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
     # Multi-user: one store of rates for everybody, with a daily limit of requests to the service
     shared_rates = SharedRates(settings.data_dir / "rates.db", fetch_rate, settings.fx_daily_limit) if multi else None
@@ -105,8 +104,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         for task in (purge, backups):
             if task is not None:
                 task.cancel()
-        demo.close()  # the demo database is temporary
-        visitor_demos.close()
+        visitor_demos.close()  # the demo databases are temporary
 
     # API docs only when API_DOCS=true: otherwise /docs, /redoc and /openapi.json answer 404
     docs = {} if settings.api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
@@ -114,7 +112,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     app.state.users = users
     app.state.backup_now = backup_now
     ctx = Context(settings=settings, auth=auth, users=users, totp=totp, countries=countries,
-                  engine=engine, SessionLocal=SessionLocal, demo=demo, visitor_demos=visitor_demos,
+                  engine=engine, SessionLocal=SessionLocal, visitor_demos=visitor_demos,
                   fetch_rate=fetch_rate, shared_rates=shared_rates, version=version)
     # Version the asset URLs so browsers fetch the new JS/CSS after an image update
     ctx.pages = Pages(f"{version}-{settings.git_sha[:7]}" if settings.git_sha else version, multi)

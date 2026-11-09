@@ -161,7 +161,7 @@ class Demo:
 
 
 class VisitorDemos:
-    """Multi-user mode: one demo database per visitor (browser), so visitors don't see each other's changes.
+    """One demo database per visitor (browser), so browsers don't see each other's changes.
     A visitor's demo is forgotten after IDLE_SECONDS without use; past MAX_DEMOS, the least recently used goes."""
 
     IDLE_SECONDS = 3600

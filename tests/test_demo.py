@@ -20,7 +20,7 @@ def test_demo_never_touches_real_data(client):
     assert client.get("/api/about").json()["demo"] is False
 
     assert client.post("/api/demo?lang=es").status_code == 204
-    assert client.cookies.get(COOKIE) == "1"
+    assert len(client.cookies.get(COOKIE)) > 10  # this browser's own demo
     assert client.get("/api/about").json()["demo"] is True
     demo_accounts = client.get("/api/accounts").json()
     assert len(demo_accounts) == len(SAMPLES)
@@ -64,6 +64,34 @@ def test_demo_reset_undoes_changes(client):
     assert len(client.get("/api/accounts").json()) == len(SAMPLES) - 1
     assert client.post("/api/demo/reset").status_code == 204
     assert len(client.get("/api/accounts").json()) == len(SAMPLES)
+
+
+def test_each_browser_has_its_own_demo(client):
+    """In single-user mode too, each browser's demo is its own: changes and resets don't reach the others."""
+    other = TestClient(client.app)
+    client.post("/api/demo")
+    other.post("/api/demo")
+    assert client.cookies.get(COOKIE) != other.cookies.get(COOKIE)
+    first = client.get("/api/accounts").json()[0]
+    client.delete(f"/api/accounts/{first['id']}")
+    other.post("/api/accounts", json={"name": "Only in the other demo", "currency": "EUR"})
+    assert len(client.get("/api/accounts").json()) == len(SAMPLES) - 1
+    assert "Only in the other demo" not in {a["name"] for a in client.get("/api/accounts").json()}
+    assert len(other.get("/api/accounts").json()) == len(SAMPLES) + 1
+    other.post("/api/demo/reset")
+    assert len(other.get("/api/accounts").json()) == len(SAMPLES)
+    assert len(client.get("/api/accounts").json()) == len(SAMPLES) - 1  # not reset
+
+
+def test_leaving_the_demo_forgets_it(client):
+    """Leaving the demo deletes that browser's sample data; an old shared-demo cookie is not demo mode."""
+    client.post("/api/demo")
+    visitor = client.cookies.get(COOKIE)
+    client.delete("/api/demo")
+    client.cookies.set(COOKIE, visitor)  # the same cookie again: that demo is gone
+    assert client.get("/api/about").json()["demo"] is False
+    client.cookies.set(COOKIE, "1")  # the cookie of the shared demo of older versions
+    assert client.get("/api/about").json()["demo"] is False
 
 
 def test_reset_needs_demo_mode(client):
