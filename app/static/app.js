@@ -166,11 +166,41 @@ function changeCell(current, previous, currency, percent = false) {
 // --- Totals ---
 
 // The big figure: available now (main colour) and, if part is not available yet, the total with it
-const figures = (c) => (c.available !== c.total ? `
+// `conv` (a box in another currency): {rate, currency} to also show each figure in the default currency, small
+const converted = (value, conv) => (conv ? Math.round(value * conv.rate * 100) / 100 : null);
+const convertedLine = (value, conv) => (conv ? `<div class="tile-converted">≈ ${esc(money(converted(value, conv), conv.currency))}</div>` : "");
+const figures = (c, conv = null) => (c.available !== c.total ? `
       <div class="tile-figures">
-        <div><div class="tile-value">${esc(money(c.available, c.currency))}</div><div class="tile-caption">${esc(t("totals.available_now"))}</div></div>
-        <div class="tile-locked"><div class="tile-value">${esc(money(c.total, c.currency))}</div><div class="tile-caption">🔒 ${esc(t("totals.with_locked", { locked: money(c.total - c.available, c.currency) }))}</div></div>
-      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>`);
+        <div><div class="tile-value">${esc(money(c.available, c.currency))}</div>${convertedLine(c.available, conv)}<div class="tile-caption">${esc(t("totals.available_now"))}</div></div>
+        <div class="tile-locked"><div class="tile-value">${esc(money(c.total, c.currency))}</div>${convertedLine(c.total, conv)}<div class="tile-caption">🔒 ${esc(t("totals.with_locked", { locked: money(c.total - c.available, c.currency) }))}</div></div>
+      </div>` : `<div class="tile-value">${esc(money(c.total, c.currency))}</div>${convertedLine(c.total, conv)}`);
+
+// A change in the box's currency and, with `conv`, the same change in the default currency
+function changeLine(current, previous, currency, percent, conv) {
+  const own = changeCell(current, previous, currency, percent);
+  if (!conv || !own) return own;
+  const diff = Math.round((converted(current, conv) - converted(previous, conv)) * 100) / 100;
+  return `${own} <span class="tile-converted-change">(≈ ${esc(signedMoney(diff, conv.currency))})</span>`;
+}
+
+// The box of one currency
+function currencyTile(c, conv = null) {
+  return `
+    <div class="tile">
+      <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
+      ${figures(c, conv)}
+      <div class="tile-sub">${c.previous_total !== null ? `${changeLine(c.total, c.previous_total, c.currency, false, conv)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
+      ${c.first_total !== null ? `<div class="tile-sub">${changeLine(c.total, c.first_total, c.currency, true, conv)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
+    </div>`;
+}
+
+// Every box: with the combined total (when there is one), the other currencies also in the default one at today's rate
+function renderTotals(totals, combined = null) {
+  const rates = Object.fromEntries((combined?.rates ?? []).map((r) => [r.base, r.rate]));
+  const conv = (c) => (combined && c.currency !== combined.currency && rates[c.currency] !== undefined
+    ? { rate: rates[c.currency], currency: combined.currency } : null);
+  $("#totals").innerHTML = (combined ? combinedTile(combined) : "") + totals.map((c) => currencyTile(c, conv(c))).join("");
+}
 
 // Every currency added up in the default one, at today's exchange rates (fetched once a day by the server)
 function combinedTile(c) {
@@ -189,14 +219,7 @@ function combinedTile(c) {
 async function loadTotals() {
   const totals = await api("/api/summary");
   state.totals = totals;
-  const tiles = totals.map((c) => `
-    <div class="tile">
-      <div class="tile-label">${esc(t("totals.total", { currency: c.currency }))}</div>
-      ${figures(c)}
-      <div class="tile-sub">${c.previous_total !== null ? `${changeCell(c.total, c.previous_total, c.currency)} ${esc(t("totals.since", { date: fmtDate(c.previous_date) }))}` : esc(t("totals.accounts", { n: c.accounts }))}</div>
-      ${c.first_total !== null ? `<div class="tile-sub">${changeCell(c.total, c.first_total, c.currency, true)} ${esc(t("totals.since_first", { date: fmtDate(c.first_date) }))}</div>` : ""}
-    </div>`).join("");
-  $("#totals").innerHTML = tiles;
+  renderTotals(totals);
   const currencies = totals.map((c) => c.currency);
   state.currencies = currencies;
   const select = $("#chart-currency");
@@ -214,7 +237,7 @@ async function loadTotals() {
   if (totals.length > 1) {
     const request = (state.combinedRequest = api("/api/summary/combined").catch(() => null));
     request.then((combined) => {
-      if (combined && request === state.combinedRequest) $("#totals").innerHTML = combinedTile(combined) + tiles;
+      if (combined && request === state.combinedRequest) renderTotals(totals, combined);
     });
   }
 }
@@ -296,7 +319,7 @@ $("#totals").addEventListener("click", async (e) => {
   btn.disabled = true;
   btn.classList.add("spinning");
   try {
-    $(".tile-combined").outerHTML = combinedTile(await api("/api/fx/refresh", { method: "POST" }));
+    renderTotals(state.totals, await api("/api/fx/refresh", { method: "POST" }));
   } catch (err) {
     showError(err);
     btn.disabled = false;

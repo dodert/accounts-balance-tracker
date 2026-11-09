@@ -53,6 +53,8 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .tile-sub { font-size: .85rem; color: var(--muted); }
 /* Available now (main colour) and the total with what is not available yet (secondary colour) */
 .tile-figures { display: flex; flex-wrap: wrap; gap: .2rem 2.5rem; margin-bottom: .3rem; }
+.tile-converted { font-size: .95rem; color: var(--muted); font-variant-numeric: tabular-nums; margin: -.2rem 0 .3rem; }
+.tile-converted-change { white-space: nowrap; color: var(--muted); }
 .tile-caption { font-size: .8rem; color: var(--muted); margin-top: -.2rem; }
 .tile-locked .tile-value { color: var(--muted); }
 .tile-combined { border-color: var(--accent); }
