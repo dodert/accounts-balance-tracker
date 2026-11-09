@@ -39,6 +39,7 @@
         <td>{% if u.expired %}{{ tr("admin.status_expired", css="status-blocked") }}{% elif u.blocked %}{{ tr("admin.status_blocked", css="status-blocked") }}{% else %}{{ tr("admin.status_active") }}{% endif %}</td>
         <td><div class="row-actions">
           {%- if u.blocked %}{{ action("/admin/users/%d/unblock"|format(u.id), "admin.unblock") }}{% else %}{{ action("/admin/users/%d/block"|format(u.id), "admin.block") }}{% endif -%}
+          {%- if u.totp %}{{ action("/admin/users/%d/totp/remove"|format(u.id), "admin.remove_totp", "", "admin.confirm_remove_totp") }}{% endif -%}
           {{ action("/admin/users/%d/delete"|format(u.id), "admin.delete", "danger", "admin.confirm_delete") -}}
           {{ action("/admin/users/%d/delete?block_email=1"|format(u.id), "admin.delete_block", "danger", "admin.confirm_delete_block") -}}
         </div></td></tr>

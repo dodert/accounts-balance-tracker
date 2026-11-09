@@ -42,7 +42,7 @@ def router(ctx: Context) -> APIRouter:
                 "where": " · ".join(x for x in (user.last_ip, user.last_country) if x), "size": size(db_size),
                 "never_expires": user.expires_at is None, "expires": when(user.expires_at),
                 "days_left": max(0, days) if days >= 0 else None,
-                "expired": expired(user), "blocked": user.blocked})
+                "expired": expired(user), "blocked": user.blocked, "totp": user.totp_secret is not None})
         invitations = [{"id": i.id, "email": i.email, "expires": when(i.expires_at)} for i in users.open_invitations()]
         blocked = [{"email": b.email, "created": when(b.created_at)} for b in users.blocked_emails()]
         page = template.render(en=english, asset_version=pages.asset_version, users=rows, total_size=size(total),
@@ -95,6 +95,12 @@ def router(ctx: Context) -> APIRouter:
     @router.post("/admin/users/{user_id}/no-expiry", include_in_schema=False, dependencies=[Depends(multi_only)])
     def no_expiry(user_id: int):
         users.extend(user_id, None)
+        return RedirectResponse("/admin", status_code=303)
+
+    @router.post("/admin/users/{user_id}/totp/remove", include_in_schema=False, dependencies=[Depends(multi_only)])
+    def remove_user_totp(user_id: int):
+        """For a user who lost their authenticator app (and their recovery key): they log in with the password."""
+        users.remove_totp(user_id)
         return RedirectResponse("/admin", status_code=303)
 
     @router.post("/admin/users/{user_id}/delete", include_in_schema=False, dependencies=[Depends(multi_only)])

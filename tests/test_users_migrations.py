@@ -4,11 +4,14 @@ import sqlite3
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine
 
+from app.migrate import USERS_MIGRATIONS_DIR, alembic_config
 from app.users import SystemBase, Users
 
 SECRET = b"s" * 32
+HEAD = ScriptDirectory.from_config(alembic_config(USERS_MIGRATIONS_DIR)).get_current_head()
 
 
 def revision(path):
@@ -26,6 +29,7 @@ def legacy_users_db(path, with_key_by_account):
     Users(path.parent, SECRET, "admin")
     with sqlite3.connect(path) as db:
         db.execute("DROP TABLE alembic_version")
+        db.execute("ALTER TABLE users DROP COLUMN totp_last_counter")  # added after Alembic (0003)
         if not with_key_by_account:
             db.execute("ALTER TABLE users DROP COLUMN key_by_account")
         db.execute("INSERT INTO users (username, email, created_at, blocked, kdf_salt, kdf_params, key_by_password,"
@@ -39,7 +43,7 @@ def test_users_db_migrations_match_the_models(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'users.db'}")
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), SystemBase.metadata) == []
-    assert revision(tmp_path / "users.db") == "0002"
+    assert revision(tmp_path / "users.db") == HEAD
     assert not list(tmp_path.glob("users.db.backup-*"))  # new: nothing to back up
 
 
@@ -47,18 +51,19 @@ def test_an_old_users_db_is_migrated_after_a_backup_keeping_its_users(tmp_path):
     """A users.db from before Alembic and before key_by_account is stamped 0001, backed up and migrated."""
     legacy_users_db(tmp_path / "users.db", with_key_by_account=False)
     Users(tmp_path, SECRET, "admin")
-    assert revision(tmp_path / "users.db") == "0002" and users_in(tmp_path / "users.db") == ["ana"]
-    [backup] = tmp_path.glob("users.db.backup-0001-to-0002-*")
+    assert revision(tmp_path / "users.db") == HEAD and users_in(tmp_path / "users.db") == ["ana"]
+    [backup] = tmp_path.glob(f"users.db.backup-0001-to-{HEAD}-*")
     assert users_in(backup) == ["ana"] and backup.stat().st_mode & 0o777 == 0o600
 
 
-def test_a_users_db_already_up_to_date_is_only_stamped(tmp_path):
-    """A users.db from before Alembic that already has every column is stamped at the head, unchanged, no backup."""
+def test_a_users_db_with_key_by_account_is_stamped_0002(tmp_path):
+    """A users.db from before Alembic that has key_by_account is stamped 0002, then migrated from there."""
     legacy_users_db(tmp_path / "users.db", with_key_by_account=True)
     Users(tmp_path, SECRET, "admin")
-    Users(tmp_path, SECRET, "admin")  # a second start changes nothing either
-    assert revision(tmp_path / "users.db") == "0002" and users_in(tmp_path / "users.db") == ["ana"]
-    assert not list(tmp_path.glob("users.db.backup-*"))
+    assert revision(tmp_path / "users.db") == HEAD and users_in(tmp_path / "users.db") == ["ana"]
+    assert [p.name.split("-")[1:4] for p in tmp_path.glob("users.db.backup-*")] == [["0002", "to", HEAD]]
+    Users(tmp_path, SECRET, "admin")  # a second start changes nothing and makes no other backup
+    assert len(list(tmp_path.glob("users.db.backup-*"))) == 1
 
 
 def test_a_users_db_from_a_newer_version_is_refused_unchanged(tmp_path):

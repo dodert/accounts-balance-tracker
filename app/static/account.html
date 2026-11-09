@@ -11,7 +11,7 @@
   <meta name="theme-color" content="#0a66c2">
   <link rel="stylesheet" href="/static/style.css?v={{ASSET_VERSION}}">
 </head>
-<body class="login-page">
+<body class="login-page account-page">
   <form method="post" action="/account/password" class="login-box">
     <h1 data-i18n="header.title">💰 My balances</h1>
     <p class="totp-help"><span data-i18n="account.user">User:</span> <strong>{{USERNAME}}</strong></p>
@@ -23,6 +23,7 @@
     <button type="submit" class="primary" data-i18n="account.change_password">Change password</button>
     <a class="totp-back" href="/" data-i18n="totp.back">Back</a>
   </form>
+  {{TOTP}}
   <script src="/static/i18n.js?v={{ASSET_VERSION}}"></script>
   <script src="/static/pages.js?v={{ASSET_VERSION}}"></script>
 </body>

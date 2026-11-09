@@ -1,5 +1,6 @@
 """Optional second step for the login: a one-time code (TOTP, RFC 6238) from an authenticator app
-(Google Authenticator, Aegis, 1Password...). Turned on with AUTH_TOTP=true.
+(Google Authenticator, Aegis, 1Password...). The functions are shared by the admin's code (the class Totp, turned on
+with AUTH_TOTP=true; always on for the admin in multi-user mode) and the users' own codes (users.py).
 
 The secret is created on first use and kept in DATA_DIR/.totp_secret. Until a first code has been
 entered the app shows it (as a QR code and as text) after the password, so it can be added to the
@@ -37,6 +38,40 @@ def code_at(secret: str, counter: int) -> str:
     return str(value % 10**DIGITS).zfill(DIGITS)
 
 
+def new_secret() -> str:
+    return base64.b32encode(secrets.token_bytes(20)).decode()
+
+
+def check(secret: str, code: str, last: int = -1, now: float | None = None) -> int | None:
+    """The step of the code if it is the one of now, or of the step before or after (clocks drift a little), and
+    later than `last` (a code is accepted once); None otherwise."""
+    code = "".join(code.split())
+    if not (code.isdigit() and len(code) == DIGITS):
+        return None
+    current = int((now if now is not None else time.time()) // STEP)
+    for counter in (current - 1, current, current + 1):
+        if counter > last and hmac.compare_digest(code, code_at(secret, counter)):
+            return counter
+    return None
+
+
+def uri(secret: str, account: str) -> str:
+    label = quote(f"{ISSUER}:{account}", safe=":")
+    return f"otpauth://totp/{label}?secret={secret}&issuer={quote(ISSUER)}&digits={DIGITS}&period={STEP}"
+
+
+def qr_svg(secret: str, account: str) -> str:
+    image = qrcode.make(uri(secret, account), image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=2)
+    out = io.BytesIO()
+    image.save(out)
+    return out.getvalue().decode().split("?>", 1)[-1].strip()  # inline: without the XML declaration
+
+
+def grouped(secret: str) -> str:
+    """The secret in groups of 4 letters, easier to type."""
+    return " ".join(secret[i:i + 4] for i in range(0, len(secret), 4))
+
+
 class Totp:
     def __init__(self, data_dir: Path):
         self.path = data_dir / ".totp_secret"
@@ -50,7 +85,7 @@ class Totp:
             except ValueError:
                 # Never replace it silently: a new, unconfirmed secret would be shown to anyone with the password
                 raise ValueError(f"{self.path} is damaged; delete it to set up the one-time code again") from None
-        data = {"secret": base64.b32encode(secrets.token_bytes(20)).decode(), "confirmed": False}
+        data = {"secret": new_secret(), "confirmed": False}
         self._save(data)
         return data
 
@@ -76,30 +111,20 @@ class Totp:
         return self._load()["secret"]
 
     def verify(self, code: str, now: float | None = None) -> bool:
-        """The code of now, or of the step before or after (clocks drift a little)."""
-        code = "".join(code.split())
-        if not (code.isdigit() and len(code) == DIGITS):
-            return False
-        current = int((now if now is not None else time.time()) // STEP)
         with self._lock:
             data = self._load()
-            last = data.get("last_counter", -1)  # a code is accepted once, also after a restart
-            for counter in (current - 1, current, current + 1):
-                if counter > last and hmac.compare_digest(code, code_at(data["secret"], counter)):
-                    self._save({**data, "last_counter": counter})
-                    return True
-        return False
+            counter = check(data["secret"], code, data.get("last_counter", -1), now)
+            if counter is None:
+                return False
+            self._save({**data, "last_counter": counter})  # a code is accepted once, also after a restart
+            return True
 
     def confirm(self) -> None:
         with self._lock:
             self._save({**self._load(), "confirmed": True})
 
     def uri(self, account: str) -> str:
-        label = quote(f"{ISSUER}:{account}", safe=":")
-        return f"otpauth://totp/{label}?secret={self.secret}&issuer={quote(ISSUER)}&digits={DIGITS}&period={STEP}"
+        return uri(self.secret, account)
 
     def qr_svg(self, account: str) -> str:
-        image = qrcode.make(self.uri(account), image_factory=qrcode.image.svg.SvgPathImage, box_size=8, border=2)
-        out = io.BytesIO()
-        image.save(out)
-        return out.getvalue().decode().split("?>", 1)[-1].strip()  # inline: without the XML declaration
+        return qr_svg(self.secret, account)
