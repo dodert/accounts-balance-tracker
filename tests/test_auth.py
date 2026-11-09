@@ -148,6 +148,20 @@ def test_totp_secret_survives_restart(tmp_path):
     assert (tmp_path / ".totp_secret").read_text() == secret
 
 
+def test_a_used_code_is_refused_after_a_restart(tmp_path):
+    """A one-time code already used is refused also after a restart, and the file stays private."""
+    client = totp_client(tmp_path)
+    client.post("/login", data={"username": "admin", "password": "s3cret"})
+    code = current_code(tmp_path)
+    assert client.post("/login/totp", data={"code": code}, follow_redirects=False).headers["location"] == "/"
+    restarted = totp_client(tmp_path)
+    restarted.post("/login", data={"username": "admin", "password": "s3cret"})
+    reused = restarted.post("/login/totp", data={"code": code}, follow_redirects=False)
+    assert reused.headers["location"] == "/login/totp?error=1"
+    assert (tmp_path / ".totp_secret").stat().st_mode & 0o777 == 0o600
+    assert not list(tmp_path.glob(".totp_secret.new"))
+
+
 def test_pending_cookie_cannot_be_turned_into_a_session(tmp_path):
     """The half-way cookie (password done, code pending) can't be used as a session."""
     client = totp_client(tmp_path)

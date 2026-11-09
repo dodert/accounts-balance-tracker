@@ -183,6 +183,10 @@ The app holds financial data: turn the login on, and expose it only on your LAN 
 
 **Wrong logins**: after 10 wrong passwords, or 10 wrong one-time codes, from one IP in 15 minutes, that IP has to wait (`429`) until the oldest one is 15 minutes old; other IPs can still log in. A right password clears the count of its IP. IPv6 addresses count per /64 (one connection usually has the whole /64). Each user name also allows at most 30 wrong passwords in 15 minutes from all IPs together, so guessing from many addresses doesn't help either. Behind a reverse proxy the limit uses the real client IP only if the proxy's `X-Forwarded-For` is trusted; otherwise every visitor shares the proxy's IP and its limit. See also [SECURITY.md](SECURITY.md).
 
+**One-time codes** are accepted once: the step of the last code used is kept in `.totp_secret`, so the same code can't be used again, also after a restart.
+
+**One process**: the image runs a single uvicorn process (`--workers 1`). The login limits, the demos and the per-user locks live in its memory, so don't run it with more workers or several replicas behind a load balancer: each would have its own limits.
+
 ## Several users
 
 With `MULTI_USER=true`, one instance serves several people, each with their own data. It is meant for sharing the app with friends or family, e.g. through a Cloudflare Tunnel.

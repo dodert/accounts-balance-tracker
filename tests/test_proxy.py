@@ -54,3 +54,8 @@ def test_an_ip_made_up_by_the_client_before_the_proxy_is_ignored():
     # The proxy adds the real address at the end; what the client wrote before it is not trusted
     """An IP the client made up before the proxy's is ignored."""
     assert seen_by_app("172.18.0.5", "1.2.3.4, 203.0.113.9")[0] == "203.0.113.9"
+
+
+def test_the_image_runs_one_process():
+    """The image runs one process: login limits, demos and per-user locks live in its memory."""
+    assert "--workers 1" in DOCKERFILE.read_text()
