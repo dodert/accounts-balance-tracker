@@ -814,24 +814,87 @@ def test_demos_started_from_one_address_are_limited(setup):
     assert TestClient(app, client=("198.51.100.5", 1)).post("/api/demo").status_code == 204
 
 
-def test_demos_share_the_rates_and_each_visitor_can_ask_for_a_few(tmp_path):
-    import app.main as main
+def rates_app(tmp_path, rates, **extra):
+    return create_app(Settings(data_dir=tmp_path, auth_username=ADMIN["username"], auth_password=ADMIN["password"],
+                               multi_user=True, country_db=False, **extra), fx_fetcher=rates)
+
+
+def usd_account(client):
+    account = client.post("/api/accounts", json={"name": "Dollars", "currency": "USD"}).json()
+    for day in ("2026-01-01", "2026-02-01", "2026-03-01"):
+        client.post(f"/api/accounts/{account['id']}/balances", json={"date": day, "amount": 100})
+    client.post("/api/accounts", json={"name": "Euros"})
+
+
+def test_users_share_the_exchange_rates(tmp_path):
     from tests.test_fx import FakeRates
     rates = FakeRates()
-    app = create_app(Settings(data_dir=tmp_path, auth_username=ADMIN["username"], auth_password=ADMIN["password"],
-                              multi_user=True, country_db=False), fx_fetcher=rates)
-    first = TestClient(app, client=("203.0.113.1", 1))
-    first.post("/api/demo")
-    assert first.get("/api/history/converted").status_code == 200
+    app = rates_app(tmp_path, rates)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    bea, _ = sign_up(app, invite(admin), "bea", "bea@example.com", "bea-password")
+    usd_account(ana)
+    assert ana.get("/api/history/converted").status_code == 200
+    assert ana.get("/api/summary/combined").json()["missing"] == []
     asked = len(rates.calls)
-    assert asked > 0
-    # Another visitor's new demo uses the rates already fetched
-    second = TestClient(app, client=("198.51.100.1", 1))
-    second.post("/api/demo")
-    assert second.get("/api/history/converted").status_code == 200
+    assert asked == 4  # the three days and today
+    # Another user with the same currencies and dates: nothing asked again
+    usd_account(bea)
+    assert bea.get("/api/history/converted").status_code == 200
+    assert bea.get("/api/summary/combined").json()["missing"] == []
     assert len(rates.calls) == asked
-    # Past the limit, a visitor's new days are not asked to the service (stored rates are used instead)
-    start = date(2000, 1, 1)
-    for n in range(main.FX_FETCHES_PER_DEMO_IP + 20):
-        assert second.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}").status_code == 200
-    assert len(rates.calls) == asked + main.FX_FETCHES_PER_DEMO_IP
+    assert all(isinstance(call[0], str) and len(call) == 3 for call in rates.calls)  # currencies and a date only
+
+
+def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
+    from tests.test_fx import FakeRates
+    rates = FakeRates()
+    app = rates_app(tmp_path, rates, fx_daily_limit=3)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    start = date(2020, 1, 1)
+    for n in range(5):
+        ana.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}")
+    assert len(rates.calls) == 3
+    # The count is kept across restarts
+    again = rates_app(tmp_path, rates, fx_daily_limit=3)
+    client = TestClient(again)
+    client.post("/login", data={"username": "ana", "password": "ana-password"})
+    assert client.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=10)}").status_code == 200
+    assert len(rates.calls) == 3
+
+
+def test_demos_never_ask_the_rate_service(tmp_path):
+    from tests.test_fx import FakeRates
+    rates = FakeRates()
+    app = rates_app(tmp_path, rates)
+    visitor = TestClient(app)
+    visitor.post("/api/demo")
+    assert visitor.get("/api/history/converted").status_code == 200
+    assert visitor.get("/api/summary/combined").status_code == 200
+    visitor.get("/api/fx?from=USD&to=EUR&date=2020-01-01")
+    visitor.post("/api/fx/refresh")
+    assert rates.calls == []
+
+
+def test_todays_rate_is_asked_again_at_most_hourly_until_the_days_own_rate(tmp_path):
+    from app.fx import SharedRates
+    from tests.test_fx import FakeRates
+    now = [1_000_000.0]
+    today = date.today()
+    rates = FakeRates()
+    rates_by_day = {}
+    rates.__class__ = type("Rates", (FakeRates,), {"__call__": lambda self, b, q, d: (
+        self.calls.append((b, q, d)) or (self.rate, rates_by_day.get("date", today - timedelta(days=1))))})
+    store = SharedRates(tmp_path / "rates.db", rates, 90, clock=lambda: now[0])
+    fetch = store.fetcher()
+    fetch("USD", "EUR", None)
+    fetch("USD", "EUR", None)
+    assert len(rates.calls) == 1  # yesterday's rate, asked less than an hour ago
+    now[0] += 3601
+    rates_by_day["date"] = today  # the ECB has published today's
+    fetch("USD", "EUR", None)
+    assert len(rates.calls) == 2
+    now[0] += 5 * 3600
+    fetch("USD", "EUR", None)
+    assert len(rates.calls) == 2  # today's own rate: not asked again today

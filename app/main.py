@@ -63,8 +63,6 @@ ARGON2_AT_ONCE = 4
 IMPORTS_AT_ONCE = 2
 # Demos anyone can start (multi-user mode), per client IP (IPv6 per /64) and hour
 DEMOS_PER_IP = 10
-# Requests to the exchange-rate service a demo visitor can cause, per client IP and hour; past it, stored rates
-FX_FETCHES_PER_DEMO_IP = 100
 # Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -113,7 +111,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
     visitor_demos = VisitorDemos()  # multi-user mode: one per visitor, usable without an account
     fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
-    demo_rates = SharedRates(fetch_rate)  # every demo starts empty: the rates they fetch are shared
+    # Multi-user: one store of rates for everybody, with a daily limit of requests to the service
+    shared_rates = SharedRates(settings.data_dir / "rates.db", fetch_rate, settings.fx_daily_limit) if multi else None
 
     version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
 
@@ -492,20 +491,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         return currency_totals(accounts_with_balances(db))
 
     def rates_fetcher(request: Request) -> Fetcher:
-        """Real data: the service, each database keeping its own rates. Demo: the rates shared by every demo,
-        and a limited number of requests to the service per visitor IP."""
-        if not in_demo(request):
+        """Single-user: the service (the database keeps the rates). Multi-user: the store shared by everybody,
+        which demos only read: a demo never makes the app ask the service."""
+        if not multi:
             return fetch_rate
-        key = limit_key(client_ip(request))
-
-        def allow() -> bool:
-            try:
-                with demo_fx_tries.attempt(key) as attempt:
-                    attempt.wrong()  # counts one request
-                return True
-            except TooManyTries:
-                return False
-        return demo_rates.fetcher(allow)
+        return shared_rates.fetcher(network=not in_demo(request))
 
     def combined_total(db: Session, fetch: Fetcher, refresh: bool) -> CombinedTotal:
         target = settings.default_currency
@@ -678,7 +668,6 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     password_tries = TryLimit(WRONG_PASSWORDS_PER_IP, LOGIN_WINDOW)
     new_demos = TryLimit(DEMOS_PER_IP, 3600)
-    demo_fx_tries = TryLimit(FX_FETCHES_PER_DEMO_IP, 3600)
     user_password_tries = TryLimit(WRONG_PASSWORDS_PER_USER, LOGIN_WINDOW)
     argon2_slots = asyncio.Semaphore(ARGON2_AT_ONCE)
 
