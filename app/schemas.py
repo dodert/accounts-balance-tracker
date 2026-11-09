@@ -174,12 +174,12 @@ class HistoryOut(BaseModel):
     # Part of the total available on each date
     available: list[float]
     accounts: list[Series]
-    # Only in the converted history (every currency in the default one, at each date's rate):
+    # Only in the converted history (every currency in the default one, at today's rate):
     first_total: float | None = None       # the total and the available part on the first date ever
     first_available: float | None = None
     converted: list[str] = []              # currencies converted
     missing: list[str] = []                # currencies left out: no rate stored and the service down
-    stale: bool = False                    # some dates use the nearest stored rate, not their own
+    stale: bool = False                    # today's rate could not be updated: the last stored one is used
 
 
 class CsvImportOut(BaseModel):
