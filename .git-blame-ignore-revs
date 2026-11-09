@@ -1,0 +1,5 @@
+# Commits that touched many lines without changing what they do: git blame (git config blame.ignoreRevsFile)
+# and the CI's test report skip them when saying when a line or test was last changed.
+
+# Tests: a one-line description for every test (#87)
+a54d05f38c385c88fccc3c432ca171aca65da159
