@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 
+from .. import totp as one_time
 from ..auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS
 from ..demo import COOKIE as DEMO_COOKIE
 from ..deps import Context, client_ip, is_https, limit_key
 from ..ratelimit import TooManyTries, TryLimit
+from ..users import PENDING_SECONDS as USER_PENDING_SECONDS
 from ..users import SESSION_SECONDS as USER_SESSION_SECONDS
-from ..users import USER_COOKIE, SignupError
+from ..users import USER_COOKIE, USER_PENDING_COOKIE, SignupError
 
 WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
@@ -98,7 +100,13 @@ def router(ctx: Context) -> APIRouter:
         password_tries.reset(limit_key(ip))
         user_password_tries.reset(name)
         if session is not None:
-            return user_logged_in(request, session)
+            if not await run_in_threadpool(users.totp_on, session.user_id):
+                return user_logged_in(request, session)
+            # Password right, and this user has a one-time code: the session waits for it
+            response = RedirectResponse("/login/totp", status_code=303)
+            response.set_cookie(USER_PENDING_COOKIE, users.cookie(session, pending=True), max_age=USER_PENDING_SECONDS,
+                                httponly=True, samesite="lax", secure=is_https(request))
+            return response
         if not totp:
             return logged_in(request)
         # Password right: now the one-time code (or adding the secret to the app, the first time)
@@ -107,20 +115,42 @@ def router(ctx: Context) -> APIRouter:
                             samesite="lax", secure=is_https(request))
         return response
 
+    def pending_user(request: Request):
+        """Multi-user: the user whose password was right and whose one-time code is still asked."""
+        return users.session(request.cookies.get(USER_PENDING_COOKIE), pending=True) if multi else None
+
     @router.get("/login/totp", include_in_schema=False)
     def totp_page(request: Request):
+        if pending_user(request) is not None:
+            return HTMLResponse(totp_html.replace("{{SETUP}}", "").replace("{{MODE}}", "verify"),
+                                headers={"Cache-Control": "no-store"})
         if not totp or not auth.valid_pending(request.cookies.get(PENDING_COOKIE)):
             return RedirectResponse("/login", status_code=303)
         # The secret is shown only until a first code proves it's in the authenticator app
         setup = "" if totp.confirmed else (
             f'<div class="totp-qr">{totp.qr_svg(auth.username)}</div>'
-            f'<code class="totp-secret">{" ".join(totp.secret[i:i + 4] for i in range(0, len(totp.secret), 4))}</code>'
+            f'<code class="totp-secret">{one_time.grouped(totp.secret)}</code>'
         )
         html = totp_html.replace("{{SETUP}}", setup).replace("{{MODE}}", "verify" if totp.confirmed else "setup")
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @router.post("/login/totp", include_in_schema=False)
     async def totp_login(request: Request, code: str = Form("")):
+        pending = await run_in_threadpool(pending_user, request)
+        if pending is not None:
+            ip = limit_key(client_ip(request))
+            try:
+                with code_tries.attempt(ip) as attempt:
+                    if not await run_in_threadpool(users.verify_totp, pending.user_id, code):
+                        attempt.wrong()
+                        await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                        return RedirectResponse("/login/totp?error=1", status_code=303)
+            except TooManyTries as error:
+                return too_many(error)
+            code_tries.reset(ip)
+            response = user_logged_in(request, pending)
+            response.delete_cookie(USER_PENDING_COOKIE)
+            return response
         if not totp or not auth.valid_pending(request.cookies.get(PENDING_COOKIE)):
             return RedirectResponse("/login", status_code=303)
         ip = limit_key(client_ip(request))
@@ -220,12 +250,69 @@ def router(ctx: Context) -> APIRouter:
             return too_many(error)
         return user_logged_in(request, session)
 
-    def account_page(request: Request, note: str = "") -> HTMLResponse:
-        return fill(account_html, USERNAME=html.escape(request.state.user.username), MESSAGE=note)
+    def totp_section(request: Request, note: str = "") -> str:
+        """The account page's one-time code: how to turn it on (a new secret each time), or a button to turn it off."""
+        user = request.state.user
+        if users.totp_on(user.user_id):
+            return (f'<form method="post" action="/account/totp/off" class="login-box">'
+                    f'<h2 data-i18n="account.totp">{english["account.totp"]}</h2>{note}'
+                    f'<p class="totp-help" data-i18n="account.totp_on">{english["account.totp_on"]}</p>'
+                    f'<label><span data-i18n="account.current_password">{english["account.current_password"]}</span> '
+                    f'<input name="current" type="password" autocomplete="current-password" required></label>'
+                    f'<button type="submit" data-i18n="account.totp_turn_off">{english["account.totp_turn_off"]}</button>'
+                    f'</form>')
+        secret = one_time.new_secret()
+        return (f'<form method="post" action="/account/totp" class="login-box">'
+                f'<h2 data-i18n="account.totp">{english["account.totp"]}</h2>{note}'
+                f'<p class="totp-help" data-i18n="account.totp_off">{english["account.totp_off"]}</p>'
+                f'<div class="totp-qr">{one_time.qr_svg(secret, user.username)}</div>'
+                f'<code class="totp-secret">{one_time.grouped(secret)}</code>'
+                f'<input type="hidden" name="secret" value="{secret}">'
+                f'<label><span data-i18n="totp.code">{english["totp.code"]}</span> <input name="code" inputmode="numeric" '
+                f'pattern="[0-9 ]*" maxlength="7" autocomplete="one-time-code" required></label>'
+                f'<label><span data-i18n="account.current_password">{english["account.current_password"]}</span> '
+                f'<input name="current" type="password" autocomplete="current-password" required></label>'
+                f'<button type="submit" class="primary" data-i18n="account.totp_turn_on">{english["account.totp_turn_on"]}</button>'
+                f'</form>')
+
+    def account_page(request: Request, note: str = "", totp_note: str = "") -> HTMLResponse:
+        return fill(account_html, USERNAME=html.escape(request.state.user.username), MESSAGE=note,
+                    TOTP=totp_section(request, totp_note))
 
     @router.get("/account", include_in_schema=False, dependencies=[Depends(multi_only)])
-    def account(request: Request, changed: bool = False):
-        return account_page(request, message("account.changed", "login-ok") if changed else "")
+    def account(request: Request, changed: bool = False, totp: str = ""):
+        done = {"on": "account.totp_done_on", "off": "account.totp_done_off"}.get(totp)
+        return account_page(request, message("account.changed", "login-ok") if changed else "",
+                            message(done, "login-ok") if done else "")
+
+    @router.post("/account/totp", include_in_schema=False, dependencies=[Depends(multi_only)])
+    async def turn_totp_on(request: Request, secret: str = Form(""), code: str = Form(""), current: str = Form("")):
+        ip = limit_key(client_ip(request))
+        try:
+            with password_tries.attempt(ip) as attempt:
+                problem = await with_password_check(users.set_totp, request.state.user.user_id, current, secret, code)
+                if problem == "password":
+                    attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    return account_page(request, totp_note=message("account.error"))
+        except TooManyTries as error:
+            return too_many(error)
+        if problem == "code":
+            return account_page(request, totp_note=message("totp.error"))
+        return RedirectResponse("/account?totp=on", status_code=303)
+
+    @router.post("/account/totp/off", include_in_schema=False, dependencies=[Depends(multi_only)])
+    async def turn_totp_off(request: Request, current: str = Form("")):
+        ip = limit_key(client_ip(request))
+        try:
+            with password_tries.attempt(ip) as attempt:
+                if not await with_password_check(users.remove_totp, request.state.user.user_id, current):
+                    attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    return account_page(request, totp_note=message("account.error"))
+        except TooManyTries as error:
+            return too_many(error)
+        return RedirectResponse("/account?totp=off", status_code=303)
 
     @router.post("/account/password", include_in_schema=False, dependencies=[Depends(multi_only)])
     async def change_password(request: Request, current: str = Form(""), password: str = Form(""),

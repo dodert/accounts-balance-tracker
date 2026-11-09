@@ -218,5 +218,14 @@
   "backups.hint": "Una copia al día, hecha por el servidor en su carpeta de datos (backups/). Se guardan los últimos {keep} días.",
   "backups.off": "Las copias diarias están desactivadas (BACKUP_KEEP=0).",
   "backups.none": "Todavía no se ha hecho ninguna copia.",
-  "backups.error": "No se ha podido cargar la lista de copias."
+  "backups.error": "No se ha podido cargar la lista de copias.",
+  "account.totp": "Código de un solo uso",
+  "account.totp_off": "Desactivado. Para pedir un código de tu app de autenticación en cada inicio de sesión: añade esta cuenta a la app (escanea el código QR o escribe el código de abajo) y luego escribe el código de 6 dígitos que muestra y tu contraseña.",
+  "account.totp_on": "Activado: cada inicio de sesión pide un código de tu app de autenticación. Si la pierdes, entra con tu clave de recuperación (¿Has olvidado la contraseña?) o pide al admin que lo quite.",
+  "account.totp_turn_on": "Activar",
+  "account.totp_turn_off": "Desactivar",
+  "account.totp_done_on": "Código de un solo uso activado.",
+  "account.totp_done_off": "Código de un solo uso desactivado.",
+  "admin.remove_totp": "Quitar código de un solo uso",
+  "admin.confirm_remove_totp": "¿Quitar el código de un solo uso de este usuario? Entrará solo con la contraseña hasta que lo vuelva a activar."
 }

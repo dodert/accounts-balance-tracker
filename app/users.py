@@ -49,7 +49,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from . import crypto
+from . import crypto, totp
 from .backups import backups_dir, copy_private, copy_sqlite
 from .db import make_engine
 from .migrate import (
@@ -66,6 +66,9 @@ from .migrate import (
 log = logging.getLogger(__name__)
 
 USER_COOKIE = "abt_user"
+# After the right password of a user with a one-time code: the session waits here until the code is right
+USER_PENDING_COOKIE = "abt_user_pending"
+PENDING_SECONDS = 5 * 60
 SESSION_SECONDS = 30 * 24 * 3600
 INVITATION_DAYS = 7
 USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,31}$")
@@ -101,7 +104,10 @@ class User(SystemBase):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     last_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # Optional one-time code: the secret, sealed with a key from the server secret (None: off), and the step of the
+    # last code accepted, so each code works once
     totp_secret: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    totp_last_counter: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Invitation(SystemBase):
@@ -370,6 +376,8 @@ class Users:
         self.databases = UserDatabases(data_dir / "users", max_db_bytes)
         self.account_days, self.max_users = account_days, max_users
         self._session_key = crypto.derive(server_secret, b"abt-user-session")
+        self._totp_key = crypto.derive(server_secret, b"abt-user-totp")
+        self._totp_lock = threading.Lock()  # two codes checked at once can't both take the same step
         self.admin_username = admin_username.lower()
         # Same work for an unknown user as for a known one, so the time taken doesn't tell which names exist
         self._dummy_salt = crypto.new_salt()
@@ -541,22 +549,88 @@ class Users:
         user.key_by_password = crypto.seal(kek, account_key, key_aad(user.id))
         user.session_epoch += 1
 
+    # --- One-time codes (optional, per user) ---
+
+    def _totp_aad(self, user_id: int) -> bytes:
+        return f"abt-user-totp:{user_id}".encode()
+
+    def totp_on(self, user_id: int) -> bool:
+        user = self.get_user(user_id)
+        return user is not None and user.totp_secret is not None
+
+    def set_totp(self, user_id: int, password: str, secret: str, code: str) -> str | None:
+        """Turn the one-time code on with this secret, if `code` is its current code and the password is right.
+        Returns None when done, or the reason: "password" or "code"."""
+        with self.Session() as db:
+            user = db.get(User, user_id)
+            try:
+                self._unwrap(user, password)
+            except crypto.WrongKey:
+                return "password"
+            try:
+                counter = totp.check(secret, code)
+            except (ValueError, TypeError):  # not a base32 secret
+                counter = None
+            if counter is None:
+                return "code"
+            sealed = crypto.seal(self._totp_key, secret.encode(), self._totp_aad(user_id))
+            user.totp_secret, user.totp_last_counter = base64.b64encode(sealed).decode(), counter
+            db.commit()
+        return None
+
+    def remove_totp(self, user_id: int, password: str | None = None) -> bool:
+        """Turn the one-time code off; with a password (the user), only if it is right; without (the admin), always."""
+        with self.Session() as db:
+            user = db.get(User, user_id)
+            if user is None:
+                return False
+            if password is not None:
+                try:
+                    self._unwrap(user, password)
+                except crypto.WrongKey:
+                    return False
+            user.totp_secret = user.totp_last_counter = None
+            db.commit()
+        return True
+
+    def verify_totp(self, user_id: int, code: str, now: float | None = None) -> bool:
+        """Whether `code` is the user's current one-time code, not used before (it is then used up)."""
+        with self._totp_lock, self.Session() as db:
+            user = db.get(User, user_id)
+            if user is None or user.totp_secret is None:
+                return False
+            secret = crypto.unseal(self._totp_key, base64.b64decode(user.totp_secret), self._totp_aad(user_id)).decode()
+            last = user.totp_last_counter if user.totp_last_counter is not None else -1
+            counter = totp.check(secret, code, last, now)
+            if counter is None:
+                return False
+            user.totp_last_counter = counter
+            db.commit()
+            return True
+
     # --- Sessions (cookie) ---
 
-    def cookie(self, session: LoggedIn) -> str:
+    def cookie(self, session: LoggedIn, pending: bool = False) -> str:
+        """The session cookie; `pending`: the short-lived one that waits for the one-time code, which never works as
+        a session (sealed for another purpose)."""
         with self.Session() as db:
             epoch = db.get(User, session.user_id).session_epoch
-        payload = {"u": session.user_id, "g": epoch, "e": int(time.time()) + SESSION_SECONDS, "n": session.nonce,
-                   "k": base64.b64encode(session.key).decode()}
-        sealed = crypto.seal(self._session_key, json.dumps(payload).encode(), b"abt-user-session")
+        payload = {"u": session.user_id, "g": epoch, "e": int(time.time()) + (PENDING_SECONDS if pending else SESSION_SECONDS),
+                   "n": session.nonce, "k": base64.b64encode(session.key).decode()}
+        sealed = crypto.seal(self._session_key, json.dumps(payload).encode(), self._cookie_aad(pending))
         return base64.urlsafe_b64encode(sealed).decode()
 
-    def session(self, cookie: str | None) -> LoggedIn | None:
+    @staticmethod
+    def _cookie_aad(pending: bool) -> bytes:
+        return b"abt-user-pending" if pending else b"abt-user-session"
+
+    def session(self, cookie: str | None, pending: bool = False) -> LoggedIn | None:
         """The logged-in user of this cookie, if it is still valid (not expired, revoked, blocked or outdated)."""
         if not cookie or len(cookie) > 1000:
             return None
         try:
-            payload = json.loads(crypto.unseal(self._session_key, base64.urlsafe_b64decode(cookie), b"abt-user-session"))
+            payload = json.loads(crypto.unseal(self._session_key, base64.urlsafe_b64decode(cookie),
+                                               self._cookie_aad(pending)))
         except (ValueError, crypto.WrongKey):
             return None
         if payload["e"] < time.time():
