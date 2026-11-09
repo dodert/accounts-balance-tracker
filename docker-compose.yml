@@ -9,7 +9,6 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=Europe/Madrid
       # Currency for new accounts
       - DEFAULT_CURRENCY=EUR
       # Login: set both to turn it on (recommended: this app holds financial data)

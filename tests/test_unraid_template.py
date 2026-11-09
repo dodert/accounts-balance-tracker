@@ -10,7 +10,7 @@ TEMPLATE = ROOT / "unraid" / "accounts-balance-tracker.xml"
 # Set at build time or fixed by the container, not by the user
 NOT_USER_SETTINGS = {"data_dir", "app_version", "git_sha", "git_ref", "build_date"}
 # Container variables the template offers on purpose (PORT is the port mapping, UMASK keeps its default)
-CONTAINER_VARS = {"PUID", "PGID", "TZ", "FORWARDED_ALLOW_IPS"}
+CONTAINER_VARS = {"PUID", "PGID", "FORWARDED_ALLOW_IPS"}
 
 
 def _targets():
