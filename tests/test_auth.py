@@ -233,7 +233,7 @@ def test_too_many_wrong_codes_lock_out_that_ip(tmp_path, monkeypatch):
 
 
 def test_security_headers(tmp_path):
-    client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
+    client = make_client(tmp_path, auth_username="admin", auth_password="s3cret", api_docs=True)
     for res in (client.get("/login"), client.get("/api/accounts"), client.get("/static/style.css")):
         assert "frame-ancestors 'none'" in res.headers["content-security-policy"]
         assert "script-src 'self';" in res.headers["content-security-policy"]
@@ -248,3 +248,11 @@ def test_security_headers(tmp_path):
     # FastAPI's interactive docs need their CDN and inline script
     client.post("/login", data={"username": "admin", "password": "s3cret"})
     assert "https://cdn.jsdelivr.net" in client.get("/docs").headers["content-security-policy"]
+
+
+def test_the_api_docs_are_off_by_default(tmp_path):
+    client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
+    client.post("/login", data={"username": "admin", "password": "s3cret"})
+    for path in ("/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404
+    assert client.get("/api/accounts").status_code == 200

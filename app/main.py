@@ -72,7 +72,8 @@ DOCS_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.j
             "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com; "
             "worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc"}
-# The API docs and their schema: multi-user mode shows them only to logged-in users, not to demo visitors
+# The API docs and their schema (only with API_DOCS=true): multi-user mode shows them only to logged-in users,
+# not to demo visitors
 API_DOCS = DOCS_PATHS | {"/openapi.json"}
 
 
@@ -136,7 +137,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         demo.close()  # the demo database is temporary
         visitor_demos.close()
 
-    app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan)
+    # API docs only when API_DOCS=true: otherwise /docs, /redoc and /openapi.json answer 404
+    docs = {} if settings.api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan, **docs)
     app.state.users = users
 
     @app.exception_handler(DatabaseTooBig)
