@@ -240,3 +240,5 @@ footer a { color: inherit; }
 .demo-setting { border: 1px solid var(--border); border-radius: 8px; margin: .8rem 0 0; padding: .4rem .8rem .8rem; }
 .demo-setting legend { font-weight: 600; padding: 0 .3rem; }
 .demo-setting .hint { margin-top: 0; }
+.backups-setting ul { list-style: none; margin: 0; max-height: 10rem; overflow-y: auto; padding: 0; }
+.backups-setting li { font-size: .9rem; padding: .1rem 0; }

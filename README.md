@@ -210,7 +210,7 @@ With `MULTI_USER=true`, one instance serves several people, each with their own 
 
 The database schema is migrated automatically on start, keeping all the data.
 
-**Daily backups**: once a day (by the UTC date: on start and then checked every hour) the app copies its data to `/data/backups/<YYYY-MM-DD>/`, and keeps the last `BACKUP_KEEP` days (7). With one user it is `balances.db`; with several users, `users.db` and `users/<id>.db.enc`, still encrypted. A user who is deleted, or whose account expires, is also deleted from every daily backup. To restore a day:
+**Daily backups**: once a day (by the UTC date: on start and then checked every hour) the app copies its data to `/data/backups/<YYYY-MM-DD>/`, and keeps the last `BACKUP_KEEP` days (7). With one user it is `balances.db`; with several users, `users.db` and `users/<id>.db.enc`, still encrypted. A user who is deleted, or whose account expires, is also deleted from every daily backup. The settings (⚙) list the backups made, with when and their size (with several users, only the days with a copy of your own data). To restore a day:
 
 1. Stop the container.
 2. Copy that day's files over the ones in `/data`, all of them together. With several users, a day's `users.db` and `.db.enc` files go together, because the keys of each user's data are in `users.db`.

@@ -54,6 +54,22 @@ def days(data_dir: Path) -> list[Path]:
     return sorted(p for p in root.iterdir() if p.is_dir() and DAY.match(p.name)) if root.is_dir() else []
 
 
+def listing(data_dir: Path, user_id: int | None = None) -> list[dict]:
+    """The finished daily backups, newest first: day (UTC), when it was made (UTC) and size in bytes. With a
+    user id (multi-user), only the days with that user's copy, and only its size."""
+    found = []
+    for folder in reversed(days(data_dir)):
+        files = [folder / "users" / f"{user_id}.db.enc"] if user_id is not None else \
+            [p for p in folder.rglob("*") if p.is_file()]
+        files = [p for p in files if p.is_file()]
+        if not files:
+            continue
+        made = datetime.fromtimestamp(max(p.stat().st_mtime for p in files), timezone.utc)
+        found.append({"date": folder.name, "made_at": made.isoformat(timespec="seconds"),
+                      "size": sum(p.stat().st_size for p in files)})
+    return found
+
+
 def make_daily_backup(data_dir: Path, keep: int, database: Path | None = None, users=None,
                       today: date | None = None) -> Path | None:
     """Today's backup, if there is none yet and backups are on (keep > 0); then only the newest `keep` days are kept.

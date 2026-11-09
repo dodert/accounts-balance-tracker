@@ -213,5 +213,10 @@
   "admin.no_expiry": "Sin caducidad",
   "register.error.full": "Ahora mismo no hay sitio para más usuarios. Pregunta a quien te invitó.",
   "account.expires_soon": "Tu cuenta caduca en {n} días, y entonces se borran sus datos. Expórtalos ahora (Importar / exportar → Exportar todo (JSON)) si quieres conservarlos, o pide al administrador que la amplíe.",
-  "login.demo": "Probar la demo"
+  "login.demo": "Probar la demo",
+  "backups.title": "Copias de seguridad diarias",
+  "backups.hint": "Una copia al día, hecha por el servidor en su carpeta de datos (backups/). Se guardan los últimos {keep} días.",
+  "backups.off": "Las copias diarias están desactivadas (BACKUP_KEEP=0).",
+  "backups.none": "Todavía no se ha hecho ninguna copia.",
+  "backups.error": "No se ha podido cargar la lista de copias."
 }

@@ -51,6 +51,21 @@ def test_one_backup_a_day_and_only_the_newest_kept(tmp_path):
     assert not any(p.name.startswith(".") for p in (tmp_path / "backups").iterdir())  # no partial folder left
 
 
+def test_the_api_lists_the_backups_made_newest_first(tmp_path):
+    """GET /api/backups gives each finished day (newest first) with when it was made and its size."""
+    client = single_user(tmp_path, backup_keep=3)
+    database = tmp_path / "balances.db"
+    for day in ("2026-01-01", "2026-01-02"):
+        make_daily_backup(tmp_path, 3, database, today=date.fromisoformat(day))
+    (tmp_path / "backups" / ".2026-01-03.partial").mkdir()  # unfinished: not listed
+    data = client.get("/api/backups").json()
+    assert data["keep"] == 3
+    assert [b["date"] for b in data["backups"]] == ["2026-01-02", "2026-01-01"]
+    first = data["backups"][0]
+    assert first["size"] == (tmp_path / "backups" / "2026-01-02" / "balances.db").stat().st_size
+    assert datetime.fromisoformat(first["made_at"]).tzinfo is not None
+
+
 def test_no_daily_backups_with_backup_keep_0(tmp_path):
     """BACKUP_KEEP=0 turns the daily backups off."""
     single_user(tmp_path)
@@ -90,5 +105,9 @@ def test_multi_user_backups_keep_the_files_encrypted_and_forget_deleted_users(tm
     assert copy.stat().st_mode & 0o777 == 0o600
     with sqlite3.connect(folder / "users.db") as db:
         assert db.execute("SELECT username FROM users").fetchall() == [("ana",)]
+    listed = client.get("/api/backups").json()["backups"]  # only this user's copy, not the others' files
+    assert [(b["date"], b["size"]) for b in listed] == [(folder.name, copy.stat().st_size)]
+    other, _ = sign_up(app, invite(admin), "eva", "eva@example.com")
+    assert other.get("/api/backups").json()["backups"] == []  # no copy of eva's data yet
     app.state.users.delete_user(int(original.name.removesuffix(".db.enc")))
     assert not copy.exists()  # gone from the backups too
