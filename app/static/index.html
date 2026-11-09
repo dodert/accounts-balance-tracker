@@ -21,6 +21,8 @@
     <details class="menu" id="data-menu">
       <summary class="button" data-i18n="header.data_menu">Import / export</summary>
       <div class="menu-items">
+        <a id="json-export-btn" class="button" href="/api/export/json" download data-i18n="header.export_json">Export everything (JSON)</a>
+        <button id="json-import-btn" data-i18n="header.import_json">Import JSON</button>
         <button id="csv-import-btn" data-i18n="header.import_csv">Import CSV</button>
         <a id="csv-export-btn" class="button" href="/api/export/csv" download data-i18n="header.export_csv">Export CSV</a>
       </div>
@@ -207,9 +209,27 @@
   <dialog id="csv-dlg">
     <form method="dialog" id="csv-form">
       <h2 data-i18n="csv.title">Import CSV</h2>
-      <p class="hint" data-i18n="csv.hint">One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is replaced.</p>
+      <p class="hint" data-i18n="csv.hint">One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is not changed (the row is skipped and listed).</p>
       <input type="file" name="file" accept=".csv,text/csv" required>
       <pre id="csv-result" class="hint" hidden></pre>
+      <menu>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.close">Close</button>
+        <button type="submit" class="primary" data-i18n="csv.import">Import</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="json-dlg">
+    <form method="dialog" id="json-form">
+      <h2 data-i18n="json.title">Import JSON</h2>
+      <p class="hint" data-i18n="json.hint">A file from "Export everything (JSON)": accounts with all their details, balances and milestones.</p>
+      <input type="file" name="file" accept=".json,application/json" required>
+      <fieldset>
+        <label class="radio"><input type="radio" name="mode" value="merge" checked> <span data-i18n="json.merge">Merge: add only what is not there yet (what already exists is not imported, and is listed)</span></label>
+        <label class="radio"><input type="radio" name="mode" value="replace"> <span data-i18n="json.replace">Replace: delete all the current data and leave exactly the file's (a backup is made first)</span></label>
+      </fieldset>
+      <pre id="json-result" class="hint" hidden></pre>
       <menu>
         <span class="spacer"></span>
         <button type="button" class="cancel" data-i18n="common.close">Close</button>

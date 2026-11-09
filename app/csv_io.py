@@ -98,6 +98,13 @@ def detect_delimiter(header: str) -> str:
     return max((";", ",", "\t"), key=header.count)
 
 
+MAX_LISTED = 200  # duplicates listed in the answer; the count is always the full one
+
+
+def _label(account: Account) -> str:
+    return f"{account.name} ({account.institution})" if account.institution else account.name
+
+
 def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
     text = decode(data)
     delimiter = detect_delimiter(text.split("\n", 1)[0])
@@ -122,8 +129,8 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 raise ValueError(f"there are several accounts named '{name}': add the institution")
         return same[0] if same else None
 
-    result = {"accounts_created": 0, "balances_created": 0, "balances_updated": 0, "errors": []}
-    seen: dict[tuple[int, date], Balance] = {}
+    result = {"accounts_created": 0, "balances_created": 0, "duplicates_count": 0, "duplicates": [], "errors": []}
+    known: dict[int, set[date]] = {}  # days with a balance, per account (in the database or added from the file)
     for line, row in enumerate(reader, start=2):
         if not any(cell.strip() for cell in row):
             continue
@@ -151,17 +158,17 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
                 accounts.append(account)
                 result["accounts_created"] += 1
             note = unsafe_text(cell("note"))[:300] or None
-            key = (account.id, day)
-            balance = seen.get(key) or db.scalar(select(Balance).where(Balance.account_id == account.id, Balance.date == day))
-            if balance is None:
-                balance = Balance(account_id=account.id, date=day, amount=amount, note=note)
-                db.add(balance)
-                result["balances_created"] += 1
-            else:
-                balance.amount, balance.note = amount, note
-                if key not in seen:
-                    result["balances_updated"] += 1
-            seen[key] = balance
+            if account.id not in known:
+                known[account.id] = set(db.scalars(select(Balance.date).where(Balance.account_id == account.id)))
+            if day in known[account.id]:
+                # Never overwritten: the balance already there stays, and the row is reported
+                result["duplicates_count"] += 1
+                if len(result["duplicates"]) < MAX_LISTED:
+                    result["duplicates"].append(f"Line {line}: {_label(account)}: there is already a balance on {day.isoformat()}")
+                continue
+            db.add(Balance(account_id=account.id, date=day, amount=amount, note=note))
+            known[account.id].add(day)
+            result["balances_created"] += 1
         except ValueError as exc:
             result["errors"].append(f"Line {line}: {exc}")
     db.commit()

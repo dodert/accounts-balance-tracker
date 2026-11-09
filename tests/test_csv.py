@@ -8,7 +8,7 @@ def test_parse_amount():
     assert str(parse_amount("12,5 €")) == "12.50"
 
 
-def test_import_creates_accounts_and_replaces_balances(client):
+def test_import_creates_accounts_and_never_overwrites_balances(client):
     csv = (
         "cuenta;tipo;moneda;fecha;saldo;nota\n"
         "ING;savings;EUR;31/01/2026;1.000,50;\n"
@@ -20,17 +20,20 @@ def test_import_creates_accounts_and_replaces_balances(client):
         "\n"
     ).encode("cp1252")
     res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
-    assert (res["accounts_created"], res["balances_created"], res["balances_updated"]) == (2, 3, 0)
+    assert (res["accounts_created"], res["balances_created"], res["duplicates_count"]) == (2, 3, 0)
     assert len(res["errors"]) == 3 and res["errors"][0].startswith("Line 5:")
 
-    again = client.post("/api/import/csv", files={"file": ("b.csv", b"account,date,amount\ning,2026-02-28,1300\n", "text/csv")}).json()
-    assert (again["accounts_created"], again["balances_created"], again["balances_updated"]) == (0, 0, 1)
+    # A balance already there for that account and date is not changed: the row is skipped and listed
+    again = client.post("/api/import/csv", files={"file": ("b.csv", b"account,date,amount\ning,2026-02-28,1300\ning,2026-03-31,1400\ning,2026-03-31,1500\n", "text/csv")}).json()
+    assert (again["accounts_created"], again["balances_created"], again["duplicates_count"]) == (0, 1, 2)
+    assert again["duplicates"] == ["Line 2: ING: there is already a balance on 2026-02-28",
+                                   "Line 4: ING: there is already a balance on 2026-03-31"]
 
     accounts = {a["name"]: a for a in client.get("/api/accounts").json()}
-    assert accounts["ING"]["type"] == "savings" and accounts["ING"]["balance"] == 1300
+    assert accounts["ING"]["type"] == "savings" and accounts["ING"]["balance"] == 1400
     assert accounts["Broker"]["currency"] == "EUR"
-    notes = [b["note"] for b in client.get(f"/api/accounts/{accounts['ING']['id']}/balances").json()]
-    assert notes == [None, None]  # the second import had no note column
+    balances = client.get(f"/api/accounts/{accounts['ING']['id']}/balances").json()
+    assert {b["date"]: (b["amount"], b["note"]) for b in balances}["2026-02-28"] == (1200, "nómina")
 
 
 def test_export_round_trip(client, tmp_path):
@@ -86,7 +89,7 @@ def test_export_neutralizes_formulas_and_import_reads_them_back(client, tmp_path
 
     # Imported back, the same account is found and the texts are as they were
     res = client.post("/api/import/csv", files={"file": ("e.csv", text.encode(), "text/csv")}).json()
-    assert res["accounts_created"] == 0 and res["balances_updated"] == 1 and not res["errors"]
+    assert res["accounts_created"] == 0 and res["duplicates_count"] == 1 and not res["errors"]
     balances = client.get(f"/api/accounts/{account['id']}/balances").json()
     assert balances[0]["note"] == "+1 call"
     # A name that only starts with a quote keeps it

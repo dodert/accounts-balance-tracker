@@ -36,7 +36,7 @@ from sqlalchemy.pool import StaticPool
 
 from . import crypto
 from .db import make_engine
-from .migrate import MIGRATIONS_DIR, PRIVATE, _create_private, restrict_permissions, upgrade_database
+from .migrate import IMPORT_BACKUP, MIGRATIONS_DIR, PRIVATE, _create_private, prune_backups, restrict_permissions, upgrade_database
 
 log = logging.getLogger(__name__)
 
@@ -299,6 +299,16 @@ class UserDatabases:
         log.warning("User %s: database backed up to %s before migrating it", user_id, backup.name)
         upgrade_database(engine)  # raises without changing anything if the schema is from a newer version
         return True
+
+    def backup_before_import(self, user_id: int) -> Path:
+        """Copy of the encrypted file before an import replaces all the data (the newest few are kept). Called
+        while the database is open (so with its lock held): the file has everything committed until then."""
+        path = self.path(user_id)
+        backup = path.with_name(f"{path.name}.backup-{IMPORT_BACKUP}-{datetime.now():%Y%m%d-%H%M%S}")
+        _create_private(backup)
+        shutil.copyfile(path, backup)
+        prune_backups(self.folder, f"{path.name}.backup-{IMPORT_BACKUP}-*")
+        return backup
 
     def size(self, user_id: int) -> int:
         path = self.path(user_id)
