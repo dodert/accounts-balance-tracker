@@ -27,7 +27,7 @@ from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
 from .geo import Countries
 from .fx import DbStore, Fetcher, SharedRates, SharedStore, frankfurter, get_rate, own_rates
-from .history import accounts_with_balances, available_totals, currency_totals, history
+from .history import available_totals, currency_totals, history, latest_balances, load
 from .migrate import backup_sqlite_before_import, upgrade_database
 from .models import Account, Balance, Milestone
 from .schemas import (
@@ -78,15 +78,23 @@ DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc"}
 API_DOCS = DOCS_PATHS | {"/openapi.json"}
 
 
-def account_out(account: Account) -> AccountOut:
+def account_out(account: Account, latest: dict[int, dict]) -> AccountOut:
+    """The account with its last, previous and first balance (`latest`: from history.latest_balances)."""
     out = AccountOut.model_validate(account)
-    balances = account.balances
-    if balances:
-        out.balance, out.balance_date = float(balances[-1].amount), balances[-1].date
-    if len(balances) > 1:
-        out.previous_balance, out.previous_date = float(balances[-2].amount), balances[-2].date
-        out.first_balance, out.first_date = float(balances[0].amount), balances[0].date
+    found = latest.get(account.id, {})
+    if "last" in found:
+        out.balance_date, amount = found["last"]
+        out.balance = float(amount)
+    if "previous" in found:
+        out.previous_date, amount = found["previous"]
+        out.previous_balance = float(amount)
+        out.first_date, amount = found["first"]
+        out.first_balance = float(amount)
     return out
+
+
+def one_account_out(db: Session, account: Account) -> AccountOut:
+    return account_out(account, latest_balances(db, [account.id]))
 
 
 DUPLICATE_NAME = "An account with that name already exists in that institution"
@@ -377,8 +385,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     @app.get("/api/accounts", response_model=list[AccountOut])
     def list_accounts(archived: bool = True, db: Session = Depends(get_db)):
-        accounts = accounts_with_balances(db)
-        return [account_out(a) for a in accounts if archived or not a.archived]
+        stmt = select(Account).order_by(Account.name)
+        if not archived:
+            stmt = stmt.where(Account.archived.is_(False))
+        latest = latest_balances(db)
+        return [account_out(a, latest) for a in db.scalars(stmt)]
 
     @app.post("/api/accounts", response_model=AccountOut, status_code=201)
     def create_account(data: AccountIn, db: Session = Depends(get_db)):
@@ -388,11 +399,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         db.add(account)
         commit(db, DUPLICATE_NAME)
         db.refresh(account)
-        return account_out(account)
+        return one_account_out(db, account)
 
     @app.get("/api/accounts/{account_id}", response_model=AccountOut)
     def get_account(account_id: int, db: Session = Depends(get_db)):
-        return account_out(get_account_or_404(db, account_id))
+        return one_account_out(db, get_account_or_404(db, account_id))
 
     @app.patch("/api/accounts/{account_id}", response_model=AccountOut)
     def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
@@ -403,7 +414,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             setattr(account, key, value)
         commit(db, DUPLICATE_NAME)
         db.refresh(account)
-        return account_out(account)
+        return one_account_out(db, account)
 
     @app.delete("/api/accounts/{account_id}", status_code=204)
     def delete_account(account_id: int, db: Session = Depends(get_db)):
@@ -511,7 +522,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     @app.get("/api/summary", response_model=list[CurrencyTotal])
     def summary(db: Session = Depends(get_db)):
-        return currency_totals(accounts_with_balances(db))
+        return currency_totals(load(db))
 
     def multi_fallback(request: Request) -> list:
         """Multi-user: the rates the user's (or demo's) own database already has, used only when the shared store
@@ -551,7 +562,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     def totals_and_rates(request: Request) -> tuple[list[dict], list]:
         with open_db(request) as db:
-            return currency_totals(accounts_with_balances(db)), (own_rates(db) if multi else [])
+            return currency_totals(load(db)), (own_rates(db) if multi else [])
 
     @app.get("/api/summary/combined", response_model=CombinedTotal)
     def summary_combined(request: Request):
@@ -590,8 +601,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         currency = (currency or "").upper() or db.scalar(
             select(Account.currency).group_by(Account.currency).order_by(func.count().desc(), Account.currency).limit(1)
         ) or settings.default_currency
-        accounts = accounts_with_balances(db, currency)
-        dates, totals, per_account = history(accounts, since)
+        ledger = load(db, currency)
+        accounts = ledger.accounts
+        dates, totals, per_account = history(ledger, since)
         return HistoryOut(
             currency=currency,
             dates=dates,
@@ -611,10 +623,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         are converted here."""
         target = settings.default_currency
         with open_db(request) as db:
-            accounts = accounts_with_balances(db)
+            ledger = load(db)
             fallback = own_rates(db) if multi else []
-        all_dates, _, all_values = history(accounts)
-        dates, _, values = history(accounts, since)
+        accounts = ledger.accounts
+        all_dates, _, all_values = history(ledger)
+        dates, _, values = history(ledger, since)
         rates, converted, missing, stale = {}, [], [], False
         with rate_source(request, fallback) as (store, fetch):
             for currency in sorted({a.currency for a in accounts} - {target}):
