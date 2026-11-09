@@ -204,7 +204,7 @@ With `MULTI_USER=true`, one instance serves several people, each with their own 
 - **Exchange rates**: a rate for a pair of currencies on a day is the same for everyone, so it is asked once for all users and kept in `/data/rates.db` (only currencies, dates and rates). The user's data is not kept open while the service is asked. At most `FX_DAILY_LIMIT` requests a day (30) go to the service; today's rate is asked again when it is more than 3 hours old, until the day's own rate is published.
 - **Demo**: anyone can try the demo from the login page (**Try the demo**) or `/demo`, without an account. Each visitor gets their own copy of the sample data, kept in memory and dropped after an hour without use (at most 200 at once).
 - What it does not protect: while a user is logged in, the server has their data in memory to calculate totals and charts, so whoever runs the server could change it to read it. It protects the files on disk and their backups.
-- **Backups**: copy the whole `/data` folder; the users' files stay encrypted in it. Before a schema change, each user's file is copied next to it (`<id>.db.enc.backup-<from>-to-<to>-<date>`) the first time they use the new version.
+- **Backups**: copy the whole `/data` folder; the users' files stay encrypted in it. Before a schema change, each user's file is copied next to it (`<id>.db.enc.backup-<from>-to-<to>-<date>`) the first time they use the new version. `users.db` is migrated on start the same way, after a copy to `users.db.backup-<from>-to-<to>-<date>`.
 
 ## Backups and updates
 
