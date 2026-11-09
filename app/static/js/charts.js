@@ -116,15 +116,16 @@ export const pctSeries = (s) => ({
   values: s.values.map((v) => (v === null || !s.start ? null : ((v - s.start) / Math.abs(s.start)) * 100)),
 });
 
-// Whether a series went up or down over the range shown, for the chart's background:
-// "down" when its last value is below its first one; "falling" when it is not, but the least-squares
-// line through every point (by date, as dates can be unevenly spaced) goes down, e.g. falling since
-// a peak; "up" otherwise (up or flat). null with fewer than two values.
-export function trendOf(dates, values) {
+// Whether a series went up or down, for the chart's background: "down" when its last value is below
+// its start (the dashed "Start" line: its first balance ever, or its first value shown when it has
+// none); "falling" when it is not, but the least-squares line through the points shown (by date, as
+// dates can be unevenly spaced) goes down, e.g. falling since a peak; "up" otherwise (up or flat).
+// null when there is nothing to compare.
+export function trendOf(dates, values, start = null) {
   const pts = [];
   values.forEach((v, i) => { if (v !== null && v !== undefined) pts.push([Date.parse(`${dates[i]}T00:00:00Z`) / 86400000, Number(v)]); });
-  if (pts.length < 2) return null;
-  const first = pts[0][1], last = pts[pts.length - 1][1];
+  if (!pts.length || (pts.length < 2 && (start === null || start === undefined))) return null;
+  const first = start === null || start === undefined ? pts[0][1] : Number(start), last = pts[pts.length - 1][1];
   if (last < first) return "down";
   const mx = pts.reduce((sum, p) => sum + p[0], 0) / pts.length;
   const my = pts.reduce((sum, p) => sum + p[1], 0) / pts.length;
@@ -363,7 +364,7 @@ export function renderBlock(h, el) {
     grid.hidden = true;
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
     drawChart(box, {
-      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: trendOf(h.dates, total.values),
+      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: trendOf(h.dates, total.values, total.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
@@ -379,7 +380,7 @@ export function renderBlock(h, el) {
     const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: h.first_available ?? summary?.first_available ?? firstValue(h.available) } : total;
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
-      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: trendOf(h.dates, main.values),
+      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: trendOf(h.dates, main.values, main.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
@@ -427,7 +428,7 @@ export function drawAccountChart(box, a, h, small) {
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   drawChart(box, {
     dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
-    trend: trendOf(h.dates, a.values),
+    trend: trendOf(h.dates, a.values, a.start),
     milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,

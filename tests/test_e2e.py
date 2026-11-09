@@ -161,6 +161,15 @@ def test_demo_mode_with_charts(page):
         assert page.locator(f"#multiples .trend-{trend}").count() > 0, trend
     bitcoin = page.locator("#multiples .mini", has_text="Bitcoin")
     assert bitcoin.locator(".trend-falling").count() == 1
+    # On a shorter range too, the background agrees with "since the start": red exactly when that is down
+    page.select_option("#chart-range", "3")
+    page.wait_for_function("document.querySelectorAll('#multiples .mini .trend-bg').length > 0")
+    minis = page.locator("#multiples .mini")
+    for i in range(minis.count()):
+        mini = minis.nth(i)
+        assert (mini.locator(".mini-sub .down").count() > 0) == (mini.locator(".trend-down").count() > 0), mini.inner_text()
+    page.select_option("#chart-range", "all")
+    page.wait_for_function("document.querySelectorAll('#multiples .mini .trend-falling').length > 0")
     page.click("#chart-panel .views button[data-mode=percent]")
     page.wait_for_selector("#chart svg")
     assert page.locator("#chart svg .trend-bg").count() == 1
