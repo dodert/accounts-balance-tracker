@@ -122,6 +122,9 @@ def summary(path: str) -> str:
         for file, name, description, detail in failures:
             out += [f"<details open><summary>❌ <code>{file}::{name}</code> {description}</summary>", "", "```",
                     detail[-3000:], "```", "", "</details>", ""]
+    if any(file.endswith("test_e2e.py") for file in files):
+        out += ["📸 Screenshots of the end-to-end tests, under *Artifacts* at the bottom of this page: "
+                "**e2e-screenshots.html** (one page with all of them) or **e2e-screenshots** (the PNG files, zipped).", ""]
     out += ["### By file", "", "| | File | Passed | Failed | Skipped | Time |", "|---|---|---:|---:|---:|---:|"]
     for file in sorted(files):
         g = files[file]

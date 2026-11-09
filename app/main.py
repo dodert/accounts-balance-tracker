@@ -114,6 +114,9 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     # --- Pages ---
 
+    # The page's JavaScript modules, with the version in the path: their imports ("./api.js") are relative, so
+    # after an update the browser asks for every module at the new address, not an old copy from its cache
+    app.mount("/static/v/{version}", StaticFiles(directory=STATIC_DIR), name="versioned-static")
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     # Browsers and bookmark tools ask for these at the root, whatever the page links

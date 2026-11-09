@@ -6,3 +6,5 @@ data/
 .pytest_cache/
 .env
 test-results.xml
+test-screenshots/
+e2e-screenshots.html
