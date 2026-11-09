@@ -155,11 +155,19 @@ def test_demo_mode_with_charts(page):
     page.wait_for_selector("#chart svg")
     assert page.locator("#accounts-table tbody tr").count() == sum(1 for s in SAMPLES if s.closed_month is None)
     assert page.locator("#multiples .mini").count() > 0
+    # The background says whether each balance went up (green), trends down (orange) or went down (red)
+    assert page.locator("#chart svg .trend-bg").count() == 1
+    for trend in ("up", "falling", "down"):
+        assert page.locator(f"#multiples .trend-{trend}").count() > 0, trend
+    bitcoin = page.locator("#multiples .mini", has_text="Bitcoin")
+    assert bitcoin.locator(".trend-falling").count() == 1
     page.click("#chart-panel .views button[data-mode=percent]")
     page.wait_for_selector("#chart svg")
+    assert page.locator("#chart svg .trend-bg").count() == 1
     page.click("#chart-panel .views button[data-mode=amounts]")
     page.locator("#multiples .mini-max").first.click()
     page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
+    assert page.locator("#chart-dlg-chart svg .trend-bg").count() == 1
     page.keyboard.press("Escape")
     page.click("#demo-exit")
     page.wait_for_selector("#demo-banner[hidden]", state="attached")

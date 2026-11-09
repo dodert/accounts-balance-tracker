@@ -116,6 +116,26 @@ export const pctSeries = (s) => ({
   values: s.values.map((v) => (v === null || !s.start ? null : ((v - s.start) / Math.abs(s.start)) * 100)),
 });
 
+// Whether a series went up or down over the range shown, for the chart's background:
+// "down" when its last value is below its first one; "falling" when it is not, but the least-squares
+// line through every point (by date, as dates can be unevenly spaced) goes down, e.g. falling since
+// a peak; "up" otherwise (up or flat). null with fewer than two values.
+export function trendOf(dates, values) {
+  const pts = [];
+  values.forEach((v, i) => { if (v !== null && v !== undefined) pts.push([Date.parse(`${dates[i]}T00:00:00Z`) / 86400000, Number(v)]); });
+  if (pts.length < 2) return null;
+  const first = pts[0][1], last = pts[pts.length - 1][1];
+  if (last < first) return "down";
+  const mx = pts.reduce((sum, p) => sum + p[0], 0) / pts.length;
+  const my = pts.reduce((sum, p) => sum + p[1], 0) / pts.length;
+  let sxy = 0, sxx = 0;
+  for (const [px, py] of pts) { sxy += (px - mx) * (py - my); sxx += (px - mx) ** 2; }
+  // The fitted change over the whole range, ignoring rounding noise (under a cent)
+  const change = sxx ? (sxy / sxx) * (pts[pts.length - 1][0] - pts[0][0]) : 0;
+  return change < -0.005 ? "falling" : "up";
+}
+const trendText = (trend) => ({ up: t("chart.trend_up"), falling: t("chart.trend_falling"), down: t("chart.trend_down") })[trend];
+
 export function niceTicks(min, max, count = 5) {
   if (min === max) { min -= Math.abs(min) * 0.1 || 1; max += Math.abs(max) * 0.1 || 1; }
   const raw = (max - min) / count;
@@ -151,7 +171,7 @@ export function placeTooltip(e) {
 
 // One line chart in `box`. opts: dates, series [{name, values, color, total?}], height,
 // axis(ticks) -> labels, ref {value, label} for the dashed start line, area (fill under the
-// first series), small (fewer labels), tooltip(idx, rows) -> html
+// first series), small (fewer labels), tooltip(idx, rows) -> html, trend (trendOf: background colour)
 export function drawChart(box, opts) {
   const { dates, series, ref } = opts;
   const width = Math.max(box.clientWidth, 200);
@@ -170,7 +190,14 @@ export function drawChart(box, opts) {
   const x = (time) => pad.left + (t1 === t0 ? (width - pad.left - pad.right) / 2 : ((time - t0) / (t1 - t0)) * (width - pad.left - pad.right));
   const y = (v) => pad.top + (1 - (v - y0) / (y1 - y0)) * (height - pad.top - pad.bottom);
 
-  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": opts.label ?? t("chart.title") }, box);
+  const label = [opts.label ?? t("chart.title"), opts.trend ? trendText(opts.trend) : ""].filter(Boolean).join(" · ");
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": label }, box);
+  // Background: green when the balance went up or stayed the same, orange when it ends above its first
+  // value but trends down, red when it went down
+  if (opts.trend) {
+    const bg = svg("rect", { x: pad.left, y: pad.top, width: width - pad.left - pad.right, height: height - pad.top - pad.bottom, class: `trend-bg trend-${opts.trend}` }, root);
+    svg("title", {}, bg).textContent = trendText(opts.trend);
+  }
   ticks.forEach((tick, i) => {
     svg("line", { x1: pad.left, x2: width - pad.right, y1: y(tick), y2: y(tick), class: "grid" }, root);
     svg("text", { x: pad.left - 8, y: y(tick), class: "axis", "text-anchor": "end", "dominant-baseline": "middle" }, root).textContent = labels[i];
@@ -336,7 +363,7 @@ export function renderBlock(h, el) {
     grid.hidden = true;
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
     drawChart(box, {
-      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") },
+      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: trendOf(h.dates, total.values),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
@@ -352,7 +379,7 @@ export function renderBlock(h, el) {
     const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: h.first_available ?? summary?.first_available ?? firstValue(h.available) } : total;
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     drawChart(box, {
-      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true,
+      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: trendOf(h.dates, main.values),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
@@ -400,6 +427,7 @@ export function drawAccountChart(box, a, h, small) {
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   drawChart(box, {
     dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
+    trend: trendOf(h.dates, a.values),
     milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,
