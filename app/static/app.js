@@ -1007,7 +1007,8 @@ $("#csv-form").addEventListener("submit", async (e) => {
   try {
     const body = new FormData(e.target);
     const r = await api("/api/import/csv", { method: "POST", body });
-    out.textContent = [t("csv.result", { accounts: r.accounts_created, created: r.balances_created, updated: r.balances_updated }), ...r.errors].join("\n");
+    out.textContent = [t("csv.result", { accounts: r.accounts_created, created: r.balances_created }),
+      ...duplicateLines(r), ...r.errors].join("\n");
     await refresh();
   } catch (err) {
     out.textContent = err.message;
@@ -1015,6 +1016,39 @@ $("#csv-form").addEventListener("submit", async (e) => {
   out.hidden = false;
 });
 $("#csv-export-btn").addEventListener("click", () => { $("#data-menu").open = false; });
+$("#json-export-btn").addEventListener("click", () => { $("#data-menu").open = false; });
+
+// What an import did not add because it was already there (the answer lists the first ones)
+function duplicateLines(r) {
+  if (!r.duplicates_count) return [];
+  const more = r.duplicates_count - r.duplicates.length;
+  return [t("import.duplicates", { n: r.duplicates_count }), ...r.duplicates.map((d) => `  ${d}`),
+    ...(more > 0 ? [t("import.more", { n: more })] : [])];
+}
+
+// JSON import (everything)
+$("#json-import-btn").addEventListener("click", () => {
+  $("#data-menu").open = false;
+  $("#json-form").reset();
+  $("#json-result").hidden = true;
+  $("#json-dlg").showModal();
+});
+
+$("#json-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const out = $("#json-result");
+  const body = new FormData(e.target);
+  if (body.get("mode") === "replace" && !confirm(t("json.confirm_replace"))) return;
+  try {
+    const r = await api("/api/import/json", { method: "POST", body });
+    out.textContent = [t("json.result", { accounts: r.accounts_created, balances: r.balances_created, milestones: r.milestones_created }),
+      ...duplicateLines(r)].join("\n");
+    await refresh();
+  } catch (err) {
+    out.textContent = err.message;
+  }
+  out.hidden = false;
+});
 
 // Settings
 function renderLocaleOptions() {

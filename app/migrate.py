@@ -45,10 +45,33 @@ def restrict_permissions(path: Path) -> None:
 def backup_sqlite(engine: Engine, current: str, head: str) -> Path | None:
     """Consistent copy of the SQLite database (WAL included) next to it, before migrating it.
     Raises if it cannot be made, so the database is never migrated without a backup."""
+    return _backup_sqlite(engine, f"{current}-to-{head}")
+
+
+# Backups made before an import replaces all the data: the latest ones are kept, older ones deleted
+IMPORT_BACKUP = "before-import"
+KEEP_IMPORT_BACKUPS = 3
+
+
+def prune_backups(folder: Path, pattern: str, keep: int = KEEP_IMPORT_BACKUPS) -> None:
+    """Delete all but the `keep` newest files matching `pattern` (their names end with the date)."""
+    for old in sorted(folder.glob(pattern))[:-keep]:
+        old.unlink(missing_ok=True)
+
+
+def backup_sqlite_before_import(engine: Engine) -> Path | None:
+    """Copy of the SQLite database before an import replaces everything in it (None if it is not SQLite)."""
+    target = _backup_sqlite(engine, IMPORT_BACKUP)
+    if target is not None:
+        prune_backups(target.parent, f"{target.name.rsplit(IMPORT_BACKUP, 1)[0]}{IMPORT_BACKUP}-*")
+    return target
+
+
+def _backup_sqlite(engine: Engine, label: str) -> Path | None:
     source = _sqlite_path(engine)
     if source is None:
         return None
-    target = source.with_name(f"{source.name}.backup-{current}-to-{head}-{datetime.now():%Y%m%d-%H%M%S}")
+    target = source.with_name(f"{source.name}.backup-{label}-{datetime.now():%Y%m%d-%H%M%S}")
     _create_private(target)
     with sqlite3.connect(source) as src, sqlite3.connect(target) as dst:
         src.backup(dst)

@@ -185,5 +185,16 @@ class HistoryOut(BaseModel):
 class CsvImportOut(BaseModel):
     accounts_created: int
     balances_created: int
-    balances_updated: int
+    # Balances already recorded for that account and date: not imported (never overwritten), listed (the first ones)
+    duplicates_count: int
+    duplicates: list[str]
     errors: list[str]
+
+
+class JsonImportOut(BaseModel):
+    accounts_created: int
+    balances_created: int
+    milestones_created: int
+    # What was already there (merge): not imported, listed (the first ones)
+    duplicates_count: int
+    duplicates: list[str]

@@ -663,7 +663,7 @@ def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
 
     def slow_import(*_args):
         time.sleep(0.5)
-        return {"accounts_created": 0, "balances_created": 0, "balances_updated": 0, "errors": []}
+        return {"accounts_created": 0, "balances_created": 0, "duplicates_count": 0, "duplicates": [], "errors": []}
     monkeypatch.setattr(main, "import_csv", slow_import)
 
     async def run():
@@ -915,3 +915,17 @@ def test_the_api_docs_need_an_account_also_in_the_demo(tmp_path):
     assert visitor.get("/openapi.json", follow_redirects=False).status_code == 303
     user, _ = sign_up(app, invite(admin))
     assert user.get("/docs").status_code == 200 and "paths" in user.get("/openapi.json").json()
+
+
+def test_json_replace_backs_up_the_encrypted_file_first(setup, tmp_path):
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    account = client.post("/api/accounts", json={"name": "Secret savings"}).json()
+    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": 1234.56})
+    exported = client.get("/api/export/json").content
+    client.post("/api/accounts", json={"name": "Extra"})
+    res = client.post("/api/import/json", data={"mode": "replace"}, files={"file": ("a.json", exported, "application/json")})
+    assert res.status_code == 200 and res.json()["balances_created"] == 1
+    assert [a["name"] for a in client.get("/api/accounts").json()] == ["Secret savings"]
+    backups = list((tmp_path / "users").glob("*.db.enc.backup-before-import-*"))
+    assert len(backups) == 1 and b"Extra" not in backups[0].read_bytes()  # encrypted, like the database
