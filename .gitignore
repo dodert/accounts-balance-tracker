@@ -5,3 +5,4 @@ data/
 *.db
 .pytest_cache/
 .env
+test-results.xml

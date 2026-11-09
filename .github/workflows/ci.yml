@@ -25,7 +25,11 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pytest -q
+      # -v: one line per test in the log; the JUnit report becomes a table on the run's Summary page
+      - run: pytest -v --junitxml=test-results.xml
+      - name: Test report
+        if: ${{ !cancelled() }}
+        run: python scripts/test_summary.py test-results.xml >> "$GITHUB_STEP_SUMMARY"
 
   docker:
     needs: test
