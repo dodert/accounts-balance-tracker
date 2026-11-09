@@ -11,10 +11,10 @@ def fill(client):
                                           "notes": "joint account", "available_from": "2027-01-01"}).json()
     b = client.post("/api/accounts", json={"name": "Old", "currency": "USD", "archived": True}).json()
     client.post("/api/accounts", json={"name": "Empty"})
-    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-31", "amount": 1000.5, "note": "pay"})
-    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-02-28", "amount": 1100})
-    client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 7})
-    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 300, "description": "Car"})
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-31", "amount": 100050, "note": "pay"})  # cents
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-02-28", "amount": 110000})
+    client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 700})
+    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 30000, "description": "Car"})
 
 
 def snapshot(client):

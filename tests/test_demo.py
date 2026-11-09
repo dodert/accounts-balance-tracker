@@ -1,5 +1,5 @@
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi.testclient import TestClient
 
@@ -16,7 +16,7 @@ def test_month_starts():
 def test_demo_never_touches_real_data(client):
     """The demo uses its own sample data and never reads or changes the real data."""
     real = client.post("/api/accounts", json={"name": "My real account", "currency": "EUR"}).json()
-    client.post(f"/api/accounts/{real['id']}/balances", json={"date": "2026-01-01", "amount": 1234.56})
+    client.post(f"/api/accounts/{real['id']}/balances", json={"date": "2026-01-01", "amount": 123456})
     assert client.get("/api/about").json()["demo"] is False
 
     assert client.post("/api/demo?lang=es").status_code == 204
@@ -35,7 +35,7 @@ def test_demo_never_touches_real_data(client):
     assert client.get("/api/about").json()["demo"] is False
     accounts = client.get("/api/accounts").json()
     assert [a["name"] for a in accounts] == ["My real account"]
-    assert accounts[0]["balance"] == 1234.56
+    assert accounts[0]["balance"] == 123456
 
 
 def test_demo_covers_the_features(client):
@@ -100,8 +100,8 @@ def test_demo_combined_total_in_default_currency(tmp_path):
         combined = c.get("/api/summary/combined").json()
         summary = {s["currency"]: s for s in c.get("/api/summary").json()}
     assert combined["missing"] == []
-    expected = Decimal(str(summary["EUR"]["total"])) + Decimal(str(summary["USD"]["total"])) * Decimal("0.9")
-    assert Decimal(str(combined["total"])) == round(expected, 2)
+    expected = summary["EUR"]["total"] + summary["USD"]["total"] * Decimal("0.9")  # in cents
+    assert combined["total"] == int(expected.to_integral_value(ROUND_HALF_UP))
     assert asked == [("USD", "EUR", None)]  # only the currencies are asked for, never amounts
 
 

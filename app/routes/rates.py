@@ -55,11 +55,12 @@ def router(ctx: Context) -> APIRouter:
                 except LookupError:
                     missing.append(c["currency"])
                     continue
-                total += Decimal(str(c["total"])) * rate.rate
-                available += Decimal(str(c["available"])) * rate.rate
+                total += c["total"] * rate.rate
+                available += c["available"] * rate.rate
                 if c["currency"] != target:
                     rates.append(FxRateOut(**vars(rate)))
-        return CombinedTotal(currency=target, total=round(total, 2), available=round(available, 2), rates=rates, missing=missing)
+        # Rounded to the cent (half up) only when sent: schemas.Cents
+        return CombinedTotal(currency=target, total=total, available=available, rates=rates, missing=missing)
 
     def totals_and_rates(request: Request) -> tuple[list[dict], list]:
         with open_db(request) as db:
@@ -108,11 +109,11 @@ def router(ctx: Context) -> APIRouter:
         return HistoryOut(
             currency=currency,
             dates=dates,
-            total=[float(t) for t in totals],
-            available=[float(t) for t in available_totals(accounts, dates, per_account)],
+            total=totals,
+            available=available_totals(accounts, dates, per_account),
             accounts=[
                 {"account_id": a.id, "name": a.name, "archived": a.archived,
-                 "values": [None if v is None else float(v) for v in per_account[a.id]]}
+                 "values": per_account[a.id]}
                 for a in accounts
             ],
         )
@@ -155,7 +156,7 @@ def router(ctx: Context) -> APIRouter:
         total, available = totals(per_account, dates)
         all_per_account = {a.id: convert(a, all_values[a.id]) for a in used}
         all_total, all_available = totals(all_per_account, all_dates)
-        money = lambda v: None if v is None else float(round(v, 2))  # noqa: E731
+        money = lambda v: v  # noqa: E731  (rounded to the cent when sent: schemas.Cents)
         return HistoryOut(
             currency=target, dates=dates, total=[money(v) for v in total], available=[money(v) for v in available],
             accounts=[

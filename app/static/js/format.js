@@ -4,12 +4,20 @@ import { $, $$, esc } from "./dom.js";
 
 // --- Formatting ---
 
-export const money = (value, currency, opts = {}) => {
-  if (value === null || value === undefined) return "";
+// Amounts are integer cents everywhere in the page, as the API sends them (1234.50 = 123450): integers are exact
+// in JavaScript, so sums and differences never pick up float errors. Only the formatting turns them into units.
+// The cents as exact decimal text ("1234.50"), which Intl formats without going through a float
+export function centsText(cents) {
+  const n = Math.round(Number(cents)), abs = Math.abs(n);
+  return `${n < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+export const money = (cents, currency, opts = {}) => {
+  if (cents === null || cents === undefined) return "";
   try {
-    return new Intl.NumberFormat(fmtLocale(), { style: "currency", currency, ...opts }).format(value);
+    return new Intl.NumberFormat(fmtLocale(), { style: "currency", currency, ...opts }).format(centsText(cents));
   } catch {
-    return `${Number(value).toFixed(2)} ${currency}`;
+    return `${centsText(cents)} ${currency}`;
   }
 };
 export const compactMoney = (value, currency, digits = 1) => money(value, currency, { notation: "compact", maximumFractionDigits: digits });
@@ -21,8 +29,8 @@ export function axisLabels(ticks, currency) {
   }
   return ticks.map((v) => money(v, currency, { maximumFractionDigits: 0 }));
 }
-// An amount for an input box, in the regional format without thousands separators (1234,50)
-export const amountText = (value) => (value === null || value === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(value));
+// An amount (cents) for an input box, in the regional format without thousands separators (1234,50)
+export const amountText = (cents) => (cents === null || cents === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(centsText(cents)));
 export const signedMoney = (value, currency) => (value > 0 ? "+" : "") + money(value, currency);
 export const fmtDate = (iso, opts = { dateStyle: "medium" }) => (iso ? new Intl.DateTimeFormat(fmtLocale(), { ...opts, timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`)) : "");
 export const today = () => localDate();
@@ -74,23 +82,27 @@ export const getDate = (input) => textToIso(input.value);
 export const notAvailableYet = (a) => !!a?.available_from && a.available_from > today();
 export const lockBadge = (a) => (notAvailableYet(a) ? ` <span class="badge lock" title="${esc(t("account.available_hint"))}">🔒 ${esc(t("accounts.available_on", { date: fmtDate(a.available_from) }))}</span>` : "");
 
-// "1.234,56", "1,234.56", "1234.56" or "-50" -> number; the last of "," and "." is the decimal mark
+// "1.234,56", "1,234.56", "1234.56" or "-50" -> integer cents (123456, -5000), read from the digits without
+// going through a float; the last of "," and "." is the decimal mark; more decimals round half up
+export const MAX_CENTS = 10 ** 14 - 1; // the database's Numeric(14, 2)
 export function parseAmount(text) {
   let value = String(text).replace(/[\s €$£]/g, "");
   if (!value) return null;
   if (value.includes(",") && value.includes(".")) {
     value = value.lastIndexOf(",") > value.lastIndexOf(".") ? value.replace(/\./g, "") : value.replace(/,/g, "");
   }
-  value = value.replace(",", ".");
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new Error(t("error.amount", { value: text }));
-  return Math.round(n * 100) / 100;
+  const m = /^([+-]?)(\d*)(?:[.,](\d*))?$/.exec(value);
+  if (!m || !(m[2] || m[3])) throw new Error(t("error.amount", { value: text }));
+  const decimals = (m[3] ?? "").padEnd(3, "0");
+  const cents = Number(m[2] || "0") * 100 + Number(decimals.slice(0, 2)) + (Number(decimals[2]) >= 5 ? 1 : 0);
+  if (!Number.isSafeInteger(cents) || cents > MAX_CENTS) throw new Error(t("error.amount", { value: text }));
+  return m[1] === "-" ? -cents : cents;
 }
 
 // The change from `previous` to `current`, coloured; with percent=true also in % of `previous`
 export function changeCell(current, previous, currency, percent = false) {
   if (current === null || previous === null || previous === undefined) return "";
-  const diff = Math.round((current - previous) * 100) / 100;
+  const diff = current - previous; // cents: exact
   const cls = diff > 0 ? "up" : diff < 0 ? "down" : "";
   const arrow = diff > 0 ? "▲ " : diff < 0 ? "▼ " : "";
   const pct = percent && previous !== 0

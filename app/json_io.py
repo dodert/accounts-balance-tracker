@@ -26,7 +26,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import Account, AccountType, Balance, Milestone
-from .schemas import Amount, Currency, Name, Note, Notes
+from .schemas import Currency, DecimalAmount, Name, Note, Notes
 
 FORMAT = "accounts-balance-tracker"
 FORMAT_VERSION = 1
@@ -44,13 +44,13 @@ class _Item(BaseModel):
 
 class BalanceIn(_Item):
     date: date
-    amount: Amount
+    amount: DecimalAmount
     note: Note | None = None
 
 
 class MilestoneIn(_Item):
     date: date
-    amount: Amount
+    amount: DecimalAmount
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 
 

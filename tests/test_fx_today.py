@@ -33,7 +33,7 @@ def test_converted_history_uses_todays_rate_on_every_date(tmp_path, caplog):
         logging.getLogger("app").propagate = False
     assert h["converted"] == ["USD"] and h["stale"] is False and len(h["dates"]) == 60
     dollars = next(a for a in h["accounts"] if a["name"] == "Dollars")
-    assert set(dollars["values"]) == {90}  # 100 USD at today's 0.9 on every date
+    assert set(dollars["values"]) == {9000}  # 100 USD at today's 0.9 on every date, in cents
     assert rates.calls == [("USD", "EUR", None)]  # only today's rate, once
     assert any("from the stored rates" in r.getMessage() for r in caplog.records)
 

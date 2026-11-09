@@ -263,6 +263,8 @@ pytest -q
 
 Interactive docs at `/docs` when `API_DOCS=true` (off by default). Main endpoints: `/api/accounts`, `/api/accounts/{id}/balances`, `/api/balances/bulk`, `/api/milestones` (and `/api/accounts/{id}/milestones`), `/api/summary`, `/api/summary/combined`, `/api/fx?from=USD&to=EUR&date=YYYY-MM-DD`, `POST /api/fx/refresh`, `/api/history?currency=EUR&since=YYYY-MM-DD`, `/api/history/converted?since=YYYY-MM-DD`, `/api/export/csv`, `/api/import/csv`, `/api/export/json`, `/api/import/json` (`mode`: `merge` or `replace`), `/api/demo` (POST on, DELETE off, `/api/demo/reset`).
 
+**Amounts are integer cents**, in and out (since 0.29): `1234.50` is sent and received as `123450`, so no client loses a cent to floating-point numbers. A decimal number (`1234.5`) or text is refused. The JSON export file and the CSV keep amounts as decimal text (`1234.50`).
+
 ## License
 
 [GPL-3.0](LICENSE)

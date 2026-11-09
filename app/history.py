@@ -111,13 +111,13 @@ def currency_totals(ledger: Ledger) -> list[dict]:
         out.append({
             "currency": currency,
             "accounts": sum(1 for a in group if not a.archived),
-            "total": float(totals[-1]) if totals else 0.0,
+            "total": totals[-1] if totals else Decimal(0),
             "date": dates[-1] if dates else None,
-            "previous_total": float(totals[-2]) if len(totals) > 1 else None,
+            "previous_total": totals[-2] if len(totals) > 1 else None,
             "previous_date": dates[-2] if len(dates) > 1 else None,
-            "first_total": float(totals[0]) if len(totals) > 1 else None,
+            "first_total": totals[0] if len(totals) > 1 else None,
             "first_date": dates[0] if len(dates) > 1 else None,
-            "available": float(available),
-            "first_available": float(available_totals(group, dates[:1], per_account)[0]) if len(dates) > 1 else None,
+            "available": available,
+            "first_available": available_totals(group, dates[:1], per_account)[0] if len(dates) > 1 else None,
         })
     return out

@@ -8,7 +8,8 @@ import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
 // The big figure: available now (main colour) and, if part is not available yet, the total with it
 // `conv` (a box in another currency): {rate, currency} to also show each figure in the default currency, small
-export const converted = (value, conv) => (conv ? Math.round(value * conv.rate * 100) / 100 : null);
+// (amounts in cents; a converted one rounded to the cent)
+export const converted = (value, conv) => (conv ? Math.round(value * conv.rate) : null);
 export const convertedLine = (value, conv) => (conv ? `<div class="tile-converted">≈ ${esc(money(converted(value, conv), conv.currency))}</div>` : "");
 export const figures = (c, conv = null) => (c.available !== c.total ? `
       <div class="tile-figures">
@@ -20,7 +21,7 @@ export const figures = (c, conv = null) => (c.available !== c.total ? `
 export function changeLine(current, previous, currency, percent, conv) {
   const own = changeCell(current, previous, currency, percent);
   if (!conv || !own) return own;
-  const diff = Math.round((converted(current, conv) - converted(previous, conv)) * 100) / 100;
+  const diff = converted(current, conv) - converted(previous, conv);
   return `${own} <span class="tile-converted-change">(≈ ${esc(signedMoney(diff, conv.currency))})</span>`;
 }
 
