@@ -26,7 +26,7 @@ from .totp import Totp
 from .users import Users
 
 STATIC_DIR = Path(__file__).parent / "static"
-# Demos anyone can start (multi-user mode), per client IP (IPv6 per /64) and hour
+# New demos per client IP (IPv6 per /64) and hour: in multi-user mode anyone can start one
 DEMOS_PER_IP = 10
 DUPLICATE_NAME = "An account with that name already exists in that institution"
 
@@ -40,8 +40,7 @@ class Context:
     countries: Countries | None
     engine: Any  # single user: the SQLite engine; multi-user: None
     SessionLocal: Any
-    demo: Demo  # sample data in a temporary database, for the browsers in demo mode
-    visitor_demos: VisitorDemos  # multi-user mode: one per visitor, usable without an account
+    visitor_demos: VisitorDemos  # sample data in temporary databases, one per browser in demo mode
     fetch_rate: Fetcher
     shared_rates: SharedRates | None  # multi-user: one store of rates for everybody
     version: str
@@ -53,11 +52,8 @@ class Context:
         return self.settings.multi_user
 
     def visitor_demo(self, request: Request) -> Demo | None:
-        """The demo of this browser: its own one in multi-user mode, the shared one otherwise."""
-        visitor = request.cookies.get(DEMO_COOKIE)
-        if self.multi:
-            return self.visitor_demos.get(visitor)
-        return self.demo if visitor == "1" else None
+        """The demo of this browser (each browser has its own), or None when it is not in demo mode."""
+        return self.visitor_demos.get(request.cookies.get(DEMO_COOKIE))
 
     def in_demo(self, request: Request) -> bool:
         return self.visitor_demo(request) is not None
@@ -87,20 +83,17 @@ class Context:
 
     def set_demo(self, response: Response, request: Request, on: bool, lang: str = "en") -> Response:
         if on:
-            if self.multi:
-                visitor = request.cookies.get(DEMO_COOKIE)
-                if self.visitor_demos.get(visitor) is None:
-                    # Anyone can start one: a limit per client, so one can't push out everybody else's demos
-                    try:
-                        with self.new_demos.attempt(limit_key(client_ip(request))) as attempt:
-                            attempt.wrong()  # counts one demo
-                    except TooManyTries as error:
-                        raise HTTPException(429, "Too many demos started from your address, try again later",
-                                            headers={"Retry-After": str(error.retry_after)}) from None
-                    visitor = self.visitor_demos.start(lang)
-            else:
-                self.demo.sessionmaker(lang)
-                visitor = "1"
+            visitor = request.cookies.get(DEMO_COOKIE)
+            if self.visitor_demos.get(visitor) is None:
+                # A limit per client, so one can't push out everybody else's demos (in multi-user mode anyone
+                # can start one)
+                try:
+                    with self.new_demos.attempt(limit_key(client_ip(request))) as attempt:
+                        attempt.wrong()  # counts one demo
+                except TooManyTries as error:
+                    raise HTTPException(429, "Too many demos started from your address, try again later",
+                                        headers={"Retry-After": str(error.retry_after)}) from None
+                visitor = self.visitor_demos.start(lang)
             for name, value in ((DEMO_COOKIE, visitor), (DEMO_COOKIE + "_lang", lang)):
                 response.set_cookie(name, value, httponly=True, samesite="lax", secure=is_https(request))
         else:

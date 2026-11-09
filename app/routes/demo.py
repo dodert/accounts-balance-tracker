@@ -8,8 +8,8 @@ from ..deps import Context
 
 def router(ctx: Context) -> APIRouter:
     router = APIRouter()
-    multi, visitor_demos, in_demo, visitor_demo, demo_lang, set_demo = (
-        ctx.multi, ctx.visitor_demos, ctx.in_demo, ctx.visitor_demo, ctx.demo_lang, ctx.set_demo)
+    visitor_demos, in_demo, visitor_demo, demo_lang, set_demo = (
+        ctx.visitor_demos, ctx.in_demo, ctx.visitor_demo, ctx.demo_lang, ctx.set_demo)
 
     # --- Demo mode ---
 
@@ -20,9 +20,8 @@ def router(ctx: Context) -> APIRouter:
 
     @router.delete("/api/demo", status_code=204)
     def stop_demo(request: Request):
-        """Back to the real data."""
-        if multi:
-            visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
+        """Back to the real data; this browser's demo is forgotten."""
+        visitor_demos.stop(request.cookies.get(DEMO_COOKIE))
         return set_demo(Response(status_code=204), request, False)
 
     @router.post("/api/demo/reset", status_code=204)
