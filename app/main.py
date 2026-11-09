@@ -1,7 +1,7 @@
 import asyncio
 import html
 import ipaddress
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 import json
 import logging
 import math
@@ -25,7 +25,7 @@ from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
 from .geo import Countries
-from .fx import Fetcher, SharedRates, frankfurter, get_rate, rates_for_days
+from .fx import DbStore, Fetcher, SharedRates, SharedStore, frankfurter, get_rate, own_rates, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance, Milestone
@@ -226,7 +226,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     def in_demo(request: Request) -> bool:
         return visitor_demo(request) is not None
 
-    def get_db(request: Request):
+    @contextmanager
+    def open_db(request: Request):
         # Demo mode uses its own database: the real one is not even opened
         current_demo = visitor_demo(request)
         if current_demo is not None:
@@ -238,6 +239,10 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         else:
             with SessionLocal() as db:
                 yield db
+
+    def get_db(request: Request):
+        with open_db(request) as db:
+            yield db
 
     def get_account_or_404(db: Session, account_id: int) -> Account:
         account = db.get(Account, account_id)
@@ -495,38 +500,55 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     def summary(db: Session = Depends(get_db)):
         return currency_totals(accounts_with_balances(db))
 
-    def rates_fetcher(request: Request) -> Fetcher:
-        """Single-user: the service (the database keeps the rates). Multi-user: the store shared by everybody,
-        which demos only read: a demo never makes the app ask the service."""
+    def multi_fallback(request: Request) -> list:
+        """Multi-user: the rates the user's (or demo's) own database already has, used only when the shared store
+        has none for a day. The user's database is opened and closed here: it is never open while the rate service
+        is asked, so the user's other requests don't wait for it, and rates are never written to it."""
         if not multi:
-            return fetch_rate
-        return shared_rates.fetcher(network=not in_demo(request))
+            return []
+        with open_db(request) as db:
+            return own_rates(db)
 
-    def combined_total(db: Session, fetch: Fetcher, refresh: bool) -> CombinedTotal:
+    @contextmanager
+    def rate_source(request: Request, fallback: list):
+        """(store, fetcher) of the rates. Single user: the database's own table and the service. Multi-user: the
+        store shared by everybody, which demos only read (a demo never makes the app ask the service)."""
+        if multi:
+            yield SharedStore(shared_rates, fallback), shared_rates.fetcher(network=not in_demo(request))
+            return
+        with open_db(request) as db:
+            yield DbStore(db), fetch_rate
+
+    def combined_total(request: Request, totals: list[dict], fallback: list, refresh: bool) -> CombinedTotal:
         target = settings.default_currency
         total = available = Decimal(0)
         rates, missing = [], []
-        for c in currency_totals(accounts_with_balances(db)):
-            try:
-                rate = get_rate(db, fetch, c["currency"], target, refresh=refresh)
-            except LookupError:
-                missing.append(c["currency"])
-                continue
-            total += Decimal(str(c["total"])) * rate.rate
-            available += Decimal(str(c["available"])) * rate.rate
-            if c["currency"] != target:
-                rates.append(FxRateOut(**vars(rate)))
+        with rate_source(request, fallback) as (store, fetch):
+            for c in totals:
+                try:
+                    rate = get_rate(store, fetch, c["currency"], target, refresh=refresh)
+                except LookupError:
+                    missing.append(c["currency"])
+                    continue
+                total += Decimal(str(c["total"])) * rate.rate
+                available += Decimal(str(c["available"])) * rate.rate
+                if c["currency"] != target:
+                    rates.append(FxRateOut(**vars(rate)))
         return CombinedTotal(currency=target, total=round(total, 2), available=round(available, 2), rates=rates, missing=missing)
 
+    def totals_and_rates(request: Request) -> tuple[list[dict], list]:
+        with open_db(request) as db:
+            return currency_totals(accounts_with_balances(db)), (own_rates(db) if multi else [])
+
     @app.get("/api/summary/combined", response_model=CombinedTotal)
-    def summary_combined(request: Request, db: Session = Depends(get_db)):
+    def summary_combined(request: Request):
         """All currencies in the default one. Today's rates are fetched the first time each day."""
-        return combined_total(db, rates_fetcher(request), refresh=False)
+        return combined_total(request, *totals_and_rates(request), refresh=False)
 
     @app.post("/api/fx/refresh", response_model=CombinedTotal)
-    def fx_refresh(request: Request, db: Session = Depends(get_db)):
+    def fx_refresh(request: Request):
         """Fetch today's rates again now, and the combined total with them."""
-        return combined_total(db, rates_fetcher(request), refresh=True)
+        return combined_total(request, *totals_and_rates(request), refresh=True)
 
     @app.get("/api/fx", response_model=FxRateOut)
     def fx_rate(
@@ -534,11 +556,11 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         base: str = Query(..., alias="from", pattern=r"^[A-Za-z]{3}$"),
         quote: str = Query(..., alias="to", pattern=r"^[A-Za-z]{3}$"),
         day: date | None = Query(None, alias="date"),
-        db: Session = Depends(get_db),
     ):
         """The rate from one currency to another on a day (default today)."""
         try:
-            return FxRateOut(**vars(get_rate(db, rates_fetcher(request), base, quote, day)))
+            with rate_source(request, multi_fallback(request)) as (store, fetch):
+                return FxRateOut(**vars(get_rate(store, fetch, base, quote, day)))
         except LookupError as exc:
             raise HTTPException(503, str(exc)) from None
 
@@ -570,23 +592,26 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         )
 
     @app.get("/api/history/converted", response_model=HistoryOut)
-    def get_history_converted(request: Request, since: date | None = None, db: Session = Depends(get_db)):
+    def get_history_converted(request: Request, since: date | None = None):
         """Every account in the default currency, each date at that date's rate. Only the currencies
-        and the dates are sent to the rate service; the amounts are converted here."""
+        and the dates are sent to the rate service (all the dates of a currency in one request); the
+        amounts are converted here."""
         target = settings.default_currency
-        fetch = rates_fetcher(request)
-        accounts = accounts_with_balances(db)
+        with open_db(request) as db:
+            accounts = accounts_with_balances(db)
+            fallback = own_rates(db) if multi else []
         all_dates, _, all_values = history(accounts)
         dates, _, values = history(accounts, since)
         rates, converted, missing, stale = {}, [], [], False
-        for currency in sorted({a.currency for a in accounts} - {target}):
-            try:
-                rates[currency], old = rates_for_days(db, fetch, currency, target, set(all_dates) | set(dates))
-            except LookupError:
-                missing.append(currency)
-                continue
-            converted.append(currency)
-            stale = stale or old
+        with rate_source(request, fallback) as (store, fetch):
+            for currency in sorted({a.currency for a in accounts} - {target}):
+                try:
+                    rates[currency], old = rates_for_days(store, fetch, currency, target, set(all_dates) | set(dates))
+                except LookupError:
+                    missing.append(currency)
+                    continue
+                converted.append(currency)
+                stale = stale or old
         used = [a for a in accounts if a.currency == target or a.currency in rates]
 
         def convert(account, days, amounts):

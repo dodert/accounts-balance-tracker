@@ -23,7 +23,7 @@ services:
       # - ACCOUNT_DAYS=30   # days a new account lasts (0 = no expiry)
       # - MAX_USERS=100
       # - MAX_DB_MB=10
-      # - FX_DAILY_LIMIT=90   # requests a day to the exchange-rate service, for all users
+      # - FX_DAILY_LIMIT=30   # requests a day to the exchange-rate service, for all users
       # Optional: interactive API docs at /docs and /redoc (off by default)
       # - API_DOCS=true
       # Optional: reverse proxies whose X-Forwarded-For is trusted (default: local and Docker networks)
