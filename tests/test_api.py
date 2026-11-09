@@ -189,3 +189,16 @@ def test_milestones(client):
     client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": 1, "description": "x"})
     client.delete(f"/api/accounts/{a['id']}")
     assert client.get("/api/milestones").json() == []
+
+
+def test_accounts_show_last_previous_and_first_balance(client):
+    ids = [client.post("/api/accounts", json={"name": n}).json()["id"] for n in ("None", "One", "Three")]
+    client.post(f"/api/accounts/{ids[1]}/balances", json={"date": "2026-01-31", "amount": 10})
+    for day, amount in [("2026-03-31", 30), ("2026-01-31", 10), ("2026-02-28", 20)]:
+        client.post(f"/api/accounts/{ids[2]}/balances", json={"date": day, "amount": amount})
+    got = {a["name"]: (a["balance"], a["balance_date"], a["previous_balance"], a["previous_date"], a["first_balance"], a["first_date"])
+           for a in client.get("/api/accounts").json()}
+    assert got == {"None": (None, None, None, None, None, None),
+                   "One": (10, "2026-01-31", None, None, None, None),
+                   "Three": (30, "2026-03-31", 20, "2026-02-28", 10, "2026-01-31")}
+    assert client.get(f"/api/accounts/{ids[2]}").json()["previous_balance"] == 20
