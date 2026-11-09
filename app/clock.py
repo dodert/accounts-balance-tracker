@@ -12,7 +12,7 @@ exchange rate, and the export file names.
 import os
 import time
 from contextvars import ContextVar
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qs
 
 HEADER = "x-local-date"
@@ -42,7 +42,7 @@ def parse_local_date(value: str | None, utc_now: datetime | None = None) -> date
         day = date.fromisoformat(value.strip())
     except ValueError:
         return None
-    utc_day = (utc_now or datetime.now(timezone.utc)).date()
+    utc_day = (utc_now or datetime.now(UTC)).date()
     return day if abs(day - utc_day) <= timedelta(days=1) else None
 
 

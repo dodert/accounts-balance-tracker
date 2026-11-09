@@ -668,8 +668,10 @@ def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
     """Only a few password checks run at once, so they can't block the app."""
     import asyncio
     import threading
-    import app.routes.login as main
+
     import httpx2 as httpx
+
+    import app.routes.login as main
     app, _ = setup
     running, most, lock = 0, 0, threading.Lock()
 
@@ -696,8 +698,10 @@ def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
 def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
     """A slow CSV import doesn't stop the app from answering others."""
     import asyncio
-    import app.routes.transfer as main
+
     import httpx2 as httpx
+
+    import app.routes.transfer as main
     app, _ = setup
 
     def slow_import(*_args):

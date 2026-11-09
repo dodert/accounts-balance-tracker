@@ -12,7 +12,7 @@ import logging
 import re
 import shutil
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from .migrate import PRIVATE, _create_private
@@ -64,7 +64,7 @@ def listing(data_dir: Path, user_id: int | None = None) -> list[dict]:
         files = [p for p in files if p.is_file()]
         if not files:
             continue
-        made = datetime.fromtimestamp(max(p.stat().st_mtime for p in files), timezone.utc)
+        made = datetime.fromtimestamp(max(p.stat().st_mtime for p in files), UTC)
         found.append({"date": folder.name, "made_at": made.isoformat(timespec="seconds"),
                       "size": sum(p.stat().st_size for p in files)})
     return found
@@ -76,7 +76,7 @@ def make_daily_backup(data_dir: Path, keep: int, database: Path | None = None, u
     Returns the new folder, or None when there was nothing to do."""
     if keep <= 0:
         return None
-    day = (today or datetime.now(timezone.utc).date()).isoformat()
+    day = (today or datetime.now(UTC).date()).isoformat()
     root = backups_dir(data_dir)
     _private_dir(root)
     target = root / day

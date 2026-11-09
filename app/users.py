@@ -30,14 +30,35 @@ from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, event, func, select, text, update
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Integer,
+    LargeBinary,
+    String,
+    create_engine,
+    delete,
+    event,
+    func,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from . import crypto
 from .backups import backups_dir, copy_private, copy_sqlite
 from .db import make_engine
-from .migrate import IMPORT_BACKUP, MIGRATIONS_DIR, PRIVATE, _create_private, prune_backups, restrict_permissions, upgrade_database
+from .migrate import (
+    IMPORT_BACKUP,
+    MIGRATIONS_DIR,
+    PRIVATE,
+    _create_private,
+    prune_backups,
+    restrict_permissions,
+    upgrade_database,
+)
 
 log = logging.getLogger(__name__)
 

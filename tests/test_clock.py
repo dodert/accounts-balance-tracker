@@ -1,5 +1,5 @@
 """The server's clock is UTC; "today" is the user's date (X-Local-Date header or local_date), else the UTC date."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,11 +9,11 @@ from app.config import Settings
 from app.main import create_app
 from tests.test_fx import FakeRates
 
-UTC_NOON = datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc)
+UTC_NOON = datetime(2026, 3, 10, 12, 0, tzinfo=UTC)
 
 
 def utc_today() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 @pytest.mark.parametrize("value, expected", [

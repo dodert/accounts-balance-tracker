@@ -1,0 +1,16 @@
+# Tool settings only: the app is not a package (it runs from app/ in the image).
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+extend-exclude = ["app/migrations/versions", "app/migrations_users/versions"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, bugbear, pyupgrade
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = [
+    "B008",  # FastAPI declares its dependencies as calls in default arguments (Depends, Query, Form...)
+    "E501",  # long lines: left to the reader; a few comments and SQL strings read better unwrapped
+    "UP037",  # quoted annotations stay: models refer to classes defined further down
+    "UP042",  # AccountType(str, Enum): StrEnum would change str() of its values
+]
