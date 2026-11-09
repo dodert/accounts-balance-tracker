@@ -19,12 +19,14 @@ from .demo import Demo, VisitorDemos
 from .deps import STATIC_DIR, Context, Pages
 from .fx import Fetcher, SharedRates, frankfurter
 from .geo import Countries
-from .migrate import upgrade_database
+from .backups import make_daily_backup
+from .migrate import sqlite_file, upgrade_database
 from .routes import accounts, admin, balances, demo as demo_routes, info, login, milestones, rates, transfer
 from .totp import Totp
 from .users import DatabaseTooBig, Users
 
 PURGE_EVERY = 3600  # seconds between checks for expired accounts
+BACKUP_EVERY = 3600  # seconds between checks for today's backup (backups.py)
 
 use_utc()  # the server's own clock is UTC; the user's dates come from the browser (clock.py)
 
@@ -79,12 +81,28 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                 logging.getLogger(__name__).exception("Could not delete the expired accounts")
             await asyncio.sleep(PURGE_EVERY)
 
+    def backup_now():
+        """Today's backup, if not made yet (see backups.py)."""
+        database = None if multi else sqlite_file(engine)
+        return make_daily_backup(settings.data_dir, settings.backup_keep, database, users)
+
+    async def daily_backups():
+        """A backup on start if today has none, then checked every hour, so a restart never skips a day."""
+        while True:
+            try:
+                await run_in_threadpool(backup_now)
+            except Exception:
+                logging.getLogger(__name__).exception("Could not make the daily backup")
+            await asyncio.sleep(BACKUP_EVERY)
+
     @asynccontextmanager
     async def lifespan(_app):
         purge = asyncio.create_task(purge_expired_accounts()) if multi else None
+        backups = asyncio.create_task(daily_backups()) if settings.backup_keep > 0 else None
         yield
-        if purge is not None:
-            purge.cancel()
+        for task in (purge, backups):
+            if task is not None:
+                task.cancel()
         demo.close()  # the demo database is temporary
         visitor_demos.close()
 
@@ -92,6 +110,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     docs = {} if settings.api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
     app = FastAPI(title="Accounts Balance Tracker", version=version, lifespan=lifespan, **docs)
     app.state.users = users
+    app.state.backup_now = backup_now
     ctx = Context(settings=settings, auth=auth, users=users, totp=totp, countries=countries,
                   engine=engine, SessionLocal=SessionLocal, demo=demo, visitor_demos=visitor_demos,
                   fetch_rate=fetch_rate, shared_rates=shared_rates, version=version)

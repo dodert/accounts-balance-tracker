@@ -23,6 +23,11 @@ def _sqlite_path(engine: Engine) -> Path | None:
     return Path(database)
 
 
+def sqlite_file(engine: Engine) -> Path | None:
+    """The database's file (None in memory)."""
+    return _sqlite_path(engine)
+
+
 def _create_private(path: Path) -> None:
     """Create the file empty with PRIVATE permissions (whatever the umask), so it is never readable by others."""
     if not path.exists():
