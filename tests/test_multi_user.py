@@ -21,7 +21,7 @@ ADMIN = {"username": "admin", "password": "admin-pass"}
 def fast_argon2(monkeypatch):
     # The real cost (64 MiB, 3 passes) makes each login take a noticeable time; the tests only need it to work
     monkeypatch.setattr(crypto, "ARGON2", {"time_cost": 1, "memory_cost": 8, "parallelism": 1})
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
 
 
@@ -578,7 +578,7 @@ def test_one_invitation_makes_one_account_even_when_sent_at_the_same_time(setup)
 
 
 def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
-    import app.main as main
+    import app.routes.login as main
     app, admin = setup
     sign_up(app, invite(admin))
     for i in range(main.WRONG_PASSWORDS_PER_USER):
@@ -597,7 +597,7 @@ def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
 
 
 def test_ipv6_addresses_of_one_64_count_as_one(setup):
-    import app.main as main
+    import app.routes.login as main
     app, admin = setup
     sign_up(app, invite(admin))
     for i in range(main.WRONG_PASSWORDS_PER_IP):
@@ -630,7 +630,7 @@ def test_the_demo_has_a_size_limit(setup, monkeypatch):
 def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
     import asyncio
     import threading
-    import app.main as main
+    import app.routes.login as main
     import httpx2 as httpx
     app, _ = setup
     running, most, lock = 0, 0, threading.Lock()
@@ -657,7 +657,7 @@ def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
 
 def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
     import asyncio
-    import app.main as main
+    import app.routes.transfer as main
     import httpx2 as httpx
     app, _ = setup
 
@@ -804,7 +804,7 @@ def test_users_db_from_before_gets_the_new_column_after_a_backup(tmp_path):
 # --- Demos anyone can start: limits ---
 
 def test_demos_started_from_one_address_are_limited(setup):
-    import app.main as main
+    import app.deps as main
     app, _ = setup
     for _ in range(main.DEMOS_PER_IP):
         assert TestClient(app, client=("203.0.113.5", 1)).post("/api/demo").status_code == 204

@@ -36,9 +36,13 @@ def test_locale_has_every_english_key(path):
 def test_every_key_used_by_the_page_exists():
     html = "".join((STATIC / name).read_text(encoding="utf-8") for name in (
         "index.html", "login.html", "totp.html", "register.html", "recovery.html", "recover.html", "account.html",
-        "admin.html", "message.html"))
+        "message.html"))
     js = (STATIC / "app.js").read_text(encoding="utf-8")
     used = set(re.findall(r'data-i18n(?:-[a-z-]+)?="([^"]+)"', html))
+    # The admin's page is a Jinja template: its keys are also the quoted ones given to its macros
+    admin = (STATIC.parent / "templates" / "admin.html").read_text(encoding="utf-8")
+    used |= {key for key in re.findall(r'data-i18n="([^"{]+)"', admin)}
+    used |= set(re.findall(r'"((?:admin|register|header)\.[a-z_.0-9]+)"', admin))
     used |= set(re.findall(r'(?<![\w.])t\("([a-z_.0-9]+)"', js))
     used |= {f"{group}.{key}" for group, keys in DYNAMIC.items() for key in keys}
     assert used - set(EN) == set()

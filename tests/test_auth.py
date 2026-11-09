@@ -170,7 +170,7 @@ def guess_in_parallel(app, path, field_values, extra=None):
 
 
 def test_parallel_password_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
     wrong = [({"username": "admin", "password": f"guess{i}"}, f"guess{i}") for i in range(14)]
@@ -182,7 +182,7 @@ def test_parallel_password_guesses_from_one_ip_are_checked_one_at_a_time(tmp_pat
 
 
 def test_too_many_wrong_passwords_lock_out_that_ip_only(tmp_path, monkeypatch):
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="s3cret"))
     attacker = TestClient(app, client=("203.0.113.7", 50000))
@@ -200,7 +200,7 @@ def test_too_many_wrong_passwords_lock_out_that_ip_only(tmp_path, monkeypatch):
 
 
 def test_a_right_password_forgets_the_wrong_ones_of_that_ip(tmp_path, monkeypatch):
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     client = make_client(tmp_path, auth_username="admin", auth_password="s3cret")
     for _ in range(2):
@@ -211,7 +211,7 @@ def test_a_right_password_forgets_the_wrong_ones_of_that_ip(tmp_path, monkeypatc
 
 
 def test_parallel_code_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, monkeypatch):
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0.05)
     client = totp_client(tmp_path)
     client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
@@ -222,7 +222,7 @@ def test_parallel_code_guesses_from_one_ip_are_checked_one_at_a_time(tmp_path, m
 
 
 def test_too_many_wrong_codes_lock_out_that_ip(tmp_path, monkeypatch):
-    import app.main as main
+    import app.routes.login as main
     monkeypatch.setattr(main, "WRONG_PASSWORD_DELAY", 0)
     client = totp_client(tmp_path)
     client.post("/login", data={"username": "admin", "password": "s3cret"}, follow_redirects=False)
