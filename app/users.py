@@ -28,16 +28,18 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, event, func, select, text, update
+from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String, create_engine, delete, event, func, inspect, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from . import crypto
 from .backups import backups_dir, copy_private, copy_sqlite
 from .db import make_engine
-from .migrate import IMPORT_BACKUP, MIGRATIONS_DIR, PRIVATE, _create_private, prune_backups, restrict_permissions, upgrade_database
+from .migrate import (IMPORT_BACKUP, MIGRATIONS_DIR, PRIVATE, USERS_MIGRATIONS_DIR, _create_private, alembic_config,
+                      prune_backups, upgrade_database)
 
 log = logging.getLogger(__name__)
 
@@ -150,22 +152,19 @@ def data_key_aad(user_id: int) -> bytes:
     return f"abt-data-key:{user_id}".encode()
 
 
-def add_missing_columns(engine, system_db: Path) -> None:
-    """users.db is made with create_all, which doesn't add columns to an existing table: add the newer ones
-    (nullable, so no data changes), after a backup of the file."""
+def upgrade_users_db(engine) -> None:
+    """Bring users.db to the latest revision of its own Alembic tree (app/migrations_users), with a private backup
+    before any migration. A users.db from before that tree (made with create_all, no alembic_version) is first
+    stamped with the revision it already has, without changing it: 0001, or 0002 if it has key_by_account."""
     with engine.connect() as connection:
-        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(users)")}
-    if not columns or "key_by_account" in columns:
-        return
-    backup = system_db.with_name(f"{system_db.name}.backup-{datetime.now():%Y%m%d-%H%M%S}")
-    _create_private(backup)
-    with sqlite3.connect(system_db) as source, sqlite3.connect(backup) as target:
-        source.backup(target)
-    source.close()
-    target.close()
-    log.warning("users.db backed up to %s before adding the column key_by_account", backup.name)
-    with engine.begin() as connection:
-        connection.exec_driver_sql("ALTER TABLE users ADD COLUMN key_by_account BLOB")
+        tables = set(inspect(connection).get_table_names())
+        if "users" in tables and "alembic_version" not in tables:
+            columns = {c["name"] for c in inspect(connection).get_columns("users")}
+            config = alembic_config(USERS_MIGRATIONS_DIR)
+            config.attributes["connection"] = connection
+            command.stamp(config, "0002" if "key_by_account" in columns else "0001")
+            connection.commit()
+    upgrade_database(engine, USERS_MIGRATIONS_DIR)
 
 
 class UserDatabases:
@@ -344,9 +343,7 @@ class Users:
         data_dir.mkdir(parents=True, exist_ok=True)
         _create_private(system_db)
         engine = make_engine(f"sqlite:///{system_db}")
-        add_missing_columns(engine, system_db)
-        SystemBase.metadata.create_all(engine)
-        restrict_permissions(system_db)
+        upgrade_users_db(engine)  # raises without changing anything if users.db is from a newer version
         self.Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
         self.databases = UserDatabases(data_dir / "users", max_db_bytes)
         self.account_days, self.max_users = account_days, max_users

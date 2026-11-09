@@ -832,9 +832,10 @@ def test_users_db_from_before_gets_the_new_column_after_a_backup(tmp_path):
     admin = admin_client(app, tmp_path)
     sign_up(app, invite(admin))
     with sqlite3.connect(tmp_path / "users.db") as connection:
-        connection.execute("ALTER TABLE users DROP COLUMN key_by_account")
+        connection.execute("ALTER TABLE users DROP COLUMN key_by_account")  # as made by 0.15.0, before Alembic
+        connection.execute("DROP TABLE alembic_version")
     connection.close()
-    make_app(tmp_path)  # starts again: adds the column
+    make_app(tmp_path)  # starts again: stamps 0001 and migrates to the head
     with sqlite3.connect(tmp_path / "users.db") as connection:
         columns = [row[1] for row in connection.execute("PRAGMA table_info(users)")]
         names = [row[0] for row in connection.execute("SELECT username FROM users")]
