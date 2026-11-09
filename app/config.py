@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     max_users: int = 100
     max_db_mb: int = 10
     # Multi-user: most requests a day to the exchange-rate service, for everybody together (the rates are shared).
-    # 90 = a limit of 100 a day minus a margin of 10 for single-user installs on the same IP
-    fx_daily_limit: int = 90
+    # The rates of many days (a converted history) take one request, so a few a day are enough
+    fx_daily_limit: int = 30
     # Interactive API docs (/docs, /redoc) and the schema (/openapi.json): off by default, so production does not show the API
     api_docs: bool = False
 
