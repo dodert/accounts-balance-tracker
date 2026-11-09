@@ -3,7 +3,7 @@ services:
     image: ghcr.io/dodert/accounts-balance-tracker:latest
     container_name: accounts-balance-tracker
     ports:
-      - "8000:8000"
+      - "8085:80"
     volumes:
       - ./data:/data
     environment:
