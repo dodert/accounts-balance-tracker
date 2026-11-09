@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from .auth import Auth
 from .config import Settings
-from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
+from .demo import COOKIE as DEMO_COOKIE
+from .demo import Demo, VisitorDemos
 from .fx import Fetcher, SharedRates
 from .geo import Countries
 from .history import latest_balances

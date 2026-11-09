@@ -66,12 +66,12 @@ def test_import_rejects_files_without_required_columns(client):
 def test_import_finds_accounts_by_name_and_institution(client):
     """The CSV import matches accounts by name and institution."""
     csv = (
-        "account,institution,date,amount\n"
-        "Payroll,ING,2026-01-31,100\n"
-        "Payroll,BBVA,2026-01-31,200\n"
-        "payroll,bbva,2026-02-28,250\n"
-        "Payroll,,2026-02-28,1\n"
-    ).encode()
+        b"account,institution,date,amount\n"
+        b"Payroll,ING,2026-01-31,100\n"
+        b"Payroll,BBVA,2026-01-31,200\n"
+        b"payroll,bbva,2026-02-28,250\n"
+        b"Payroll,,2026-02-28,1\n"
+    )
     res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
     assert (res["accounts_created"], res["balances_created"]) == (2, 3)
     assert len(res["errors"]) == 1 and "add the institution" in res["errors"][0]

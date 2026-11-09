@@ -11,7 +11,8 @@ from ..auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS
 from ..demo import COOKIE as DEMO_COOKIE
 from ..deps import Context, client_ip, is_https, limit_key
 from ..ratelimit import TooManyTries, TryLimit
-from ..users import USER_COOKIE, SESSION_SECONDS as USER_SESSION_SECONDS, SignupError
+from ..users import SESSION_SECONDS as USER_SESSION_SECONDS
+from ..users import USER_COOKIE, SignupError
 
 WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)

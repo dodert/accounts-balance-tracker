@@ -134,7 +134,7 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
     for line, row in enumerate(reader, start=2):
         if not any(cell.strip() for cell in row):
             continue
-        cell = lambda key: row[columns[key]].strip() if key in columns and columns[key] < len(row) else ""  # noqa: E731
+        cell = lambda key, row=row: row[columns[key]].strip() if key in columns and columns[key] < len(row) else ""  # noqa: E731
         try:
             name = unsafe_text(cell("account"))
             if not name or len(name) > 100:

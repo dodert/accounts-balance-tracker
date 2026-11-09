@@ -26,7 +26,12 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-      - run: pip install -r requirements-dev.txt
+      # Exact versions with their hashes (made by pip-compile from requirements-dev.in; see the README)
+      - run: pip install --require-hashes --no-deps -r requirements-dev.txt
+      # Lint (settings in pyproject.toml)
+      - run: ruff check app tests scripts
+      # Known vulnerabilities in the packages the image installs
+      - run: pip-audit --requirement requirements.txt --require-hashes --disable-pip --progress-spinner off
       # Chromium for the end-to-end tests (tests/test_e2e.py), with the system libraries it needs
       - run: python -m playwright install --with-deps chromium
       # -v: one line per test in the log; the JUnit report becomes a table on the run's Summary page.

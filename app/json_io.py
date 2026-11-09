@@ -17,7 +17,7 @@ Amounts are text, so they keep their exact decimals. Two ways to import:
 The whole file is checked before anything is changed: a file with an error changes nothing.
 """
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -81,7 +81,7 @@ def export_json(db: Session, app_version: str = "") -> str:
                           .options(selectinload(Account.balances), selectinload(Account.milestones)))
     data = {
         "format": FORMAT, "version": FORMAT_VERSION,
-        "exported_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "exported_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "app_version": app_version,
         "accounts": [{
             "name": a.name, "type": a.type.value, "currency": a.currency, "institution": a.institution,

@@ -1,4 +1,3 @@
-import gzip
 from pathlib import Path
 
 from app.geo import Countries, previous_month

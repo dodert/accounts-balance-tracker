@@ -1,18 +1,18 @@
 """Daily backups in DATA_DIR/backups/<date>/ (backups.py)."""
 import sqlite3
 import time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
 
 from app.backups import days, make_daily_backup
 from app.config import Settings
 from app.main import create_app
-from tests.test_multi_user import fast_argon2, invite, admin_client, make_app, sign_up  # noqa: F401 (fixture)
+from tests.test_multi_user import admin_client, fast_argon2, invite, make_app, sign_up  # noqa: F401 (fixture)
 
 
 def utc_today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def single_user(tmp_path, **settings):

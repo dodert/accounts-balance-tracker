@@ -7,21 +7,23 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.concurrency import run_in_threadpool
 from sqlalchemy.exc import OperationalError
+from starlette.concurrency import run_in_threadpool
 
 from . import __version__, middleware
-from .clock import LocalDateMiddleware, use_utc
 from .auth import Auth
-from .config import Settings, settings as default_settings
+from .backups import make_daily_backup
+from .clock import LocalDateMiddleware, use_utc
+from .config import Settings
+from .config import settings as default_settings
 from .db import make_engine, make_sessionmaker
 from .demo import Demo, VisitorDemos
 from .deps import STATIC_DIR, Context, Pages
 from .fx import Fetcher, SharedRates, frankfurter
 from .geo import Countries
-from .backups import make_daily_backup
 from .migrate import sqlite_file, upgrade_database
-from .routes import accounts, admin, balances, demo as demo_routes, info, login, milestones, rates, transfer
+from .routes import accounts, admin, balances, info, login, milestones, rates, transfer
+from .routes import demo as demo_routes
 from .totp import Totp
 from .users import DatabaseTooBig, Users
 

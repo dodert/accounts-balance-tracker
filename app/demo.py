@@ -6,11 +6,11 @@ data. The file is deleted when the app stops, and the data is built again (relat
 """
 import random
 import secrets
-import time
-from collections import OrderedDict
 import shutil
 import tempfile
 import threading
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal

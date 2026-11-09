@@ -251,11 +251,22 @@ These backups sit in the same folder as the data. Keep a copy somewhere else too
 ## Development
 
 ```bash
-pip install -r requirements-dev.txt
+pip install --require-hashes --no-deps -r requirements-dev.txt
 DATA_DIR=./data uvicorn app.main:create_app --factory --reload
 python -m playwright install chromium   # once, for the end-to-end tests
 pytest -q
+ruff check app tests scripts            # lint, as in the CI (settings in pyproject.toml)
 ```
+
+**Dependencies**: the packages and their minimum versions are in `requirements.in` (the app) and `requirements-dev.in` (tests and checks). `requirements.txt` and `requirements-dev.txt` are generated from them with [pip-tools](https://pip-tools.readthedocs.io) under Python 3.14: every package, indirect ones too, with its exact version and hashes, so each build installs exactly what was tested. Don't edit them by hand; after changing a `.in` file, or to update everything:
+
+```bash
+pip install pip-tools
+pip-compile --generate-hashes --strip-extras requirements.in                         # add --upgrade to update
+pip-compile --generate-hashes --strip-extras --allow-unsafe requirements-dev.in
+```
+
+Dependabot does this every week in one PR. The CI also lints with ruff and checks the packages for known vulnerabilities with pip-audit. The Docker base image is pinned by digest, and Dependabot updates it too.
 
 **Frontend**: plain JavaScript modules in `app/static/js/` (no build step), one per part of the page: `main.js` starts it, `api.js`, `format.js`, `totals.js`, `accounts.js`, `charts.js`, `dialogs.js`, `settings.js`, `demo.js`. The page loads them from `/static/v/<version>/js/`, so a new version is never mixed with old copies in the browser's cache. `tests/test_e2e.py` drives the real page in Chromium (load, add an account and a balance, update balances, CSV import, demo with its charts, language); without Playwright those tests are skipped.
 
