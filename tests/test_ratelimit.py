@@ -17,6 +17,7 @@ def wrong(limit, key):
 
 
 def test_waits_until_the_oldest_wrong_try_leaves_the_window():
+    """After the limit, tries are allowed again once the oldest wrong one leaves the window."""
     clock = Clock()
     limit = TryLimit(3, 60, clock=clock)
     for _ in range(3):
@@ -32,6 +33,7 @@ def test_waits_until_the_oldest_wrong_try_leaves_the_window():
 
 
 def test_other_keys_are_not_affected():
+    """Wrong tries of one key (IP or user) don't affect another."""
     limit = TryLimit(1, 60, clock=Clock())
     wrong(limit, "a")
     with pytest.raises(TooManyTries):
@@ -40,6 +42,7 @@ def test_other_keys_are_not_affected():
 
 
 def test_one_check_at_a_time_per_key():
+    """Only one check at a time runs per key."""
     limit = TryLimit(5, 60, clock=Clock())
     with limit.attempt("a"):
         with pytest.raises(TooManyTries):
@@ -52,6 +55,7 @@ def test_one_check_at_a_time_per_key():
 
 
 def test_total_limit_across_keys():
+    """A total limit across all keys stops guessing from many addresses."""
     clock = Clock()
     limit = TryLimit(5, 60, allowed_total=3, clock=clock)
     for key in "abc":
@@ -63,6 +67,7 @@ def test_total_limit_across_keys():
 
 
 def test_reset_forgets_a_key():
+    """Resetting a key forgets its wrong tries."""
     limit = TryLimit(1, 60, clock=Clock())
     wrong(limit, "a")
     limit.reset("a")
@@ -70,6 +75,7 @@ def test_reset_forgets_a_key():
 
 
 def test_memory_is_bounded():
+    """The memory used by the limit is bounded, however many addresses try."""
     limit = TryLimit(2, 60, max_keys=100, clock=Clock())
     for i in range(1000):
         wrong(limit, f"ip{i}")

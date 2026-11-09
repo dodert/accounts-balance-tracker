@@ -30,6 +30,7 @@ def post(client, content: bytes, mode: str):
 
 
 def test_export_has_everything(client):
+    """The JSON export has every account with all its fields, balances and milestones."""
     fill(client)
     res = client.get("/api/export/json")
     assert res.headers["content-disposition"].startswith("attachment") and ".json" in res.headers["content-disposition"]
@@ -46,6 +47,7 @@ def test_export_has_everything(client):
 
 
 def test_replace_round_trip_gives_the_same_data(client, tmp_path):
+    """A JSON import in replace mode gives the same data, after a backup."""
     fill(client)
     exported = client.get("/api/export/json").content
     other = TestClient(create_app(Settings(data_dir=tmp_path / "other")))
@@ -60,6 +62,7 @@ def test_replace_round_trip_gives_the_same_data(client, tmp_path):
 
 
 def test_replace_keeps_the_newest_backups(client, tmp_path, monkeypatch):
+    """Only the 3 newest backups made before an import are kept."""
     import app.migrate as migrate
     fill(client)
     exported = client.get("/api/export/json").content
@@ -80,6 +83,7 @@ def test_replace_keeps_the_newest_backups(client, tmp_path, monkeypatch):
 
 
 def test_merge_imports_only_what_is_not_there_and_lists_it(client, tmp_path):
+    """A JSON import in merge mode adds only what is missing and lists what was already there."""
     fill(client)
     data = json.loads(client.get("/api/export/json").content)
     ing = next(a for a in data["accounts"] if a["name"] == "ING")
@@ -105,6 +109,7 @@ def test_merge_imports_only_what_is_not_there_and_lists_it(client, tmp_path):
 
 
 def test_an_invalid_file_changes_nothing(client):
+    """An invalid JSON file is refused with the reason, and nothing changes."""
     fill(client)
     before = snapshot(client)
     data = json.loads(client.get("/api/export/json").content)
@@ -119,6 +124,7 @@ def test_an_invalid_file_changes_nothing(client):
 
 
 def test_demo_can_export_and_import(client):
+    """The demo can export and import JSON too."""
     client.post("/api/demo")
     exported = client.get("/api/export/json").content
     assert json.loads(exported)["accounts"]

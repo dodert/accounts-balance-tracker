@@ -19,16 +19,19 @@ def _targets():
 
 
 def test_every_setting_is_in_the_template():
+    """Every app setting is in the Unraid template."""
     expected = {name.upper() for name in Settings.model_fields} - {n.upper() for n in NOT_USER_SETTINGS}
     missing = expected - _targets().keys()
     assert not missing, f"Add these to {TEMPLATE.name}: {sorted(missing)}"
 
 
 def test_container_vars_are_in_the_template():
+    """The container's own variables are in the Unraid template."""
     assert CONTAINER_VARS <= _targets().keys()
 
 
 def test_template_defaults_match_the_app():
+    """The Unraid template's defaults match the app's."""
     targets = _targets()
     for name, field in Settings.model_fields.items():
         config = targets.get(name.upper())
@@ -40,6 +43,7 @@ def test_template_defaults_match_the_app():
 
 
 def test_every_setting_is_in_the_readme():
+    """Every app setting is documented in the README."""
     readme = (ROOT / "README.md").read_text()
     table = readme.split("## Settings", 1)[1].split("\n## ", 1)[0]
     documented = set(re.findall(r"`([A-Z_]+)`", table))
@@ -52,6 +56,7 @@ HIDDEN_VARS = {"API_DOCS", "PUID", "PGID", "FORWARDED_ALLOW_IPS"}
 
 
 def test_only_some_variables_are_hidden():
+    """Only API_DOCS, PUID, PGID and FORWARDED_ALLOW_IPS are hidden in Unraid."""
     for target, config in _targets().items():
         want = "advanced" if target in HIDDEN_VARS else "always"
         assert config.get("Display") == want, f"{target}: Display should be {want!r}"

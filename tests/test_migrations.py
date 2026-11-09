@@ -10,6 +10,7 @@ from app.migrate import upgrade_database
 
 
 def test_migrations_match_models(tmp_path):
+    """The database migrations build exactly the tables of the models."""
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     upgrade_database(engine)
     with engine.connect() as conn:
@@ -18,6 +19,7 @@ def test_migrations_match_models(tmp_path):
 
 
 def test_upgrade_is_idempotent(tmp_path):
+    """Upgrading an up-to-date database changes nothing and makes no backup."""
     engine = create_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
     upgrade_database(engine)
     upgrade_database(engine)
@@ -59,6 +61,7 @@ def test_upgrade_keeps_the_balances(tmp_path):
 
 
 def test_database_from_a_newer_version_is_refused_untouched(tmp_path):
+    """A database from a newer app version is refused and left untouched."""
     import pytest
     from sqlalchemy import text
 

@@ -63,11 +63,13 @@ def setup(tmp_path):
 
 
 def test_needs_the_admin_login(tmp_path):
+    """Multi-user mode needs the admin's username and password."""
     with pytest.raises(ValueError, match="MULTI_USER"):
         create_app(Settings(data_dir=tmp_path, multi_user=True))
 
 
 def test_sign_up_with_an_invitation_then_use_the_app(setup, tmp_path):
+    """A user signs up with an invitation, gets a recovery key and keeps their data."""
     app, admin = setup
     token = invite(admin)
     client, res = sign_up(app, token)
@@ -95,6 +97,7 @@ def test_sign_up_with_an_invitation_then_use_the_app(setup, tmp_path):
 
 
 def test_users_do_not_see_each_other(setup):
+    """Each user sees only their own data."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     bob, _ = sign_up(app, invite(admin), "bob", "bob@example.com", "bob-password")
@@ -105,6 +108,7 @@ def test_users_do_not_see_each_other(setup):
 
 
 def test_an_invitation_works_once(setup):
+    """An invitation link works only once."""
     app, admin = setup
     token = invite(admin)
     sign_up(app, token)
@@ -120,6 +124,7 @@ def expire_invitations(tmp_path):
 
 
 def test_expired_invitation(setup, tmp_path):
+    """An expired invitation can't be used."""
     app, admin = setup
     token = invite(admin)
     expire_invitations(tmp_path)
@@ -129,6 +134,7 @@ def test_expired_invitation(setup, tmp_path):
 
 
 def test_cancelled_invitation(setup, tmp_path):
+    """A cancelled invitation can't be used."""
     app, admin = setup
     token = invite(admin)
     with sqlite3.connect(tmp_path / "users.db") as db:
@@ -139,6 +145,7 @@ def test_cancelled_invitation(setup, tmp_path):
 
 
 def test_invitation_for_one_email(setup, tmp_path):
+    """An invitation for one email signs up that email, whatever is typed."""
     app, admin = setup
     token = invite(admin, "Carla@Example.com")
     assert 'value="carla@example.com"' in TestClient(app).get(f"/invite/{token}").text
@@ -150,6 +157,7 @@ def test_invitation_for_one_email(setup, tmp_path):
 
 
 def test_reloading_the_admin_page_does_not_invite_again(setup, tmp_path):
+    """Reloading the admin page shows no new invitation and doesn't create one."""
     app, admin = setup
     res = admin.post("/admin/invitations", data={"email": "dani@example.com"}, follow_redirects=False)
     assert res.status_code == 303
@@ -163,6 +171,7 @@ def test_reloading_the_admin_page_does_not_invite_again(setup, tmp_path):
 
 
 def test_a_new_invitation_for_an_email_replaces_the_open_one(setup, tmp_path):
+    """A new invitation for the same email replaces the open one."""
     app, admin = setup
     old, new = invite(admin, "eva@example.com"), invite(admin, "eva@example.com")
     assert TestClient(app).get(f"/invite/{old}").status_code == 404
@@ -174,6 +183,7 @@ def test_a_new_invitation_for_an_email_replaces_the_open_one(setup, tmp_path):
 
 
 def test_signing_up_in_a_logged_in_browser_says_it_and_logs_out(setup):
+    """Signing up in a logged-in browser warns, then logs the old user out for good."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     old_cookie = client.cookies[USER_COOKIE]
@@ -191,6 +201,7 @@ def test_signing_up_in_a_logged_in_browser_says_it_and_logs_out(setup):
 
 
 def test_sign_up_checks(setup, tmp_path):
+    """Sign-up checks the username, email and password, without using up the invitation."""
     app, admin = setup
     token = invite(admin)
     cases = [
@@ -222,6 +233,7 @@ def test_sign_up_checks(setup, tmp_path):
 
 
 def test_wrong_password_and_unknown_user(setup):
+    """A wrong password and an unknown user get the same refusal."""
     app, admin = setup
     sign_up(app, invite(admin))
     client = TestClient(app)
@@ -232,6 +244,7 @@ def test_wrong_password_and_unknown_user(setup):
 
 
 def test_change_password_keeps_the_data_and_logs_out_other_devices(setup):
+    """Changing the password keeps the data and logs out the other devices."""
     app, admin = setup
     phone, _ = sign_up(app, invite(admin))
     phone.post("/api/accounts", json={"name": "Kept", "type": "bank"})
@@ -256,6 +269,7 @@ def test_change_password_keeps_the_data_and_logs_out_other_devices(setup):
 
 
 def test_recovery_key_sets_a_new_password(setup):
+    """The recovery key sets a new password and keeps the data."""
     app, admin = setup
     client, res = sign_up(app, invite(admin))
     key = recovery_key(res)
@@ -277,6 +291,7 @@ def test_recovery_key_sets_a_new_password(setup):
 
 
 def test_logout_ends_the_session_even_for_a_copied_cookie(setup):
+    """Logging out ends the session, even for a copy of the cookie."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     cookie = client.cookies[USER_COOKIE]
@@ -287,6 +302,7 @@ def test_logout_ends_the_session_even_for_a_copied_cookie(setup):
 
 
 def test_forged_or_damaged_cookies_are_rejected(setup):
+    """Forged or damaged session cookies are refused."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     cookie = client.cookies[USER_COOKIE]
@@ -297,6 +313,7 @@ def test_forged_or_damaged_cookies_are_rejected(setup):
 
 
 def test_admin_pages_need_the_admin(setup):
+    """Only the admin can open the admin pages; the admin has no data of its own."""
     app, admin = setup
     user, _ = sign_up(app, invite(admin))
     assert user.get("/admin", follow_redirects=False).headers["location"] == "/login"
@@ -308,6 +325,7 @@ def test_admin_pages_need_the_admin(setup):
 
 
 def test_multi_user_pages_do_not_exist_in_single_user_mode(tmp_path):
+    """The multi-user pages don't exist in single-user mode."""
     client = TestClient(create_app(Settings(data_dir=tmp_path)))
     for path in ("/invite/abc", "/recover", "/account", "/admin"):
         assert client.get(path).status_code == 404, path
@@ -315,6 +333,7 @@ def test_multi_user_pages_do_not_exist_in_single_user_mode(tmp_path):
 
 
 def test_an_older_user_database_is_backed_up_then_migrated(setup, tmp_path):
+    """An older user database is backed up, then migrated, keeping its data."""
     from alembic import command
     from alembic.config import Config
     from sqlalchemy import create_engine
@@ -355,6 +374,7 @@ def app_session(app, client):
 
 
 def test_user_ids_are_never_reused(tmp_path):
+    """User ids are never reused after a delete."""
     app = make_app(tmp_path)
     admin = admin_client(app, tmp_path)
     sign_up(app, invite(admin))
@@ -370,6 +390,7 @@ def user_id(tmp_path, username):
 
 
 def test_admin_sees_users_sizes_and_last_login(setup, tmp_path):
+    """The admin sees each user's size, last login and country, but not their data."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     TestClient(app, client=("203.0.113.9", 1)).post(
@@ -385,6 +406,7 @@ def test_admin_sees_users_sizes_and_last_login(setup, tmp_path):
 
 
 def test_block_and_unblock_a_user(setup, tmp_path):
+    """A blocked user is logged out and can't log in; unblocked, their data is there."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     ana.post("/api/accounts", json={"name": "Kept", "type": "bank"})
@@ -401,6 +423,7 @@ def test_block_and_unblock_a_user(setup, tmp_path):
 
 
 def test_delete_a_user_and_block_the_email(setup, tmp_path):
+    """Deleting a user removes their data; it can also block their email."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     bob, _ = sign_up(app, invite(admin), "bob", "bob@example.com", "bob-password")
@@ -420,6 +443,7 @@ def test_delete_a_user_and_block_the_email(setup, tmp_path):
 
 
 def test_blocked_emails_list(setup):
+    """Blocked emails can't sign up until unblocked."""
     app, admin = setup
     admin.post("/admin/blocked-emails", data={"email": "Spam@Example.com"})
     assert "spam@example.com" in admin.get("/admin").text
@@ -432,6 +456,7 @@ def test_blocked_emails_list(setup):
 
 
 def test_admin_actions_need_the_admin(setup, tmp_path):
+    """A user can't run the admin's actions."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     uid = user_id(tmp_path, "ana")
@@ -449,6 +474,7 @@ def set_expiry(tmp_path, username, moment):
 
 
 def test_new_accounts_last_30_days(setup):
+    """New accounts last 30 days by default."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     about = client.get("/api/about").json()
@@ -456,6 +482,7 @@ def test_new_accounts_last_30_days(setup):
 
 
 def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp_path):
+    """An expired account is logged out, its data deleted, and blocked until extended."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     ana.post("/api/accounts", json={"name": "Old", "type": "bank"})
@@ -477,6 +504,7 @@ def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp
 
 
 def test_extend_adds_days_and_no_expiry_removes_it(setup, tmp_path):
+    """The admin can add days to an account or remove its expiry."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     uid = user_id(tmp_path, "ana")
@@ -489,6 +517,7 @@ def test_extend_adds_days_and_no_expiry_removes_it(setup, tmp_path):
 
 
 def test_no_expiry_when_account_days_is_0(tmp_path):
+    """With ACCOUNT_DAYS=0, accounts never expire."""
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="admin-pass", multi_user=True,
                               country_db=False, account_days=0))
     client, _ = sign_up(app, invite(admin_client(app, tmp_path)))
@@ -496,6 +525,7 @@ def test_no_expiry_when_account_days_is_0(tmp_path):
 
 
 def test_most_users(tmp_path):
+    """No more users than MAX_USERS can sign up."""
     app = create_app(Settings(data_dir=tmp_path, auth_username="admin", auth_password="admin-pass", multi_user=True,
                               country_db=False, max_users=1))
     admin = admin_client(app, tmp_path)
@@ -505,6 +535,7 @@ def test_most_users(tmp_path):
 
 
 def test_most_database_size(setup):
+    """A change that would take a user's data over its size limit is refused, not saved."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     client.post("/api/accounts", json={"name": "Small", "type": "bank"})
@@ -520,6 +551,7 @@ def test_most_database_size(setup):
 
 
 def test_the_demo_without_an_account_is_one_per_visitor(setup):
+    """Without an account, each visitor gets their own demo, with no access to accounts or admin."""
     app, admin = setup
     one, two = TestClient(app), TestClient(app)
     assert one.get("/api/accounts").status_code == 401
@@ -544,6 +576,7 @@ def test_the_demo_without_an_account_is_one_per_visitor(setup):
 
 
 def test_a_user_in_the_demo_does_not_touch_their_data(setup):
+    """A logged-in user trying the demo doesn't touch their own data."""
     app, admin = setup
     ana, _ = sign_up(app, invite(admin))
     ana.post("/api/accounts", json={"name": "Real", "type": "bank"})
@@ -556,6 +589,7 @@ def test_a_user_in_the_demo_does_not_touch_their_data(setup):
 # --- Abuse: invitation race, guessing from many addresses, demo size, imports ---
 
 def test_one_invitation_makes_one_account_even_when_sent_at_the_same_time(setup):
+    """One invitation makes one account, even with sign-ups at the same time."""
     import threading
     app, admin = setup
     token = invite(admin)
@@ -578,6 +612,7 @@ def test_one_invitation_makes_one_account_even_when_sent_at_the_same_time(setup)
 
 
 def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
+    """Wrong passwords for one user are limited, whatever IP they come from."""
     import app.main as main
     app, admin = setup
     sign_up(app, invite(admin))
@@ -597,6 +632,7 @@ def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
 
 
 def test_ipv6_addresses_of_one_64_count_as_one(setup):
+    """IPv6 addresses in the same /64 count as one for the login limit."""
     import app.main as main
     app, admin = setup
     sign_up(app, invite(admin))
@@ -612,6 +648,7 @@ def test_ipv6_addresses_of_one_64_count_as_one(setup):
 
 
 def test_the_demo_has_a_size_limit(setup, monkeypatch):
+    """The demo refuses files and changes over its size limit and keeps working."""
     import app.demo as demo
     monkeypatch.setattr(demo, "MAX_BYTES", 300 * 1024)
     app, _ = setup
@@ -628,6 +665,7 @@ def test_the_demo_has_a_size_limit(setup, monkeypatch):
 
 
 def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
+    """Only a few password checks run at once, so they can't block the app."""
     import asyncio
     import threading
     import app.main as main
@@ -656,6 +694,7 @@ def test_password_checks_run_a_few_at_a_time(setup, monkeypatch):
 
 
 def test_a_csv_import_does_not_stop_the_app(setup, monkeypatch):
+    """A slow CSV import doesn't stop the app from answering others."""
     import asyncio
     import app.main as main
     import httpx2 as httpx
@@ -701,6 +740,7 @@ def opens(app, user_id: int, key: bytes) -> bool:
 
 @pytest.mark.parametrize("how", ["password", "recovery"])
 def test_a_new_password_re_encrypts_the_data_with_a_new_key(setup, how):
+    """A new password (changed or recovered) re-encrypts the data and backups with a new key."""
     app, admin = setup
     client, res = sign_up(app, invite(admin))
     key = recovery_key(res)
@@ -730,6 +770,7 @@ def test_a_new_password_re_encrypts_the_data_with_a_new_key(setup, how):
 
 
 def test_accounts_from_before_data_keys_keep_working_and_move_on_password_change(setup):
+    """Accounts from before data keys keep working and get one on password change."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     client.post("/api/accounts", json={"name": "Kept", "type": "bank"})
@@ -759,6 +800,7 @@ def test_accounts_from_before_data_keys_keep_working_and_move_on_password_change
 
 
 def test_a_re_encryption_cut_short_never_loses_the_data(setup):
+    """A re-encryption cut short at any step never loses the data."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     client.post("/api/accounts", json={"name": "Kept", "type": "bank"})
@@ -784,6 +826,7 @@ def test_a_re_encryption_cut_short_never_loses_the_data(setup):
 
 
 def test_users_db_from_before_gets_the_new_column_after_a_backup(tmp_path):
+    """An older users database gets the new column, after a private backup."""
     import sqlite3
     app = make_app(tmp_path)
     admin = admin_client(app, tmp_path)
@@ -804,6 +847,7 @@ def test_users_db_from_before_gets_the_new_column_after_a_backup(tmp_path):
 # --- Demos anyone can start: limits ---
 
 def test_demos_started_from_one_address_are_limited(setup):
+    """One address can start only a few demos an hour."""
     import app.main as main
     app, _ = setup
     for _ in range(main.DEMOS_PER_IP):
@@ -827,6 +871,7 @@ def usd_account(client):
 
 
 def test_users_share_the_exchange_rates(tmp_path):
+    """Users share the stored exchange rates; only currencies and dates are sent."""
     from tests.test_fx import FakeRates
     rates = FakeRates()
     app = rates_app(tmp_path, rates)
@@ -847,6 +892,7 @@ def test_users_share_the_exchange_rates(tmp_path):
 
 
 def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
+    """Requests to the rate service have a daily limit, kept across restarts."""
     from tests.test_fx import FakeRates
     rates = FakeRates()
     app = rates_app(tmp_path, rates, fx_daily_limit=3)
@@ -865,6 +911,7 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
 
 
 def test_demos_never_ask_the_rate_service(tmp_path):
+    """Demos never ask the rate service."""
     from tests.test_fx import FakeRates
     rates = FakeRates()
     app = rates_app(tmp_path, rates)
@@ -878,6 +925,7 @@ def test_demos_never_ask_the_rate_service(tmp_path):
 
 
 def test_todays_rate_is_asked_again_every_3_hours_until_the_days_own_rate(tmp_path):
+    """Today's rate is asked again every 3 hours until the day's own rate is out."""
     from app.fx import SharedRates
     from tests.test_fx import FakeRates
     now = [1_000_000.0]
@@ -904,6 +952,7 @@ def test_todays_rate_is_asked_again_every_3_hours_until_the_days_own_rate(tmp_pa
 
 
 def test_the_api_docs_need_an_account_also_in_the_demo(tmp_path):
+    """The API docs need an account, also for demo visitors."""
     app = make_app(tmp_path, api_docs=True)
     admin = admin_client(app, tmp_path)
     visitor = TestClient(app)
@@ -918,6 +967,7 @@ def test_the_api_docs_need_an_account_also_in_the_demo(tmp_path):
 
 
 def test_json_replace_backs_up_the_encrypted_file_first(setup, tmp_path):
+    """A JSON replace backs up the user's encrypted database first."""
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     account = client.post("/api/accounts", json={"name": "Secret savings"}).json()
