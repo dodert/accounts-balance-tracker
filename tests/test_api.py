@@ -189,19 +189,3 @@ def test_milestones(client):
     client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-03-10", "amount": 1, "description": "x"})
     client.delete(f"/api/accounts/{a['id']}")
     assert client.get("/api/milestones").json() == []
-
-
-def test_a_postgres_database_url_stops_the_app_and_says_how_to_move_the_data(tmp_path):
-    import pytest
-
-    from app.config import Settings
-    from app.main import create_app
-    url = "postgresql+psycopg://balances:secret@db:5432/balances"
-    for multi in (False, True):
-        with pytest.raises(RuntimeError) as error:
-            create_app(Settings(data_dir=tmp_path, database_url=url, multi_user=multi,
-                                auth_username="admin", auth_password="admin-password"))
-        message = str(error.value)
-        assert "postgresql+psycopg" in message and "Export everything (JSON)" in message and "Import JSON" in message
-        assert "secret" not in message  # the password in the URL is not written to the log
-    assert not list(tmp_path.iterdir())  # nothing was created before stopping

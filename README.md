@@ -207,8 +207,6 @@ The database schema is migrated automatically on start, keeping all the data.
 
 **Backups before updates**: when an update changes the database schema, the SQLite database is first copied to `/data/balances.db.backup-<from>-to-<to>-<date>` (if the copy fails, the app does not start and nothing is changed). To go back: stop the container, run the previous image version, and replace `balances.db` with the backup (delete `balances.db-wal` and `balances.db-shm` if there are any). Delete old backups yourself when you no longer need them. Exporting now and then with **Import / export → Export everything (JSON)** is also a good copy of everything (accounts with all their details, balances and milestones); the CSV export only has the balances.
 
-**Coming from PostgreSQL** (`DATABASE_URL`, supported until 0.18.x): from 0.19.0 the data is always a SQLite file in `/data`, and the app does not start while `DATABASE_URL` points to PostgreSQL (it says why; that database is not changed). To move the data: run 0.18.x with your `DATABASE_URL` and use **Import / export → Export everything (JSON)**; remove `DATABASE_URL` and start the new version; then **Import JSON**.
-
 **File permissions**: the SQLite database and its backups are only readable by the container's user (`0600`, `PUID`), whatever `UMASK` is; databases created by older versions are fixed on start.
 
 ## Features

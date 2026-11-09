@@ -18,7 +18,7 @@ PRIVATE = 0o600  # balances are private: only the app's user can read the databa
 
 def _sqlite_path(engine: Engine) -> Path | None:
     database = engine.url.database
-    if engine.dialect.name != "sqlite" or not database or database == ":memory:":
+    if not database or database == ":memory:":  # in memory: no file
         return None
     return Path(database)
 
@@ -90,7 +90,6 @@ def upgrade_database(engine: Engine) -> None:
     keys on, dropping `accounts` would delete every balance (ON DELETE CASCADE), so they are turned
     off while migrating, and checked afterwards. The pragma has no effect inside a transaction, so
     it is set before the migration's transaction starts."""
-    sqlite = engine.dialect.name == "sqlite"
     database = _sqlite_path(engine)
     if database is not None:
         if database.parent.is_dir():
@@ -113,16 +112,14 @@ def upgrade_database(engine: Engine) -> None:
             backup = backup_sqlite(engine, current, head)
             if backup:
                 log.warning("Database backed up to %s before migrating it from %s to %s", backup, current, head)
-        if sqlite:
-            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-            connection.commit()
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
         try:
             with connection.begin():
                 config.attributes["connection"] = connection
                 command.upgrade(config, "head")
-                if sqlite and connection.execute(text("PRAGMA foreign_key_check")).first():
+                if connection.execute(text("PRAGMA foreign_key_check")).first():
                     raise RuntimeError("Migration left balances without an account; nothing was changed")
         finally:
-            if sqlite:
-                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-                connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()

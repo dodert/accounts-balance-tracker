@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from . import __version__
 from .auth import COOKIE, PENDING_COOKIE, PENDING_SECONDS, SESSION_SECONDS, Auth
-from .config import Settings, check_database_url, settings as default_settings
+from .config import Settings, settings as default_settings
 from .csv_io import export_csv, import_csv
 from .json_io import export_json, import_json, parse_backup
 from .db import make_engine, make_sessionmaker
@@ -105,7 +105,6 @@ def log_to_console() -> None:
 
 def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None = None) -> FastAPI:
     log_to_console()
-    check_database_url(settings.database_url)  # before touching anything: PostgreSQL is no longer supported
     auth = Auth(settings.auth_username, settings.auth_password, settings.data_dir)
     if settings.auth_totp and not auth.enabled:
         raise ValueError("AUTH_TOTP needs AUTH_USERNAME and AUTH_PASSWORD")
