@@ -72,6 +72,8 @@ DOCS_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.j
             "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com; "
             "worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc"}
+# The API docs and their schema: multi-user mode shows them only to logged-in users, not to demo visitors
+API_DOCS = DOCS_PATHS | {"/openapi.json"}
 
 
 def account_out(account: Account) -> AccountOut:
@@ -192,7 +194,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             request.state.user = session
             return await call_next(request)
         # The demo can be tried without an account: each visitor gets their own sample data
-        if not path.startswith("/account") and (path in DEMO_ENTRY or in_demo(request)):
+        if not path.startswith("/account") and path not in API_DOCS and (path in DEMO_ENTRY or in_demo(request)):
             return await call_next(request)
         if is_admin(request) and not path.startswith("/api/"):
             return RedirectResponse("/admin", status_code=303)
