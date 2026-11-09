@@ -54,6 +54,12 @@ def test_demo_covers_the_features(client):
     assert summary["USD"]["available"] < summary["USD"]["total"]
     history = client.get("/api/history?currency=EUR").json()
     assert len(history["dates"]) >= 12
+    # An account that rises and then falls, but ends above its start: the orange chart background (#104)
+    bitcoin = next(a for a in history["accounts"] if a["name"] == "Bitcoin")
+    values = [v for v in bitcoin["values"] if v is not None]
+    peak = values.index(max(values))
+    assert values[-1] > values[0] and 0 < peak < len(values) // 2
+    assert all(b < a for a, b in zip(values[peak:-1], values[peak + 1:], strict=True))
 
 
 def test_demo_reset_undoes_changes(client):

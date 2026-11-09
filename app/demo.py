@@ -43,6 +43,10 @@ class Sample:
     note: dict[str, str] | None = None
     # Notable expenses: (months after the start of the history, amount, description by language)
     milestones: tuple = ()
+    # From this month on (months after the start of the history) it changes by `after_peak` a month
+    # instead: rises and then falls, but ends above its start (the orange chart background, #104)
+    peak_month: int | None = None
+    after_peak: float = 0
 
 
 SAMPLES = [
@@ -61,7 +65,8 @@ SAMPLES = [
            first_month=6, available_in_days=400, note={"en": "Vesting", "es": "Pendiente de consolidar"}),
     Sample({"en": "Checking", "es": "Cuenta en dólares"}, "Liberty Bank", AccountType.bank, "USD", 1500, 30, 250),
     Sample({"en": "Pension plan", "es": "Plan de pensiones"}, "Seguros Atlántico", AccountType.pension, "EUR", 34000, 300, 400),
-    Sample({"en": "Bitcoin", "es": "Bitcoin"}, "Coinvault", AccountType.crypto, "EUR", 1200, 60, 400, first_month=8),
+    Sample({"en": "Bitcoin", "es": "Bitcoin"}, "Coinvault", AccountType.crypto, "EUR", 1200, 300, 80, first_month=8,
+           peak_month=12, after_peak=-90),
     Sample({"en": "Cash", "es": "Efectivo"}, None, AccountType.cash, "EUR", 300, 0, 80),
 ]
 
@@ -100,7 +105,8 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
             if sample.type == AccountType.loan and amount > 0:
                 amount = 0
             account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
-            value += sample.monthly + rng.uniform(-sample.noise, sample.noise)
+            monthly = sample.after_peak if sample.peak_month is not None and n >= sample.peak_month else sample.monthly
+            value += monthly + rng.uniform(-sample.noise, sample.noise)
             for month, cost, description in sample.milestones:
                 if month == n:  # the expense, a few days into the month, and the balance drops by it
                     account.milestones.append(Milestone(date=day + timedelta(days=12), amount=Decimal(cost), description=description[lang]))
