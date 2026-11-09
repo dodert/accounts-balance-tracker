@@ -18,6 +18,7 @@ DYNAMIC = {"type": ["bank", "savings", "investment", "pension", "crypto", "cash"
 
 
 def test_languages_endpoint(tmp_path):
+    """The list of languages includes English and Spanish."""
     client = TestClient(create_app(Settings(data_dir=tmp_path)))
     languages = client.get("/api/languages").json()
     assert {"code": "en", "name": "English"} in languages
@@ -26,6 +27,7 @@ def test_languages_endpoint(tmp_path):
 
 @pytest.mark.parametrize("path", LOCALES, ids=lambda p: p.stem)
 def test_locale_has_every_english_key(path):
+    """Each translation has every English text, with the same placeholders."""
     strings = json.loads(path.read_text(encoding="utf-8"))
     assert set(strings) == set(EN), path.name
     for key, text in strings.items():
@@ -34,6 +36,7 @@ def test_locale_has_every_english_key(path):
 
 
 def test_every_key_used_by_the_page_exists():
+    """Every text the pages use has an English translation."""
     html = "".join((STATIC / name).read_text(encoding="utf-8") for name in (
         "index.html", "login.html", "totp.html", "register.html", "recovery.html", "recover.html", "account.html",
         "message.html"))
@@ -49,6 +52,7 @@ def test_every_key_used_by_the_page_exists():
 
 
 def test_account_types_match_the_model():
+    """The account types in the page match the ones in the database model."""
     from app.models import AccountType
     assert DYNAMIC["type"] == [t.value for t in AccountType]
     assert f"const ACCOUNT_TYPES = {json.dumps(DYNAMIC['type'])};" in (STATIC / "app.js").read_text()

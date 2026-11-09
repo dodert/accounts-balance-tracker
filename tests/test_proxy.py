@@ -33,20 +33,24 @@ def seen_by_app(peer: str, forwarded_for: str | None = None, proto: str | None =
 
 
 def test_the_image_does_not_trust_every_client():
+    """The Docker image reads proxy headers only from trusted proxies."""
     cmd = DOCKERFILE.read_text()
     assert "--proxy-headers" in cmd
     assert "--forwarded-allow-ips" not in cmd  # uvicorn reads FORWARDED_ALLOW_IPS instead
 
 
 def test_a_client_from_the_internet_cannot_fake_its_ip_or_https():
+    """A client from the internet can't fake its IP or HTTPS."""
     assert seen_by_app("203.0.113.9", "10.0.0.1", "https") == ("203.0.113.9", "http")
 
 
 def test_a_proxy_on_a_docker_network_or_the_lan_passes_the_real_client_ip():
+    """A proxy on the Docker network or the LAN passes the real client IP."""
     for proxy in ("172.18.0.5", "192.168.1.20", "10.1.2.3", "127.0.0.1"):
         assert seen_by_app(proxy, "203.0.113.9", "https") == ("203.0.113.9", "https")
 
 
 def test_an_ip_made_up_by_the_client_before_the_proxy_is_ignored():
     # The proxy adds the real address at the end; what the client wrote before it is not trusted
+    """An IP the client made up before the proxy's is ignored."""
     assert seen_by_app("172.18.0.5", "1.2.3.4, 203.0.113.9")[0] == "203.0.113.9"

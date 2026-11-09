@@ -34,6 +34,7 @@ def fx(tmp_path):
 
 
 def test_combined_total_fetches_once_a_day(fx):
+    """The total in the default currency asks the rate once and stores it; refresh asks again."""
     client, rates = fx
     combined = client.get("/api/summary/combined").json()
     assert combined["currency"] == "EUR" and combined["total"] == 1450 and combined["missing"] == []
@@ -47,6 +48,7 @@ def test_combined_total_fetches_once_a_day(fx):
 
 
 def test_todays_rate_is_asked_again_after_3_hours(fx, tmp_path):
+    """Today's rate is used for 3 hours, then asked again."""
     import sqlite3
     from datetime import datetime
     client, rates = fx
@@ -64,6 +66,7 @@ def test_todays_rate_is_asked_again_after_3_hours(fx, tmp_path):
 
 
 def test_rate_for_a_past_day_is_stored_for_good(fx):
+    """The rate of a past day is asked once and kept."""
     client, rates = fx
     day = "2025-06-02"
     assert client.get("/api/fx", params={"from": "usd", "to": "EUR", "date": day}).json()["rate"] == 0.9
@@ -72,6 +75,7 @@ def test_rate_for_a_past_day_is_stored_for_good(fx):
 
 
 def test_service_down_uses_the_last_rate_or_leaves_the_currency_out(fx):
+    """With the rate service down, the last known rate is used, or the currency is left out."""
     client, rates = fx
     rates.down = True
     combined = client.get("/api/summary/combined").json()
@@ -111,6 +115,7 @@ def test_only_the_currencies_and_date_are_sent(monkeypatch):
 
 
 def test_converted_history_uses_todays_rate(tmp_path):
+    """The chart in the default currency converts every date with today's rate."""
     rates = FakeRates("0.9")
     client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=rates))
     eur = client.post("/api/accounts", json={"name": "Euros", "currency": "EUR"}).json()
@@ -134,6 +139,7 @@ def test_converted_history_uses_todays_rate(tmp_path):
 
 
 def test_converted_history_with_the_service_down(tmp_path):
+    """The converted chart leaves a currency out with no rate, and uses the stored one if any."""
     rates = FakeRates("0.9")
     client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=rates))
     usd = client.post("/api/accounts", json={"name": "Dollars", "currency": "USD"}).json()

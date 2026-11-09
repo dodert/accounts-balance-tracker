@@ -20,6 +20,7 @@ def weekly_usd(client, weeks, start=date(2020, 1, 6)):
 
 
 def test_converted_history_uses_todays_rate_on_every_date(tmp_path, caplog):
+    """The converted chart asks only today's rate once, for every date, and logs where it came from."""
     rates = FakeRates("0.9")
     client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR"), fx_fetcher=rates))
     weekly_usd(client, 60)
@@ -38,6 +39,7 @@ def test_converted_history_uses_todays_rate_on_every_date(tmp_path, caplog):
 
 
 def test_multi_user_asks_one_rate_and_never_writes_the_users_database(tmp_path):
+    """Multi-user: one rate request, and the user's encrypted database is not written."""
     rates = FakeRates()
     app = rates_app(tmp_path, rates)
     admin = admin_client(app, tmp_path)
@@ -53,6 +55,7 @@ def test_multi_user_asks_one_rate_and_never_writes_the_users_database(tmp_path):
 
 
 def test_the_user_is_not_kept_waiting_while_the_rate_is_asked(tmp_path):
+    """While a rate is being asked, the same user's other requests are not blocked."""
     entered, release = threading.Event(), threading.Event()
 
     class SlowRates(FakeRates):
@@ -83,6 +86,7 @@ def test_the_user_is_not_kept_waiting_while_the_rate_is_asked(tmp_path):
 
 
 def test_multi_user_demo_uses_its_sample_rate_without_asking(tmp_path):
+    """Multi-user: the demo uses its sample rate and never asks the service."""
     rates = FakeRates()
     visitor = TestClient(rates_app(tmp_path, rates))
     visitor.post("/api/demo")
