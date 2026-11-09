@@ -181,3 +181,21 @@ def test_the_page_sends_its_local_date(page):
     local = page.evaluate("(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1)"
                           ".padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })()")
     assert first.value.headers.get("x-local-date") == local
+
+
+def test_typed_amounts_become_exact_cents(page):
+    """Amounts typed in any regional format reach the API as exact integer cents and show back the same."""
+    open_app(page)
+    for name in ("One", "Two"):
+        page.click("#add-account-btn")
+        page.fill("#account-form input[name=name]", name)
+        page.click("#account-form button[type=submit]")
+        page.locator("#accounts-table tbody tr", has_text=name).wait_for()
+    page.click("#update-btn")
+    inputs = page.locator("#update-rows input")
+    inputs.nth(0).fill("1.234.567,895")  # more than 2 decimals: rounded half up
+    inputs.nth(1).fill("0,1")
+    with page.expect_request(lambda r: r.url.endswith("/api/balances/bulk")) as sent:
+        page.click("#update-form button[type=submit]")
+    assert [i["amount"] for i in sent.value.post_data_json["items"]] == [123456790, 10]
+    page.locator("#totals .tile-value", has_text="1,234,568.00").wait_for()  # 1,234,567.90 + 0.10

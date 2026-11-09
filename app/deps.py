@@ -190,12 +190,12 @@ def account_out(account: Account, latest: dict[int, dict]) -> AccountOut:
     found = latest.get(account.id, {})
     if "last" in found:
         out.balance_date, amount = found["last"]
-        out.balance = float(amount)
+        out.balance = amount
     if "previous" in found:
         out.previous_date, amount = found["previous"]
-        out.previous_balance = float(amount)
+        out.previous_balance = amount
         out.first_date, amount = found["first"]
-        out.first_balance = float(amount)
+        out.first_balance = amount
     return out
 
 

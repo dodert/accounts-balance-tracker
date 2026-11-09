@@ -32,16 +32,16 @@ def test_import_creates_accounts_and_never_overwrites_balances(client):
                                    "Line 4: ING: there is already a balance on 2026-03-31"]
 
     accounts = {a["name"]: a for a in client.get("/api/accounts").json()}
-    assert accounts["ING"]["type"] == "savings" and accounts["ING"]["balance"] == 1400
+    assert accounts["ING"]["type"] == "savings" and accounts["ING"]["balance"] == 140000  # the API counts in cents
     assert accounts["Broker"]["currency"] == "EUR"
     balances = client.get(f"/api/accounts/{accounts['ING']['id']}/balances").json()
-    assert {b["date"]: (b["amount"], b["note"]) for b in balances}["2026-02-28"] == (1200, "nómina")
+    assert {b["date"]: (b["amount"], b["note"]) for b in balances}["2026-02-28"] == (120000, "nómina")
 
 
 def test_export_round_trip(client, tmp_path):
     """A CSV export imported into another database gives the same accounts and balances."""
     a = client.post("/api/accounts", json={"name": "Cash, wallet", "type": "cash", "available_from": "2027-01-01"}).json()
-    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 12.5, "note": "x"})
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 1250, "note": "x"})
     res = client.get("/api/export/csv")
     assert res.headers["content-disposition"].startswith("attachment")
     assert res.text.splitlines() == ["account,type,currency,institution,date,amount,note,available_from", '"Cash, wallet",cash,EUR,,2026-01-01,12.50,x,2027-01-01']
@@ -76,7 +76,7 @@ def test_import_finds_accounts_by_name_and_institution(client):
     assert (res["accounts_created"], res["balances_created"]) == (2, 3)
     assert len(res["errors"]) == 1 and "add the institution" in res["errors"][0]
     balances = {a["institution"]: a["balance"] for a in client.get("/api/accounts").json()}
-    assert balances == {"ING": 100, "BBVA": 250}
+    assert balances == {"ING": 10000, "BBVA": 25000}  # cents
 
     # Without an institution column, a name that is unique still matches its account
     res = client.post("/api/import/csv", files={"file": ("c.csv", b"account,date,amount\nSolo,2026-01-31,5\nSolo,2026-02-28,6\n", "text/csv")}).json()
@@ -87,7 +87,7 @@ def test_import_finds_accounts_by_name_and_institution(client):
 def test_export_neutralizes_formulas_and_import_reads_them_back(client, tmp_path):
     """Texts that a spreadsheet would run as formulas are made safe on export and read back on import."""
     account = client.post("/api/accounts", json={"name": "=HYPERLINK(\"http://x\")", "institution": "@bank"}).json()
-    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": -450, "note": "+1 call"})
+    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": -45000, "note": "+1 call"})
     text = client.get("/api/export/csv").text
     row = text.splitlines()[1]
     assert row.startswith("\"'=HYPERLINK(") and ",'@bank," in row and ",'+1 call," in row

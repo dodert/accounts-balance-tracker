@@ -79,7 +79,7 @@ def test_sign_up_with_an_invitation_then_use_the_app(setup, tmp_path):
     assert client.get("/api/accounts").json() == []
     created = client.post("/api/accounts", json={"name": "Secret savings", "type": "savings"})
     assert created.status_code == 201
-    client.post(f"/api/accounts/{created.json()['id']}/balances", json={"date": "2026-01-01", "amount": 1234.56})
+    assert client.post(f"/api/accounts/{created.json()['id']}/balances", json={"date": "2026-01-01", "amount": 123456}).status_code == 201
 
     # The data is there after logging in again, from another browser
     other = TestClient(app)
@@ -971,7 +971,7 @@ def test_json_replace_backs_up_the_encrypted_file_first(setup, tmp_path):
     app, admin = setup
     client, _ = sign_up(app, invite(admin))
     account = client.post("/api/accounts", json={"name": "Secret savings"}).json()
-    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": 1234.56})
+    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": 123456})
     exported = client.get("/api/export/json").content
     client.post("/api/accounts", json={"name": "Extra"})
     res = client.post("/api/import/json", data={"mode": "replace"}, files={"file": ("a.json", exported, "application/json")})
