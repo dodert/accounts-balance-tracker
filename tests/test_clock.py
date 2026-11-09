@@ -1,10 +1,10 @@
-"""Which day is "today": the browser's date (X-Local-Date header), else the server's (TZ)."""
+"""The server's clock is UTC; "today" is the user's date (X-Local-Date header or local_date), else the UTC date."""
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.clock import parse_local_date
+from app.clock import parse_local_date, use_utc
 from app.config import Settings
 from app.main import create_app
 from tests.test_fx import FakeRates
@@ -61,3 +61,26 @@ def test_todays_rate_is_stored_also_when_the_browser_is_a_day_ahead(tmp_path):
     assert rates.calls == [("USD", "EUR", None)]  # the latest rate, asked once
     rate = client.get("/api/fx", params={"from": "USD", "to": "EUR", "date": user_day.isoformat()}, headers=headers).json()
     assert rate["day"] == user_day.isoformat() and len(rates.calls) == 1
+
+
+def test_the_server_runs_in_utc_whatever_tz_says(monkeypatch):
+    """An install that still sets TZ (older templates had it) runs in UTC anyway."""
+    import time
+    monkeypatch.setenv("TZ", "Pacific/Kiritimati")  # UTC+14
+    time.tzset()
+    try:
+        assert time.localtime().tm_gmtoff == 14 * 3600
+        use_utc()
+        assert time.localtime().tm_gmtoff == 0
+        assert datetime.now().astimezone().utcoffset() == timedelta(0)
+    finally:
+        monkeypatch.undo()
+        use_utc()
+
+
+def test_the_export_file_name_uses_the_users_date(client):
+    """A download link sends the user's date as local_date, and the file is named with it."""
+    user_day = (utc_today() + timedelta(days=1)).isoformat()
+    for kind in ("csv", "json"):
+        res = client.get(f"/api/export/{kind}", params={"local_date": user_day})
+        assert f"balances-{user_day}.{kind}" in res.headers["content-disposition"]

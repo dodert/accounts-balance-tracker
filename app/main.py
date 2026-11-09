@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from sqlalchemy.exc import OperationalError
 
 from . import __version__, middleware
-from .clock import LocalDateMiddleware
+from .clock import LocalDateMiddleware, use_utc
 from .auth import Auth
 from .config import Settings, settings as default_settings
 from .db import make_engine, make_sessionmaker
@@ -25,6 +25,8 @@ from .totp import Totp
 from .users import DatabaseTooBig, Users
 
 PURGE_EVERY = 3600  # seconds between checks for expired accounts
+
+use_utc()  # the server's own clock is UTC; the user's dates come from the browser (clock.py)
 
 
 def log_to_console() -> None:

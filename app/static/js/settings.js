@@ -1,6 +1,6 @@
-// Settings: language and regional format.
+// Settings: language, regional format and time zone.
 import { renderAccounts } from "./accounts.js";
-import { api } from "./api.js";
+import { api, browserTimeZone, savedTimeZone, setTimeZone } from "./api.js";
 import { renderChart } from "./charts.js";
 import { renderDemo } from "./demo.js";
 import { $, esc } from "./dom.js";
@@ -18,12 +18,31 @@ export function renderLocaleOptions() {
   $("#locale-select").value = current;
 }
 
+// The time zone in use, next to the title; a click opens the settings to change it
+export function renderTimeZoneBadge() {
+  const zone = savedTimeZone() || browserTimeZone();
+  $("#tz-badge").textContent = `🕒 ${zone.replaceAll("_", " ")}`;
+  $("#tz-badge").title = t(savedTimeZone() ? "settings.time_zone_chosen" : "settings.time_zone_browser", { zone });
+}
+
+// "" = the browser's own time zone; else any zone the browser knows
+export function renderTimeZoneOptions() {
+  const current = savedTimeZone();
+  const zones = Intl.supportedValuesOf?.("timeZone") ?? [];
+  if (current && !zones.includes(current)) zones.unshift(current);
+  $("#tz-select").innerHTML = `<option value="">${esc(t("settings.time_zone_auto", { zone: browserTimeZone() }))}</option>` +
+    zones.map((zone) => `<option value="${esc(zone)}">${esc(zone.replaceAll("_", " "))}</option>`).join("");
+  $("#tz-select").value = current;
+}
+
 export function initSettings() {
+  $("#tz-badge").addEventListener("click", () => $("#settings-btn").click());
   $("#settings-btn").addEventListener("click", async () => {
     const languages = await api("/api/languages");
     $("#lang-select").innerHTML = languages.map((l) => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join("");
     $("#lang-select").value = i18n.lang;
     renderLocaleOptions();
+    renderTimeZoneOptions();
     $("#settings-dlg").showModal();
   });
 
@@ -31,8 +50,10 @@ export function initSettings() {
     e.preventDefault();
     setLang($("#lang-select").value);
     setLocale($("#locale-select").value);
+    setTimeZone($("#tz-select").value);
     $("#settings-dlg").close();
     await initI18n();
+    renderTimeZoneBadge();
     renderDemo();
     renderAccounts();
     await loadTotals();

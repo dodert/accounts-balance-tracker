@@ -7,7 +7,7 @@ import { initDemo, renderDemo } from "./demo.js";
 import { initDialogs } from "./dialogs.js";
 import { $, showError } from "./dom.js";
 import { initFormat } from "./format.js";
-import { initSettings } from "./settings.js";
+import { initSettings, renderTimeZoneBadge } from "./settings.js";
 import { state } from "./state.js";
 import { initTotals, loadTotals } from "./totals.js";
 
@@ -28,6 +28,7 @@ initDemo();
 
 (async () => {
   await initI18n();
+  renderTimeZoneBadge();
   state.about = await api("/api/about");
   $("#version").textContent = `v${state.about.version}`;
   $("#logout-btn").hidden = !state.about.auth;

@@ -26,6 +26,7 @@ body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); col
 main { flex: 1; padding: 0 1rem 2rem; display: flex; flex-direction: column; gap: 1rem; max-width: 1200px; width: 100%; margin: 0 auto; }
 header { display: flex; align-items: center; gap: .5rem; padding: 1rem; flex-wrap: wrap; max-width: 1200px; width: 100%; margin: 0 auto; }
 header h1 { margin: 0; font-size: 1.4rem; }
+.tz-badge { border: none; background: none; color: var(--muted); font-size: .8rem; padding: .1rem .3rem; }
 h2 { font-size: 1.1rem; margin: 0; }
 h3 { font-size: 1rem; margin: 1rem 0 .5rem; }
 button, .button, input, select, textarea { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: .45rem .6rem; }

@@ -1,5 +1,5 @@
 // The dialogs: update balances, milestones, account (with its balances), CSV and JSON import.
-import { api } from "./api.js";
+import { api, localDate } from "./api.js";
 import { $, $$, esc } from "./dom.js";
 import { amountText, changeCell, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
 import { refresh } from "./main.js";
@@ -254,8 +254,13 @@ export function initDialogs() {
     }
     out.hidden = false;
   });
-  $("#csv-export-btn").addEventListener("click", () => { $("#data-menu").open = false; });
-  $("#json-export-btn").addEventListener("click", () => { $("#data-menu").open = false; });
+  // A download sends no headers: the user's date goes in the link, for the file name
+  for (const link of [$("#csv-export-btn"), $("#json-export-btn")]) {
+    link.addEventListener("click", () => {
+      link.href = `${link.pathname}?local_date=${localDate()}`;
+      $("#data-menu").open = false;
+    });
+  }
   // JSON import (everything)
   $("#json-import-btn").addEventListener("click", () => {
     $("#data-menu").open = false;
