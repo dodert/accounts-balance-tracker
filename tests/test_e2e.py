@@ -215,3 +215,16 @@ def test_the_dates_follow_the_time_zone_chosen_in_the_settings(page):
         page.click("#settings-form button[type=submit]")
     assert sent.value.headers.get("x-local-date") == datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
     page.locator("#tz-badge", has_text="Pacific/Kiritimati").wait_for()  # shown next to the title
+
+
+def test_the_settings_list_the_daily_backups(page, server):
+    """The settings show the daily backups the server made (one made on start)."""
+    deadline = time.time() + 10  # the start's backup is made in the background
+    while not page.request.get(f"{server}/api/backups").json()["backups"]:
+        assert time.time() < deadline, "no backup made on start"
+        time.sleep(0.05)
+    open_app(page)
+    page.click("#settings-btn")
+    page.locator("#backups-list li").first.wait_for()
+    assert page.locator("#backups-list li").count() == 1
+    assert "7 days" in page.locator("#backups-hint").inner_text()

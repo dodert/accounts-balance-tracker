@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # Multi-user: most requests a day to the exchange-rate service, for everybody together (the rates are shared).
     # The rates of many days (a converted history) take one request, so a few a day are enough
     fx_daily_limit: int = 30
+    # Daily backups in DATA_DIR/backups/<date>/: how many days are kept (0 = no daily backups)
+    backup_keep: int = 7
     # Interactive API docs (/docs, /redoc) and the schema (/openapi.json): off by default, so production does not show the API
     api_docs: bool = False
 

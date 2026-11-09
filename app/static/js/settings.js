@@ -1,4 +1,4 @@
-// Settings: language, regional format and time zone.
+// Settings: language, regional format and time zone; and the list of daily backups made by the server.
 import { renderAccounts } from "./accounts.js";
 import { api, browserTimeZone, savedTimeZone, setTimeZone } from "./api.js";
 import { renderChart } from "./charts.js";
@@ -35,6 +35,33 @@ export function renderTimeZoneOptions() {
   $("#tz-select").value = current;
 }
 
+// The daily backups the server made (app/backups.py), newest first: when (in the user's time zone) and size
+export async function renderBackups() {
+  const list = $("#backups-list"), hint = $("#backups-hint");
+  list.innerHTML = "";
+  let data;
+  try {
+    data = await api("/api/backups");
+  } catch {
+    hint.textContent = t("backups.error");
+    return;
+  }
+  hint.textContent = data.keep > 0 ? t("backups.hint", { keep: data.keep }) : t("backups.off");
+  if (data.keep > 0 && !data.backups.length) hint.textContent += " " + t("backups.none");
+  const zone = savedTimeZone();
+  let when;
+  try {
+    when = new Intl.DateTimeFormat(fmtLocale(), { dateStyle: "medium", timeStyle: "short", ...(zone ? { timeZone: zone } : {}) });
+  } catch { // a zone this browser doesn't know: its own
+    when = new Intl.DateTimeFormat(fmtLocale(), { dateStyle: "medium", timeStyle: "short" });
+  }
+  const size = (bytes) => (bytes < 1024 * 1024
+    ? new Intl.NumberFormat(fmtLocale(), { style: "unit", unit: "kilobyte", maximumFractionDigits: 0 }).format(Math.max(1, bytes / 1024))
+    : new Intl.NumberFormat(fmtLocale(), { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(bytes / 1024 / 1024));
+  list.innerHTML = data.backups.map((b) =>
+    `<li data-date="${esc(b.date)}">✓ ${esc(when.format(new Date(b.made_at)))} <span class="hint">· ${esc(size(b.size))}</span></li>`).join("");
+}
+
 export function initSettings() {
   $("#tz-badge").addEventListener("click", () => $("#settings-btn").click());
   $("#settings-btn").addEventListener("click", async () => {
@@ -43,6 +70,7 @@ export function initSettings() {
     $("#lang-select").value = i18n.lang;
     renderLocaleOptions();
     renderTimeZoneOptions();
+    renderBackups();
     $("#settings-dlg").showModal();
   });
 

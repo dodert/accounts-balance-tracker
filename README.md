@@ -175,6 +175,7 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `ACCOUNT_DAYS` | `30` | Multi-user only: days a new account lasts. When it expires, its data is deleted and the user is blocked; the admin can extend it or remove the expiry. `0` = no expiry |
 | `MAX_USERS` | `100` | Multi-user only: most users that can sign up (the admin is not counted) |
 | `MAX_DB_MB` | `10` | Multi-user only: most size of each user's database, in MB; a change that would go over it is refused (`413`) |
+| `BACKUP_KEEP` | `7` | Daily backups in `/data/backups/<date>/` ([Backups and updates](#backups-and-updates)): how many days are kept; `0` = no daily backups |
 | `FX_DAILY_LIMIT` | `30` | Multi-user only: most requests a day to the exchange-rate service, for all users together (then the stored rates are used) |
 | `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
 | `PUID`, `PGID`, `PORT` | `99`, `100`, `80` | `PORT` is the port inside the container; change it only with host networking |
@@ -208,6 +209,15 @@ With `MULTI_USER=true`, one instance serves several people, each with their own 
 ## Backups and updates
 
 The database schema is migrated automatically on start, keeping all the data.
+
+**Daily backups**: once a day (by the UTC date: on start and then checked every hour) the app copies its data to `/data/backups/<YYYY-MM-DD>/`, and keeps the last `BACKUP_KEEP` days (7). With one user it is `balances.db`; with several users, `users.db` and `users/<id>.db.enc`, still encrypted. A user who is deleted, or whose account expires, is also deleted from every daily backup. The settings (⚙) list the backups made, with when and their size (with several users, only the days with a copy of your own data). To restore a day:
+
+1. Stop the container.
+2. Copy that day's files over the ones in `/data`, all of them together. With several users, a day's `users.db` and `.db.enc` files go together, because the keys of each user's data are in `users.db`.
+3. Delete `balances.db-wal` and `balances.db-shm` (or `users.db-wal` and `users.db-shm`) if there are any.
+4. Start the container again.
+
+These backups sit in the same folder as the data. Keep a copy somewhere else too, for example with Unraid's *Appdata Backup* plugin or by copying `/data/backups`.
 
 **Updating from 0.21 or older**: the app now listens on port **80** inside the container (it was 8000). After updating, change the container side of the port mapping, or the web page will not open: in Unraid, edit the container and set the *WebUI port*'s **Container Port** to `80` (the host port can stay as it was); with Compose, change `"8000:8000"` to `"8000:80"` (or `"8085:80"`); with `docker run`, `-p 8000:80`.
 

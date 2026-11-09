@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from sqlalchemy import text
 
+from ..backups import listing
 from ..deps import STATIC_DIR, Context
 
 
@@ -46,6 +47,15 @@ def router(ctx: Context) -> APIRouter:
             "demo": in_demo(request),
             "default_currency": settings.default_currency,
         }
+
+    @router.get("/api/backups")
+    def list_backups(request: Request):
+        """The daily backups made (newest first). With several users, only the days with this user's copy."""
+        session = getattr(request.state, "user", None) if multi else None
+        if multi and session is None:
+            return {"keep": settings.backup_keep, "backups": []}
+        return {"keep": settings.backup_keep,
+                "backups": listing(settings.data_dir, session.user_id if session else None)}
 
     @router.get("/api/languages")
     def list_languages():

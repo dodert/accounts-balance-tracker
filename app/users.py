@@ -35,6 +35,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from sqlalchemy.pool import StaticPool
 
 from . import crypto
+from .backups import backups_dir, copy_private, copy_sqlite
 from .db import make_engine
 from .migrate import IMPORT_BACKUP, MIGRATIONS_DIR, PRIVATE, _create_private, prune_backups, restrict_permissions, upgrade_database
 
@@ -315,8 +316,23 @@ class UserDatabases:
         return path.stat().st_size if path.exists() else 0
 
     def delete(self, user_id: int) -> None:
-        for path in [self.path(user_id), self._rekey_path(user_id), *self.folder.glob(f"{user_id}.db.enc.backup-*")]:
+        """The user's database, its backups next to it and its copies in the daily backups (backups.py)."""
+        daily = backups_dir(self.folder.parent).glob(f"*/{self.folder.name}/{user_id}.db.enc")
+        for path in [self.path(user_id), self._rekey_path(user_id), *self.folder.glob(f"{user_id}.db.enc.backup-*"),
+                     *daily]:
             path.unlink(missing_ok=True)
+
+    def backup_into(self, folder: Path) -> None:
+        """A copy of every user's encrypted file (as it is: still encrypted) in `folder`, each taken under that
+        user's lock, so never while it is being written."""
+        folder.mkdir(mode=0o700, exist_ok=True)
+        for path in sorted(self.folder.glob("*.db.enc")):
+            user_id = path.name.removesuffix(".db.enc")
+            if not user_id.isdigit():
+                continue
+            with self._lock(int(user_id)):
+                if path.exists():
+                    copy_private(path, folder / path.name)
 
 
 class Users:
@@ -324,7 +340,7 @@ class Users:
 
     def __init__(self, data_dir: Path, server_secret: bytes, admin_username: str, account_days: int = 0,
                  max_users: int = 0, max_db_bytes: int = 0):
-        system_db = data_dir / "users.db"
+        system_db = self.system_db = data_dir / "users.db"
         data_dir.mkdir(parents=True, exist_ok=True)
         _create_private(system_db)
         engine = make_engine(f"sqlite:///{system_db}")
@@ -614,6 +630,11 @@ class Users:
                 log.warning("Account %s expired: its database was deleted and the user blocked", user.username)
             db.commit()
         return purged
+
+    def backup_into(self, folder: Path) -> None:
+        """The daily backup (backups.py): users.db and every user's encrypted database, as they are."""
+        copy_sqlite(self.system_db, folder / self.system_db.name)
+        self.databases.backup_into(folder / self.databases.folder.name)
 
     def blocked_emails(self) -> list[BlockedEmail]:
         with self.Session() as db:
