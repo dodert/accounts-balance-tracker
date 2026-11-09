@@ -45,3 +45,13 @@ def test_every_setting_is_in_the_readme():
     documented = set(re.findall(r"`([A-Z_]+)`", table))
     expected = {name.upper() for name in Settings.model_fields} - {n.upper() for n in NOT_USER_SETTINGS}
     assert not expected - documented, f"Add to the README's Settings table: {sorted(expected - documented)}"
+
+
+# Only these are hidden behind "Show more settings"; every other variable is shown
+HIDDEN_VARS = {"API_DOCS", "PUID", "PGID", "FORWARDED_ALLOW_IPS"}
+
+
+def test_only_some_variables_are_hidden():
+    for target, config in _targets().items():
+        want = "advanced" if target in HIDDEN_VARS else "always"
+        assert config.get("Display") == want, f"{target}: Display should be {want!r}"
