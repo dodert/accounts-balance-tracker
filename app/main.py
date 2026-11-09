@@ -25,7 +25,7 @@ from .csv_io import export_csv, import_csv
 from .db import make_engine, make_sessionmaker
 from .demo import COOKIE as DEMO_COOKIE, Demo, VisitorDemos
 from .geo import Countries
-from .fx import Fetcher, frankfurter, get_rate, rates_for_days
+from .fx import Fetcher, SharedRates, frankfurter, get_rate, rates_for_days
 from .history import accounts_with_balances, available_totals, currency_totals, history
 from .migrate import upgrade_database
 from .models import Account, Balance, Milestone
@@ -61,6 +61,8 @@ WRONG_PASSWORDS_PER_USER = 30
 ARGON2_AT_ONCE = 4
 # CSV imports running at once (each takes a thread while it parses and stores the file)
 IMPORTS_AT_ONCE = 2
+# Demos anyone can start (multi-user mode), per client IP (IPv6 per /64) and hour
+DEMOS_PER_IP = 10
 # Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -109,6 +111,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     demo = Demo()  # sample data in a temporary database, for the browsers in demo mode
     visitor_demos = VisitorDemos()  # multi-user mode: one per visitor, usable without an account
     fetch_rate = fx_fetcher or frankfurter(settings.fx_url)
+    # Multi-user: one store of rates for everybody, with a daily limit of requests to the service
+    shared_rates = SharedRates(settings.data_dir / "rates.db", fetch_rate, settings.fx_daily_limit) if multi else None
 
     version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
 
@@ -302,6 +306,13 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
             if multi:
                 visitor = request.cookies.get(DEMO_COOKIE)
                 if visitor_demos.get(visitor) is None:
+                    # Anyone can start one: a limit per client, so one can't push out everybody else's demos
+                    try:
+                        with new_demos.attempt(limit_key(client_ip(request))) as attempt:
+                            attempt.wrong()  # counts one demo
+                    except TooManyTries as error:
+                        raise HTTPException(429, "Too many demos started from your address, try again later",
+                                            headers={"Retry-After": str(error.retry_after)}) from None
                     visitor = visitor_demos.start(lang)
             else:
                 demo.sessionmaker(lang)
@@ -479,13 +490,20 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     def summary(db: Session = Depends(get_db)):
         return currency_totals(accounts_with_balances(db))
 
-    def combined_total(db: Session, refresh: bool) -> CombinedTotal:
+    def rates_fetcher(request: Request) -> Fetcher:
+        """Single-user: the service (the database keeps the rates). Multi-user: the store shared by everybody,
+        which demos only read: a demo never makes the app ask the service."""
+        if not multi:
+            return fetch_rate
+        return shared_rates.fetcher(network=not in_demo(request))
+
+    def combined_total(db: Session, fetch: Fetcher, refresh: bool) -> CombinedTotal:
         target = settings.default_currency
         total = available = Decimal(0)
         rates, missing = [], []
         for c in currency_totals(accounts_with_balances(db)):
             try:
-                rate = get_rate(db, fetch_rate, c["currency"], target, refresh=refresh)
+                rate = get_rate(db, fetch, c["currency"], target, refresh=refresh)
             except LookupError:
                 missing.append(c["currency"])
                 continue
@@ -496,17 +514,18 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         return CombinedTotal(currency=target, total=round(total, 2), available=round(available, 2), rates=rates, missing=missing)
 
     @app.get("/api/summary/combined", response_model=CombinedTotal)
-    def summary_combined(db: Session = Depends(get_db)):
+    def summary_combined(request: Request, db: Session = Depends(get_db)):
         """All currencies in the default one. Today's rates are fetched the first time each day."""
-        return combined_total(db, refresh=False)
+        return combined_total(db, rates_fetcher(request), refresh=False)
 
     @app.post("/api/fx/refresh", response_model=CombinedTotal)
-    def fx_refresh(db: Session = Depends(get_db)):
+    def fx_refresh(request: Request, db: Session = Depends(get_db)):
         """Fetch today's rates again now, and the combined total with them."""
-        return combined_total(db, refresh=True)
+        return combined_total(db, rates_fetcher(request), refresh=True)
 
     @app.get("/api/fx", response_model=FxRateOut)
     def fx_rate(
+        request: Request,
         base: str = Query(..., alias="from", pattern=r"^[A-Za-z]{3}$"),
         quote: str = Query(..., alias="to", pattern=r"^[A-Za-z]{3}$"),
         day: date | None = Query(None, alias="date"),
@@ -514,7 +533,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     ):
         """The rate from one currency to another on a day (default today)."""
         try:
-            return FxRateOut(**vars(get_rate(db, fetch_rate, base, quote, day)))
+            return FxRateOut(**vars(get_rate(db, rates_fetcher(request), base, quote, day)))
         except LookupError as exc:
             raise HTTPException(503, str(exc)) from None
 
@@ -546,17 +565,18 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         )
 
     @app.get("/api/history/converted", response_model=HistoryOut)
-    def get_history_converted(since: date | None = None, db: Session = Depends(get_db)):
+    def get_history_converted(request: Request, since: date | None = None, db: Session = Depends(get_db)):
         """Every account in the default currency, each date at that date's rate. Only the currencies
         and the dates are sent to the rate service; the amounts are converted here."""
         target = settings.default_currency
+        fetch = rates_fetcher(request)
         accounts = accounts_with_balances(db)
         all_dates, _, all_values = history(accounts)
         dates, _, values = history(accounts, since)
         rates, converted, missing, stale = {}, [], [], False
         for currency in sorted({a.currency for a in accounts} - {target}):
             try:
-                rates[currency], old = rates_for_days(db, fetch_rate, currency, target, set(all_dates) | set(dates))
+                rates[currency], old = rates_for_days(db, fetch, currency, target, set(all_dates) | set(dates))
             except LookupError:
                 missing.append(currency)
                 continue
@@ -647,6 +667,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
         return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png", media_type="image/png")
 
     password_tries = TryLimit(WRONG_PASSWORDS_PER_IP, LOGIN_WINDOW)
+    new_demos = TryLimit(DEMOS_PER_IP, 3600)
     user_password_tries = TryLimit(WRONG_PASSWORDS_PER_USER, LOGIN_WINDOW)
     argon2_slots = asyncio.Semaphore(ARGON2_AT_ONCE)
 

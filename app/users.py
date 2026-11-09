@@ -4,8 +4,13 @@
   It holds no balances: only names, emails, dates and each user's data key *wrapped* (see crypto.py).
 - DATA_DIR/users/<id>.db.enc: each user's SQLite database, encrypted with their data key. It is decrypted in
   memory for each request and written back encrypted (atomic write) only when something changed.
+- Keys: the password and the recovery key each wrap the user's *account key*, which wraps the *data key* that
+  encrypts the database (older users, until they change their password, have no data key apart: the account
+  key encrypts the database).
 - While logged in, the data key travels in the session cookie, encrypted with a key derived from the server
-  secret; the server never stores it. Changing the password logs out the user's other sessions.
+  secret; the server never stores it. The account key never leaves the server. Changing the password (or
+  recovering the account) logs out the user's other sessions and re-encrypts the database with a new data key,
+  so a data key that got out (e.g. in a stolen cookie) stops opening it; the recovery key keeps working.
 """
 import base64
 import hashlib
@@ -64,6 +69,9 @@ class User(SystemBase):
     key_by_password: Mapped[bytes] = mapped_column(LargeBinary)
     recovery_salt: Mapped[bytes] = mapped_column(LargeBinary)
     key_by_recovery: Mapped[bytes] = mapped_column(LargeBinary)
+    # The data key, wrapped with the account key (the one the password and the recovery key wrap). None: an
+    # account from before data keys were apart, whose database the account key itself encrypts
+    key_by_account: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     session_epoch: Mapped[int] = mapped_column(Integer, default=0)  # +1 logs out every session
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
@@ -137,6 +145,28 @@ def key_aad(user_id: int) -> bytes:
     return f"abt-key:{user_id}".encode()
 
 
+def data_key_aad(user_id: int) -> bytes:
+    return f"abt-data-key:{user_id}".encode()
+
+
+def add_missing_columns(engine, system_db: Path) -> None:
+    """users.db is made with create_all, which doesn't add columns to an existing table: add the newer ones
+    (nullable, so no data changes), after a backup of the file."""
+    with engine.connect() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(users)")}
+    if not columns or "key_by_account" in columns:
+        return
+    backup = system_db.with_name(f"{system_db.name}.backup-{datetime.now():%Y%m%d-%H%M%S}")
+    _create_private(backup)
+    with sqlite3.connect(system_db) as source, sqlite3.connect(backup) as target:
+        source.backup(target)
+    source.close()
+    target.close()
+    log.warning("users.db backed up to %s before adding the column key_by_account", backup.name)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ALTER TABLE users ADD COLUMN key_by_account BLOB")
+
+
 class UserDatabases:
     """The encrypted database files, opened one request at a time per user."""
 
@@ -154,13 +184,17 @@ class UserDatabases:
     def path(self, user_id: int) -> Path:
         return self.folder / f"{user_id}.db.enc"
 
+    def _rekey_path(self, user_id: int) -> Path:
+        # The database encrypted with a new data key, until users.db has that key (see rekey)
+        return self.folder / f"{user_id}.db.enc.rekey"
+
     def _lock(self, user_id: int) -> threading.Lock:
         with self._locks_lock:
             return self._locks.setdefault(user_id, threading.Lock())
 
-    def _write(self, user_id: int, key: bytes, plain: bytes) -> None:
+    def _write(self, user_id: int, key: bytes, plain: bytes, path: Path | None = None) -> None:
         """Encrypt and replace the file in one step: a crash leaves the old file or the new one, never half."""
-        path = self.path(user_id)
+        path = path or self.path(user_id)
         tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE)
         try:
@@ -190,10 +224,42 @@ class UserDatabases:
             connection.close()
 
     @contextmanager
+    def rekey(self, user_id: int, old: bytes, new: bytes):
+        """Re-encrypt the database (and its backups) with the `new` data key. The caller saves the new key in
+        users.db inside the `with`; only then does the new file replace the old one. A crash before that save
+        leaves the old file in use (the new one is thrown away when opened); after it, the next open finishes."""
+        with self._lock(user_id):
+            path, pending = self.path(user_id), self._rekey_path(user_id)
+            if path.exists():
+                self._write(user_id, new, crypto.unseal(old, path.read_bytes(), db_aad(user_id)), pending)
+            yield
+            if pending.exists():
+                os.replace(pending, path)
+            for backup in self.folder.glob(f"{user_id}.db.enc.backup-*"):
+                try:
+                    plain = crypto.unseal(old, backup.read_bytes(), db_aad(user_id))
+                except crypto.WrongKey:
+                    continue
+                self._write(user_id, new, plain, backup)
+
+    def _finish_rekey(self, user_id: int, key: bytes) -> None:
+        """A re-encryption cut short (see rekey): keep the new file if `key` (the one in users.db) opens it."""
+        pending = self._rekey_path(user_id)
+        if not pending.exists():
+            return
+        try:
+            crypto.unseal(key, pending.read_bytes(), db_aad(user_id))
+        except crypto.WrongKey:
+            pending.unlink()  # the new key was never saved: the old file is the right one
+            return
+        os.replace(pending, self.path(user_id))
+
+    @contextmanager
     def open(self, user_id: int, key: bytes):
         """A session on the user's database, decrypted in memory. Each commit writes it back encrypted, before the
         answer is sent; a commit that would make it too big raises DatabaseTooBig and is not saved."""
         with self._lock(user_id):
+            self._finish_rekey(user_id, key)
             path = self.path(user_id)
             plain = crypto.unseal(key, path.read_bytes(), db_aad(user_id))
             connection = sqlite3.connect(":memory:", check_same_thread=False)
@@ -239,7 +305,7 @@ class UserDatabases:
         return path.stat().st_size if path.exists() else 0
 
     def delete(self, user_id: int) -> None:
-        for path in [self.path(user_id), *self.folder.glob(f"{user_id}.db.enc.backup-*")]:
+        for path in [self.path(user_id), self._rekey_path(user_id), *self.folder.glob(f"{user_id}.db.enc.backup-*")]:
             path.unlink(missing_ok=True)
 
 
@@ -252,6 +318,7 @@ class Users:
         data_dir.mkdir(parents=True, exist_ok=True)
         _create_private(system_db)
         engine = make_engine(f"sqlite:///{system_db}")
+        add_missing_columns(engine, system_db)
         SystemBase.metadata.create_all(engine)
         restrict_permissions(system_db)
         self.Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -315,7 +382,8 @@ class Users:
             raise SignupError("email")
         if len(password) < MIN_PASSWORD:
             raise SignupError("password")
-        key, salt, recovery_salt = crypto.new_key(), crypto.new_salt(), crypto.new_salt()
+        account_key, key = crypto.new_key(), crypto.new_key()
+        salt, recovery_salt = crypto.new_salt(), crypto.new_salt()
         recovery = crypto.new_recovery_key()
         params = crypto.kdf_params()
         by_password_key = crypto.password_key(password, salt, json.loads(params))
@@ -340,8 +408,9 @@ class Users:
                         expires_at=now() + timedelta(days=self.account_days) if self.account_days else None)
             db.add(user)
             db.flush()  # the id ties the wrapped keys and the database to this user
-            user.key_by_password = crypto.seal(by_password_key, key, key_aad(user.id))
-            user.key_by_recovery = crypto.seal(by_recovery_key, key, key_aad(user.id))
+            user.key_by_password = crypto.seal(by_password_key, account_key, key_aad(user.id))
+            user.key_by_recovery = crypto.seal(by_recovery_key, account_key, key_aad(user.id))
+            user.key_by_account = crypto.seal(account_key, key, data_key_aad(user.id))
             invitation.used_at, invitation.user_id = now(), user.id
             self.databases.create(user.id, key)
             try:
@@ -355,8 +424,24 @@ class Users:
         return LoggedIn(user.id, user.username, key, secrets.token_hex(16))
 
     def _unwrap(self, user: User, password: str) -> bytes:
+        """The account key, if the password opens it."""
         kek = crypto.password_key(password, user.kdf_salt, json.loads(user.kdf_params))
         return crypto.unseal(kek, user.key_by_password, key_aad(user.id))
+
+    @staticmethod
+    def _data_key(user: User, account_key: bytes) -> bytes:
+        if user.key_by_account is None:
+            return account_key  # an account from before data keys were apart
+        return crypto.unseal(account_key, user.key_by_account, data_key_aad(user.id))
+
+    def _new_data_key(self, db: Session, user: User, account_key: bytes, password: str) -> bytes:
+        """Set the new password, re-encrypt the database with a new data key and commit; returns that key."""
+        old, new = self._data_key(user, account_key), crypto.new_key()
+        with self.databases.rekey(user.id, old, new):
+            user.key_by_account = crypto.seal(account_key, new, data_key_aad(user.id))
+            self._set_password(user, account_key, password)
+            db.commit()
+        return new
 
     def login(self, username: str, password: str, ip: str | None = None, country: str | None = None) -> LoggedIn | None:
         """The session if the password opens the user's key; None otherwise (also for blocked or unknown users)."""
@@ -366,7 +451,7 @@ class Users:
                 crypto.password_key(password, self._dummy_salt, crypto.ARGON2)
                 return None
             try:
-                key = self._unwrap(user, password)
+                key = self._data_key(user, self._unwrap(user, password))
             except crypto.WrongKey:
                 return None
             if user.blocked or expired(user):
@@ -378,18 +463,17 @@ class Users:
             return self._logged_in(user, key)
 
     def change_password(self, user_id: int, current: str, new: str) -> LoggedIn | None:
-        """Re-wrap the data key with the new password and log out the other sessions; None if `current` is wrong."""
+        """Set the new password, re-encrypt the database with a new data key and log out the other sessions; None if
+        `current` is wrong."""
         if len(new) < MIN_PASSWORD:
             raise SignupError("password")
         with self.Session() as db:
             user = db.get(User, user_id)
             try:
-                key = self._unwrap(user, current)
+                account_key = self._unwrap(user, current)
             except crypto.WrongKey:
                 return None
-            self._set_password(user, key, new)
-            db.commit()
-            return self._logged_in(user, key)
+            return self._logged_in(user, self._new_data_key(db, user, account_key, new))
 
     def recover(self, username: str, recovery: str, new: str) -> LoggedIn | None:
         """Set a new password with the recovery key; None if they don't match."""
@@ -400,18 +484,16 @@ class Users:
             if user is None or user.blocked:
                 return None
             try:
-                key = crypto.unseal(crypto.recovery_key(recovery, user.recovery_salt), user.key_by_recovery,
-                                    key_aad(user.id))
+                account_key = crypto.unseal(crypto.recovery_key(recovery, user.recovery_salt), user.key_by_recovery,
+                                            key_aad(user.id))
             except crypto.WrongKey:
                 return None
-            self._set_password(user, key, new)
-            db.commit()
-            return self._logged_in(user, key)
+            return self._logged_in(user, self._new_data_key(db, user, account_key, new))
 
-    def _set_password(self, user: User, key: bytes, password: str) -> None:
+    def _set_password(self, user: User, account_key: bytes, password: str) -> None:
         user.kdf_salt, user.kdf_params = crypto.new_salt(), crypto.kdf_params()
         kek = crypto.password_key(password, user.kdf_salt, json.loads(user.kdf_params))
-        user.key_by_password = crypto.seal(kek, key, key_aad(user.id))
+        user.key_by_password = crypto.seal(kek, account_key, key_aad(user.id))
         user.session_epoch += 1
 
     # --- Sessions (cookie) ---

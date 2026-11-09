@@ -9,11 +9,15 @@ If the service cannot be reached, the last stored rate for the pair is used, mar
 """
 import json
 import logging
+import sqlite3
+import threading
+import time
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -128,3 +132,76 @@ def rates_for_days(db: Session, fetch: Fetcher, base: str, quote: str, days) -> 
 
 def to_rate(row: FxRate, stale: bool = False) -> Rate:
     return Rate(row.base, row.quote, row.day, Decimal(row.rate), row.rate_date, row.fetched_at, stale)
+
+
+
+class SharedRates:
+    """Multi-user mode: one store of exchange rates for every user and every demo (a rate for a pair of currencies
+    on a day is the same for everyone), in DATA_DIR/rates.db: only currencies, dates and rates, never amounts.
+
+    Each rate is asked to the service once for everybody, and at most `daily_limit` requests a day are made
+    (counted in the file, so restarts don't reset it); past it the request fails and the rates already stored
+    are used. A past day never changes. Today's rate is asked again at most once every LATEST_SECONDS, and not
+    at all once the day's own rate (published by the ECB around 16:00 CET) is stored."""
+
+    LATEST_SECONDS = 3600
+
+    def __init__(self, path: Path, fetch: Fetcher, daily_limit: int, clock=time.time, today=date.today):
+        self._fetch, self.daily_limit, self._clock, self._today = fetch, daily_limit, clock, today
+        self._lock = threading.Lock()
+        self._db = sqlite3.connect(path, check_same_thread=False)
+        self._db.executescript(
+            "CREATE TABLE IF NOT EXISTS rates (base TEXT, quote TEXT, day TEXT, rate TEXT, rate_date TEXT,"
+            " fetched_at REAL, fetched_on TEXT, PRIMARY KEY (base, quote, day));"
+            "CREATE TABLE IF NOT EXISTS requests (day TEXT PRIMARY KEY, count INTEGER)")
+        self._db.commit()
+
+    def requests_today(self) -> int:
+        with self._lock:
+            row = self._db.execute("SELECT count FROM requests WHERE day = ?", (self._today().isoformat(),)).fetchone()
+        return row[0] if row else 0
+
+    def _stored(self, base: str, quote: str, day: date | None) -> tuple[Decimal, date] | None:
+        key = day.isoformat() if day else "latest"
+        row = self._db.execute("SELECT rate, rate_date, fetched_at, fetched_on FROM rates "
+                               "WHERE base = ? AND quote = ? AND day = ?",
+                               (base, quote, key)).fetchone()
+        if row is None:
+            return None
+        rate, rate_date = Decimal(row[0]), date.fromisoformat(row[1])
+        if day is None:  # today's: from today, and either the day's own rate or asked less than an hour ago
+            today = self._today()
+            if row[3] != today.isoformat() or (rate_date != today and self._clock() - row[2] > self.LATEST_SECONDS):
+                return None
+        return rate, rate_date
+
+    def _take_request(self) -> bool:
+        today = self._today().isoformat()
+        row = self._db.execute("SELECT count FROM requests WHERE day = ?", (today,)).fetchone()
+        if (row[0] if row else 0) >= self.daily_limit:
+            return False
+        self._db.execute("INSERT INTO requests (day, count) VALUES (?, 1) "
+                         "ON CONFLICT(day) DO UPDATE SET count = count + 1", (today,))
+        self._db.execute("DELETE FROM requests WHERE day < ?", ((self._today() - timedelta(days=7)).isoformat(),))
+        self._db.commit()
+        return True
+
+    def fetcher(self, network: bool = True) -> Fetcher:
+        """A Fetcher answered from the shared store. With network=False (demos) the service is never asked."""
+        def fetch(base: str, quote: str, day: date | None) -> tuple[Decimal, date]:
+            with self._lock:
+                stored = self._stored(base, quote, day)
+                if stored is not None:
+                    return stored
+                if not network:
+                    raise LookupError("not stored: demos use only stored exchange rates")
+                if not self._take_request():
+                    raise RuntimeError(f"daily limit of {self.daily_limit} requests to the rate service reached")
+            rate, rate_date = self._fetch(base, quote, day)
+            with self._lock:
+                self._db.execute("INSERT OR REPLACE INTO rates VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                 (base, quote, day.isoformat() if day else "latest", str(rate),
+                                  rate_date.isoformat(), self._clock(), self._today().isoformat()))
+                self._db.commit()
+            return rate, rate_date
+        return fetch

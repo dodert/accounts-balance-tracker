@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     account_days: int = 30
     max_users: int = 100
     max_db_mb: int = 10
+    # Multi-user: most requests a day to the exchange-rate service, for everybody together (the rates are shared).
+    # 90 = a limit of 100 a day minus a margin of 10 for single-user installs on the same IP
+    fx_daily_limit: int = 90
 
     @field_validator("auth_totp", "multi_user", "country_db", mode="before")
     @classmethod
