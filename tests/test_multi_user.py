@@ -503,6 +503,28 @@ def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp
     assert again.get("/api/about").json()["days_left"] in (9, 10)
 
 
+@pytest.mark.parametrize("how", ["old session", "recovery key"])
+def test_an_extended_account_gets_an_empty_database_with_an_old_session_or_the_recovery_key(setup, tmp_path, how):
+    """After expiry and extension, an old session or the recovery key gets a new empty database, not an error."""
+    app, admin = setup
+    ana, res = sign_up(app, invite(admin))
+    key = recovery_key(res)
+    ana.post("/api/accounts", json={"name": "Old", "type": "bank"})
+    uid = user_id(tmp_path, "ana")
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    assert app.state.users.purge_expired() == 1
+    admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
+    if how == "recovery key":
+        ana = TestClient(app)
+        ok = ana.post("/recover", data={"username": "ana", "recovery_key": key, "password": "new-password-1",
+                                        "password2": "new-password-1"}, follow_redirects=False)
+        assert ok.headers["location"] == "/"
+    res = ana.get("/api/accounts")
+    assert res.status_code == 200 and res.json() == []
+    assert ana.post("/api/accounts", json={"name": "New", "type": "bank"}).status_code == 201
+    assert [a["name"] for a in ana.get("/api/accounts").json()] == ["New"]
+
+
 def test_extend_adds_days_and_no_expiry_removes_it(setup, tmp_path):
     """The admin can add days to an account or remove its expiry."""
     app, admin = setup
