@@ -36,7 +36,9 @@ def router(ctx: Context) -> APIRouter:
     import_slots = asyncio.Semaphore(IMPORTS_AT_ONCE)
 
     @router.post("/api/import/csv", response_model=CsvImportOut)
-    async def import_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    async def import_file(request: Request, file: UploadFile = File(...),
+                          decimal: str = Form(".", pattern=r"^[.,]$", description="Decimal separator of the amounts"),
+                          db: Session = Depends(get_db)):
         limit = MAX_DEMO_CSV_BYTES if in_demo(request) else MAX_CSV_BYTES
         data = await file.read(limit + 1)
         if len(data) > limit:
@@ -44,7 +46,7 @@ def router(ctx: Context) -> APIRouter:
         try:
             # In a worker thread: a big file takes a while, and the app must keep answering meanwhile
             async with import_slots:
-                return await run_in_threadpool(import_csv, db, data, settings.default_currency)
+                return await run_in_threadpool(import_csv, db, data, settings.default_currency, decimal)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
 

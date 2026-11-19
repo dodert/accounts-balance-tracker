@@ -2,8 +2,9 @@
 
 Columns: account, type, currency, institution, date, amount, note, available_from. The import also
 takes the Spanish names (cuenta, tipo, moneda, entidad, fecha, saldo, nota, disponible_desde) and
-only needs account, date and amount; available_from is only used when an account is created. Amounts may use a decimal point or comma ("1234.56", "1.234,56", "1,234.56"); dates
-YYYY-MM-DD or DD/MM/YYYY.
+only needs account, date and amount; available_from is only used when an account is created. The decimal
+separator of the amounts is given with the file (a point by default, as in the export): with a comma, "1.234,56"
+and "1.234"; with a point, "1,234.56" and "1,234". Dates YYYY-MM-DD or DD/MM/YYYY.
 
 An account is found by its name and institution (names are unique per institution). Without an
 institution in the row, an account with that name is used if there is only one, or the one without
@@ -13,7 +14,7 @@ import csv
 import io
 import re
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -61,20 +62,22 @@ def export_csv(db: Session) -> str:
     return out.getvalue()
 
 
-def parse_amount(text: str) -> Decimal:
-    value = re.sub(r"[\s €$£]", "", text)
-    if "," in value and "." in value:
-        # The one that comes last is the decimal separator
-        thousands = "." if value.rfind(",") > value.rfind(".") else ","
-        value = value.replace(thousands, "")
-    value = value.replace(",", ".")
-    try:
-        amount = Decimal(value)
-    except InvalidOperation:
-        raise ValueError(f"invalid amount '{text}'") from None
-    if not amount.is_finite() or abs(amount) >= Decimal("1e12"):
+def parse_amount(text: str, decimal: str = ".") -> Decimal:
+    """An amount written with `decimal` ("," or ".") as the decimal separator; the other one can only group
+    thousands in the whole part. With ",": "1.234" is 1234.00 and "1.234,56" is 1234.56; "1,234.56" is an error.
+    More than two decimals are rounded half up, as the page does."""
+    group = "." if decimal == "," else ","
+    value = re.sub(r"[\s\u00a0\u202f€$£]", "", text)
+    whole, _, decimals = value.partition(decimal)
+    if re.fullmatch(rf"[+-]?\d{{1,3}}(\{group}\d{{3}})+", whole):
+        whole = whole.replace(group, "")
+    sign, digits = (whole[0], whole[1:]) if whole[:1] in ("+", "-") else ("", whole)
+    if not re.fullmatch(r"\d*", digits) or not re.fullmatch(r"\d*", decimals) or not (digits or decimals):
+        raise ValueError(f"invalid amount '{text}' (decimal separator '{decimal}')")
+    amount = Decimal(f"{sign}{digits or '0'}.{decimals or '0'}")
+    if abs(amount) >= Decimal("1e12"):
         raise ValueError(f"invalid amount '{text}'")
-    return amount.quantize(Decimal("0.01"))
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def parse_date(text: str) -> date:
@@ -105,7 +108,7 @@ def _label(account: Account) -> str:
     return f"{account.name} ({account.institution})" if account.institution else account.name
 
 
-def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
+def import_csv(db: Session, data: bytes, default_currency: str, decimal: str = ".") -> dict:
     text = decode(data)
     delimiter = detect_delimiter(text.split("\n", 1)[0])
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
@@ -140,7 +143,7 @@ def import_csv(db: Session, data: bytes, default_currency: str) -> dict:
             if not name or len(name) > 100:
                 raise ValueError("missing or too long account name")
             day = parse_date(cell("date"))
-            amount = parse_amount(cell("amount"))
+            amount = parse_amount(cell("amount"), decimal)
             institution = unsafe_text(cell("institution"))[:100]
             account = find(name, institution)
             if account is None:

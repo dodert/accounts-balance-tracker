@@ -212,6 +212,13 @@
       <h2 data-i18n="csv.title">Import CSV</h2>
       <p class="hint" data-i18n="csv.hint">One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is not changed (the row is skipped and listed).</p>
       <input type="file" name="file" accept=".csv,text/csv" required>
+      <label><span data-i18n="csv.decimal">Decimal separator of the amounts</span>
+        <select name="decimal" id="csv-decimal">
+          <option value="," data-i18n="csv.decimal_comma">Comma: 1.234,56</option>
+          <option value="." data-i18n="csv.decimal_point">Point: 1,234.56</option>
+        </select>
+      </label>
+      <p class="hint" id="csv-decimal-hint"></p>
       <pre id="csv-result" class="hint" hidden></pre>
       <menu>
         <span class="spacer"></span>

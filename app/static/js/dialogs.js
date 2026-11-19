@@ -1,7 +1,7 @@
 // The dialogs: update balances, milestones, account (with its balances), CSV and JSON import.
 import { api, localDate } from "./api.js";
 import { $, $$, esc } from "./dom.js";
-import { amountText, changeCell, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
+import { amountText, changeCell, decimalMark, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
 import { refresh } from "./main.js";
 import { ACCOUNT_TYPES, state } from "./state.js";
 
@@ -237,6 +237,9 @@ export function initDialogs() {
     $("#data-menu").open = false;
     $("#csv-form").reset();
     $("#csv-result").hidden = true;
+    // The decimal separator is stated, never guessed: the regional format's, which the user can change here
+    $("#csv-decimal").value = decimalMark();
+    $("#csv-decimal-hint").textContent = t("csv.decimal_hint", { locale: fmtLocale() });
     $("#csv-dlg").showModal();
   });
 
