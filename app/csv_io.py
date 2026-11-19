@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Account, AccountType, Balance
+from .schemas import MAX_AMOUNT, UNIT, amount_text
 
 COLUMNS = ["account", "type", "currency", "institution", "date", "amount", "note", "available_from"]
 ALIASES = {
@@ -56,7 +57,7 @@ def export_csv(db: Session) -> str:
     for account in accounts:
         for b in account.balances:
             writer.writerow([safe_text(account.name), account.type.value, account.currency,
-                             safe_text(account.institution or ""), b.date.isoformat(), f"{b.amount:.2f}",
+                             safe_text(account.institution or ""), b.date.isoformat(), amount_text(b.amount),
                              safe_text(b.note or ""),
                              account.available_from.isoformat() if account.available_from else ""])
     return out.getvalue()
@@ -65,7 +66,7 @@ def export_csv(db: Session) -> str:
 def parse_amount(text: str, decimal: str = ".") -> Decimal:
     """An amount written with `decimal` ("," or ".") as the decimal separator; the other one can only group
     thousands in the whole part. With ",": "1.234" is 1234.00 and "1.234,56" is 1234.56; "1,234.56" is an error.
-    More than two decimals are rounded half up, as the page does."""
+    More than four decimals are rounded half up, as the page does."""
     group = "." if decimal == "," else ","
     value = re.sub(r"[\s\u00a0\u202f€$£]", "", text)
     whole, _, decimals = value.partition(decimal)
@@ -75,9 +76,10 @@ def parse_amount(text: str, decimal: str = ".") -> Decimal:
     if not re.fullmatch(r"\d*", digits) or not re.fullmatch(r"\d*", decimals) or not (digits or decimals):
         raise ValueError(f"invalid amount '{text}' (decimal separator '{decimal}')")
     amount = Decimal(f"{sign}{digits or '0'}.{decimals or '0'}")
-    if abs(amount) >= Decimal("1e12"):
-        raise ValueError(f"invalid amount '{text}'")
-    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    amount = amount.quantize(UNIT, rounding=ROUND_HALF_UP)
+    if abs(amount) > MAX_AMOUNT:
+        raise ValueError(f"invalid amount '{text}' (largest {MAX_AMOUNT})")
+    return amount
 
 
 def parse_date(text: str) -> date:

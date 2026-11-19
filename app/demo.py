@@ -47,6 +47,7 @@ class Sample:
     # instead: rises and then falls, but ends above its start (the orange chart background, #104)
     peak_month: int | None = None
     after_peak: float = 0
+    decimals: int = 2             # of each balance (a fund's value often has 4, #120)
 
 
 SAMPLES = [
@@ -59,7 +60,8 @@ SAMPLES = [
     Sample({"en": "Mortgage", "es": "Hipoteca"}, "Caja Litoral", AccountType.loan, "EUR", -96000, 480, 0),
     Sample({"en": "Term deposit", "es": "Depósito a plazo"}, "Caja Litoral", AccountType.savings, "EUR", 10000, 0, 0,
            closed_month=14, note={"en": "Matured", "es": "Vencido"}),
-    Sample({"en": "Index fund", "es": "Fondo indexado"}, "Northwind Brokers", AccountType.investment, "EUR", 32000, 600, 1200),
+    Sample({"en": "Index fund", "es": "Fondo indexado"}, "Northwind Brokers", AccountType.investment, "EUR", 32000, 600, 1200,
+           decimals=4),
     Sample({"en": "US stocks", "es": "Acciones EE. UU."}, "Northwind Brokers", AccountType.investment, "USD", 9000, 250, 700),
     Sample({"en": "Stock options", "es": "Stock options"}, "Northwind Brokers", AccountType.investment, "USD", 4000, 250, 600,
            first_month=6, available_in_days=400, note={"en": "Vesting", "es": "Pendiente de consolidar"}),
@@ -104,7 +106,7 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
             amount = 0 if closing else value
             if sample.type == AccountType.loan and amount > 0:
                 amount = 0
-            account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
+            account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, sample.decimals)))))
             monthly = sample.after_peak if sample.peak_month is not None and n >= sample.peak_month else sample.monthly
             value += monthly + rng.uniform(-sample.noise, sample.noise)
             for month, cost, description in sample.milestones:

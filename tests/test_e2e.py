@@ -202,8 +202,8 @@ def test_the_page_sends_its_local_date(page):
     assert first.value.headers.get("x-local-date") == local
 
 
-def test_typed_amounts_become_exact_cents(page):
-    """Amounts typed in any regional format reach the API as exact integer cents and show back the same."""
+def test_typed_amounts_become_exact_ten_thousandths(page):
+    """Typed amounts reach the API as exact integer ten-thousandths; totals show the currency's 2 decimals."""
     open_app(page)
     for name in ("One", "Two"):
         page.click("#add-account-btn")
@@ -212,11 +212,11 @@ def test_typed_amounts_become_exact_cents(page):
         page.locator("#accounts-table tbody tr", has_text=name).wait_for()
     page.click("#update-btn")
     inputs = page.locator("#update-rows input")
-    inputs.nth(0).fill("1,234,567.895")  # more than 2 decimals: rounded half up
+    inputs.nth(0).fill("1,234,567.89995")  # more than 4 decimals: rounded half up
     inputs.nth(1).fill("0.1")
     with page.expect_request(lambda r: r.url.endswith("/api/balances/bulk")) as sent:
         page.click("#update-form button[type=submit]")
-    assert [i["amount"] for i in sent.value.post_data_json["items"]] == [123456790, 10]
+    assert [i["amount"] for i in sent.value.post_data_json["items"]] == [12345679000, 1000]
     page.locator("#totals .tile-value", has_text="1,234,568.00").wait_for()  # 1,234,567.90 + 0.10
 
 
@@ -263,7 +263,7 @@ def test_typed_amounts_follow_the_decimal_separator_of_the_regional_format(page)
     amount.fill("1.234")
     with page.expect_request(lambda r: r.url.endswith("/api/balances/bulk")) as sent:
         page.click("#update-form button[type=submit]")
-    assert sent.value.post_data_json["items"][0]["amount"] == 123400
+    assert sent.value.post_data_json["items"][0]["amount"] == 12340000
 
 
 def test_csv_import_states_the_decimal_separator(page):
@@ -283,3 +283,25 @@ def test_csv_import_states_the_decimal_separator(page):
         page.locator("#csv-result").wait_for()
         page.keyboard.press("Escape")
         page.locator("#accounts-table tbody tr", has_text=name).locator("td", has_text=shown).first.wait_for()
+
+
+def test_a_balance_with_four_decimals_is_kept_and_shown(page):
+    """A balance typed with four decimals is saved as such and shown back with them; the total shows two."""
+    page.add_init_script("localStorage.setItem('abt-locale', 'es-ES')")
+    open_app(page)
+    page.click("#add-account-btn")
+    page.fill("#account-form input[name=name]", "Fund")
+    page.click("#account-form button[type=submit]")
+    row = page.locator("#accounts-table tbody tr", has_text="Fund")
+    row.wait_for()
+    row.click()
+    page.fill("#nb-amount", "1,2345")
+    with page.expect_request(lambda r: r.url.endswith("/balances") and r.method == "POST") as sent:
+        page.click("#nb-add")
+    assert sent.value.post_data_json["amount"] == 12345
+    page.locator("#balances-table tbody td.num", has_text="1,2345").first.wait_for()
+    page.keyboard.press("Escape")
+    page.locator("#totals .tile-value", has_text="1,23").wait_for()
+    assert "1,2345" in row.text_content() and "1,2345" not in page.locator("#totals").text_content()
+    page.click("#update-btn")
+    assert page.locator("#update-rows input").first.input_value() == "1,2345"  # edited with its 4 decimals

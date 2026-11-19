@@ -68,7 +68,7 @@ class Balance(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
     date: Mapped[date] = mapped_column(Date)
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 4))
     note: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -82,7 +82,7 @@ class Milestone(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     date: Mapped[date] = mapped_column(Date)
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 4))
     description: Mapped[str] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

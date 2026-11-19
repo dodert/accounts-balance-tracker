@@ -1,7 +1,7 @@
 // The charts: total, one small chart per account, percent view and the maximized dialog.
 import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
-import { axisLabels, changeCell, compactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
+import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
 export const SERIES_SLOTS = 16; // categorical colours; past these they repeat (never grey)
@@ -19,11 +19,11 @@ export function milestonesFor(ids) {
 // "15 mar 2026 · New car · 12.500 € (Savings · Banco Aurora)"
 export const milestoneWhere = (m) => [m.account, m.institution].filter(Boolean).join(" · ");
 export const milestoneText = (m) =>
-  `${fmtDate(m.date)} · ${m.description} · ${money(m.amount, m.currency)}${m.account ? ` (${milestoneWhere(m)})` : ""}`;
+  `${fmtDate(m.date)} · ${m.description} · ${exactMoney(m.amount, m.currency)}${m.account ? ` (${milestoneWhere(m)})` : ""}`;
 // The tooltip of a milestone line: description, amount, account and institution
 export const milestoneTip = (m) => `
   <div class="tt-date">⚑ ${esc(fmtDate(m.date))}</div>
-  <div class="tt-row"><span class="swatch" style="background: ${m.color}"></span><span class="tt-name">${esc(m.description)}</span><span class="tt-value">${esc(money(m.amount, m.currency))}</span></div>
+  <div class="tt-row"><span class="swatch" style="background: ${m.color}"></span><span class="tt-name">${esc(m.description)}</span><span class="tt-value">${esc(exactMoney(m.amount, m.currency))}</span></div>
   ${m.account ? `<div class="tt-ms-where">${esc(milestoneWhere(m))}</div>` : ""}`;
 export const SVG_NS = "http://www.w3.org/2000/svg";
 
