@@ -31,9 +31,6 @@ def router(ctx: Context) -> APIRouter:
     # is never open while the service is asked, so the user's other requests don't wait for it, and rates are
     # never written to it (they go to the shared store). `fallback` is the rates the user's (or demo's) own
     # database already has, used only when the shared store has none for a day.
-    async def multi_fallback(request: Request) -> list:
-        return await read_db(request, own_rates) if multi else []
-
     @contextmanager
     def rate_source(request: Request, fallback: list):
         """(store, fetcher) of the rates. Single user: the database's own table and the service. Multi-user: the
@@ -82,8 +79,19 @@ def router(ctx: Context) -> APIRouter:
         quote: str = Query(..., alias="to", pattern=r"^[A-Za-z]{3}$"),
         day: date | None = Query(None, alias="date"),
     ):
-        """The rate from one currency to another on a day (default today)."""
-        fallback = await multi_fallback(request)
+        """The rate from one currency to another on a day (default today). Multi-user: only between the currencies
+        of the user's accounts and the default one, so nobody can use up the shared daily limit of requests to the
+        rate service with other pairs."""
+        base, quote = base.upper(), quote.upper()
+        fallback = []
+        if multi:
+            def read(db):
+                return set(db.scalars(select(Account.currency).distinct())), own_rates(db)
+
+            currencies, fallback = await read_db(request, read)
+            others = {base, quote} - currencies - {settings.default_currency}
+            if others:
+                raise HTTPException(422, f"No account in {', '.join(sorted(others))}")
 
         def run():
             try:

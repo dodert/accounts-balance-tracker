@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -39,13 +40,25 @@ REFRESH = timedelta(hours=3)
 Fetcher = Callable[[str, str, date | None], tuple[Decimal, date]]
 
 
+class Refused(Exception):
+    """The service answered that it has no such rate (e.g. an unknown currency). In multi-user mode such a request
+    does not count towards the daily limit."""
+
+
 def frankfurter(url: str) -> Fetcher:
     def fetch(base: str, quote: str, day: date | None) -> tuple[Decimal, date]:
         query = urllib.parse.urlencode({"from": base, "to": quote})
         request = urllib.request.Request(f"{url.rstrip('/')}/{day.isoformat() if day else 'latest'}?{query}",
                                          headers={"User-Agent": "accounts-balance-tracker"})
-        with urllib.request.urlopen(request, timeout=10) as response:
-            data = json.load(response)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = json.load(response)
+        except urllib.error.HTTPError as error:
+            if 400 <= error.code < 500:
+                raise Refused(f"the rate service refused {base}/{quote}: HTTP {error.code}") from None
+            raise
+        if quote not in data.get("rates", {}):
+            raise Refused(f"the rate service has no {base}/{quote} rate")
         rate, rate_date = Decimal(str(data["rates"][quote])), date.fromisoformat(data["date"])
         log.info("Exchange rate %s/%s for %s: %s, asked to the service (ECB %s)", base, quote, day or "today",
                  rate, rate_date)
@@ -161,7 +174,7 @@ class SharedRates:
 
     Each rate is asked to the service once for everybody, and at most `daily_limit` requests a day are made
     (counted in the file, so restarts don't reset it); past it the request fails and the rates already stored
-    are used. A past day never changes. Today's rate is asked again at most once every LATEST_SECONDS, and not
+    are used; a request the service refuses (Refused) is not counted. A past day never changes. Today's rate is asked again at most once every LATEST_SECONDS, and not
     at all once the day's own rate (published by the ECB around 16:00 CET) is stored."""
 
     LATEST_SECONDS = REFRESH.total_seconds()
@@ -206,6 +219,10 @@ class SharedRates:
         self._db.commit()
         return True
 
+    def _give_back_request(self) -> None:
+        self._db.execute("UPDATE requests SET count = max(count - 1, 0) WHERE day = ?", (self._today().isoformat(),))
+        self._db.commit()
+
     def _key(self, day: date | None) -> str:
         return "latest" if day is None or day >= self._today() else day.isoformat()
 
@@ -240,7 +257,12 @@ class SharedRates:
                     raise LookupError("not stored: demos use only stored exchange rates")
                 if not self._take_request():
                     raise RuntimeError(f"daily limit of {self.daily_limit} requests to the rate service reached")
-            rate, rate_date = self._fetch(base, quote, day)
+            try:
+                rate, rate_date = self._fetch(base, quote, day)
+            except Refused:
+                with self._lock:
+                    self._give_back_request()  # an unknown currency doesn't use up everybody's limit
+                raise
             with self._lock:
                 self._store(base, quote, day, rate, rate_date)
                 self._db.commit()
