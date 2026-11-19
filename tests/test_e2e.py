@@ -245,3 +245,23 @@ def test_the_settings_list_the_daily_backups(page, server):
     page.locator("#backups-list li").first.wait_for()
     assert page.locator("#backups-list li").count() == 1
     assert "7 days" in page.locator("#backups-hint").inner_text()
+
+
+def test_chart_date_and_range_helpers(page):
+    """monthsBefore clamps to the end of a shorter month and extent works past the Math.min spread limit."""
+    open_app(page)
+    src = page.evaluate("[...document.scripts].map((s) => s.src).find((s) => s.includes('/js/main.js'))")
+    result = page.evaluate("""async (src) => {
+        const { monthsBefore, extent } = await import(src.replace('main.js', 'charts.js'));
+        const iso = (d) => [d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-');
+        const many = Array.from({ length: 200000 }, (_, i) => i - 1000);
+        return {
+            may31: iso(monthsBefore(new Date(2026, 4, 31), 3)),
+            may31Leap: iso(monthsBefore(new Date(2028, 4, 31), 3)),
+            mar31: iso(monthsBefore(new Date(2026, 2, 31), 6)),
+            jan15: iso(monthsBefore(new Date(2026, 0, 15), 1)),
+            extent: extent(many),
+        };
+    }""", src)
+    assert result == {"may31": "2026-2-28", "may31Leap": "2028-2-29", "mar31": "2025-9-30", "jan15": "2025-12-15",
+                      "extent": [-1000, 198999]}
