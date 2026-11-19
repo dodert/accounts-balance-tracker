@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
+from pydantic_core import PydanticUseDefault
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,19 @@ class Settings(BaseSettings):
     def _empty_is_false(cls, value):
         # An empty field in the Unraid template or docker-compose means "off"
         return False if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("account_days", "max_users", "max_db_mb", "fx_daily_limit", "backup_keep", mode="before")
+    @classmethod
+    def _empty_is_default(cls, value, info: ValidationInfo):
+        # An empty field in the Unraid template or docker-compose means the default; anything else must be a number
+        if isinstance(value, str):
+            if not value.strip():
+                raise PydanticUseDefault()
+            try:
+                return int(value.strip())
+            except ValueError:
+                raise ValueError(f"{info.field_name.upper()} must be a whole number, got {value!r}") from None
+        return value
 
     @field_validator("default_currency", mode="before")
     @classmethod
