@@ -1007,3 +1007,56 @@ def test_json_replace_backs_up_the_encrypted_file_first(setup, tmp_path):
     assert [a["name"] for a in client.get("/api/accounts").json()] == ["Secret savings"]
     backups = list((tmp_path / "users").glob("*.db.enc.backup-before-import-*"))
     assert len(backups) == 1 and b"Extra" not in backups[0].read_bytes()  # encrypted, like the database
+
+
+# --- Many requests at once ---
+
+def test_many_parallel_requests_of_one_user_do_not_freeze_the_app(tmp_path, monkeypatch):
+    """More parallel requests of one user than worker threads are all answered; health and other users keep going."""
+    import socket
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+    import uvicorn
+
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    bea, _ = sign_up(app, invite(admin), username="bea", email="bea@example.com")
+    cookies = {name: {USER_COOKIE: client.cookies[USER_COOKIE]} for name, client in (("ana", ana), ("bea", bea))}
+    real_unseal = crypto.unseal
+
+    def slow_unseal(*args):  # each request of a user holds the database a little while
+        time.sleep(0.03)
+        return real_unseal(*args)
+
+    monkeypatch.setattr(crypto, "unseal", slow_unseal)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    while not server.started:
+        assert time.time() < deadline, "the app did not start"
+        time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}"
+    http = requests.Session()
+    http.trust_env = False  # straight to the local server, never through a proxy from the environment
+    try:
+        def get(who):
+            return http.get(f"{url}/api/accounts", cookies=cookies[who], timeout=60).status_code
+
+        with ThreadPoolExecutor(80) as pool:
+            flood = [pool.submit(get, "ana") for _ in range(80)]
+            time.sleep(0.5)  # the flood is queued now
+            started = time.time()
+            assert http.get(f"{url}/api/health", timeout=5).status_code == 200
+            assert get("bea") == 200
+            assert time.time() - started < 2  # not behind ana's queue
+            assert [f.result() for f in flood] == [200] * 80
+    finally:
+        server.should_exit = True
+        thread.join(5)
