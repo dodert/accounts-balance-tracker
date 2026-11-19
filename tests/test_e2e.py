@@ -305,3 +305,23 @@ def test_a_balance_with_four_decimals_is_kept_and_shown(page):
     assert "1,2345" in row.text_content() and "1,2345" not in page.locator("#totals").text_content()
     page.click("#update-btn")
     assert page.locator("#update-rows input").first.input_value() == "1,2345"  # edited with its 4 decimals
+
+
+def test_chart_date_and_range_helpers(page):
+    """monthsBefore clamps to the end of a shorter month and extent works past the Math.min spread limit."""
+    open_app(page)
+    src = page.evaluate("[...document.scripts].map((s) => s.src).find((s) => s.includes('/js/main.js'))")
+    result = page.evaluate("""async (src) => {
+        const { monthsBefore, extent } = await import(src.replace('main.js', 'charts.js'));
+        const iso = (d) => [d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-');
+        const many = Array.from({ length: 200000 }, (_, i) => i - 1000);
+        return {
+            may31: iso(monthsBefore(new Date(2026, 4, 31), 3)),
+            may31Leap: iso(monthsBefore(new Date(2028, 4, 31), 3)),
+            mar31: iso(monthsBefore(new Date(2026, 2, 31), 6)),
+            jan15: iso(monthsBefore(new Date(2026, 0, 15), 1)),
+            extent: extent(many),
+        };
+    }""", src)
+    assert result == {"may31": "2026-2-28", "may31Leap": "2028-2-29", "mar31": "2025-9-30", "jan15": "2025-12-15",
+                      "extent": [-1000, 198999]}
