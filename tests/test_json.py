@@ -15,6 +15,7 @@ def fill(client):
     client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-02-28", "amount": 110000})
     client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 700})
     client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 30000, "description": "Car"})
+    client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-05", "amount": 50000, "note": "first"})
 
 
 def snapshot(client):
@@ -30,7 +31,7 @@ def post(client, content: bytes, mode: str):
 
 
 def test_export_has_everything(client):
-    """The JSON export has every account with all its fields, balances and milestones."""
+    """The JSON export has every account with all its fields, balances, milestones and contributions."""
     fill(client)
     res = client.get("/api/export/json")
     assert res.headers["content-disposition"].startswith("attachment") and ".json" in res.headers["content-disposition"]
@@ -43,6 +44,8 @@ def test_export_has_everything(client):
     assert ing["balances"] == [{"date": "2026-01-31", "amount": "1000.50", "note": "pay"},
                                {"date": "2026-02-28", "amount": "1100.00", "note": None}]
     assert ing["milestones"] == [{"date": "2026-02-01", "amount": "300.00", "description": "Car"}]
+    assert ing["contributions"] == [{"date": "2026-01-05", "amount": "500.00", "note": "first"}]
+    assert accounts["Old"]["contributions"] == []
     assert accounts["Old"]["archived"] is True and accounts["Old"]["currency"] == "USD"
 
 
@@ -55,7 +58,7 @@ def test_replace_round_trip_gives_the_same_data(client, tmp_path):
     res = post(other, exported, "replace")
     assert res.status_code == 200, res.text
     assert res.json() == {"accounts_created": 3, "balances_created": 3, "milestones_created": 1,
-                          "duplicates_count": 0, "duplicates": []}
+                          "contributions_created": 1, "duplicates_count": 0, "duplicates": []}
     assert snapshot(other)["accounts"] == snapshot(client)["accounts"]
     # A backup of the database was made before replacing it
     assert len(list((tmp_path / "other").glob("balances.db.backup-before-import-*"))) == 1
@@ -90,20 +93,23 @@ def test_merge_imports_only_what_is_not_there_and_lists_it(client, tmp_path):
     ing["balances"].append({"date": "2026-03-31", "amount": "1200", "note": None})
     ing["balances"][0]["amount"] = "9999"  # same day as the one in the database: not imported
     ing["milestones"].append({"date": "2026-03-01", "amount": "50", "description": "Trip"})
+    ing["contributions"].append({"date": "2026-03-05", "amount": "-100", "note": None})  # a withdrawal
     ing["notes"] = "changed"  # an existing account keeps its own fields
     data["accounts"].append({"name": "New", "balances": [{"date": "2026-01-31", "amount": "5"}]})
     res = post(client, json.dumps(data).encode(), "merge").json()
-    assert (res["accounts_created"], res["balances_created"], res["milestones_created"]) == (1, 2, 1)
-    assert res["duplicates_count"] == 4
+    assert (res["accounts_created"], res["balances_created"], res["milestones_created"], res["contributions_created"]) == (1, 2, 1, 1)
+    assert res["duplicates_count"] == 5
     assert res["duplicates"] == ["ING (ING Bank): balance on 2026-01-31", "ING (ING Bank): balance on 2026-02-28",
-                                 "ING (ING Bank): milestone 'Car' on 2026-02-01", "Old: balance on 2026-01-31"]
+                                 "ING (ING Bank): milestone 'Car' on 2026-02-01", "ING (ING Bank): contribution on 2026-01-05",
+                                 "Old: balance on 2026-01-31"]
     after = {a["name"]: a for a in snapshot(client)["accounts"]}
     assert after["ING"]["balances"][0]["amount"] == "1000.50" and after["ING"]["notes"] == "joint account"
     assert len(after["ING"]["balances"]) == 3 and len(after["ING"]["milestones"]) == 2
+    assert [c["amount"] for c in after["ING"]["contributions"]] == ["500.00", "-100.00"]
 
     # Merging the same file again adds nothing
     again = post(client, json.dumps(data).encode(), "merge").json()
-    assert (again["accounts_created"], again["balances_created"], again["milestones_created"]) == (0, 0, 0)
+    assert (again["accounts_created"], again["balances_created"], again["milestones_created"], again["contributions_created"]) == (0, 0, 0, 0)
     # A merge needs no backup
     assert not list(tmp_path.glob("balances.db.backup-before-import-*"))
 

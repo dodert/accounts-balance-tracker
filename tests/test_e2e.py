@@ -116,6 +116,39 @@ def test_add_an_account_and_a_balance(page):
     assert "1,234.50" in row.text_content()
 
 
+def test_contributions_show_next_to_the_value(page):
+    """An investment account's contributions show in its dialog, as a dashed line on its chart, and as the gain."""
+    open_app(page)
+    page.click("#add-account-btn")
+    page.fill("#account-form input[name=name]", "Fund")
+    page.select_option("#account-type", "bank")
+    page.click("#account-form button[type=submit]")
+    row = page.locator("#accounts-table tbody tr", has_text="Fund")
+    row.wait_for()
+    row.click()
+    assert page.locator("#contributions-section").is_hidden()  # only for investment-like accounts
+    page.select_option("#account-type", "investment")
+    assert page.locator("#contributions-section").is_visible()
+    for day, amount, shown in (("2026-01-01", "1000", "1,000.00"), ("2026-02-01", "1300", "1,300.00")):
+        page.fill("#nb-date", day)
+        page.fill("#nb-amount", amount)
+        page.click("#nb-add")
+        page.locator("#balances-table tbody td.num", has_text=shown).first.wait_for()
+    for n, (day, amount) in enumerate((("2026-01-01", "1000"), ("2026-01-15", "200")), 1):
+        page.fill("#nc-date", day)
+        page.fill("#nc-amount", amount)
+        page.click("#nc-add")
+        page.locator("#contributions-table tbody tr:has(td.num)").nth(n - 1).wait_for()
+    assert page.locator("#contributions-table tbody tr").count() == 2
+    summary = page.locator("#contributions-summary").text_content()
+    assert "1,200.00" in summary and "+€100.00 (+8.3%)" in summary, summary
+    page.click("#account-form button[type=submit]")
+    mini = page.locator("#multiples .mini", has_text="Fund")
+    mini.locator(".mini-contributed").wait_for()
+    assert mini.locator(".mini-contributed").text_content().endswith("Gain +8.3%")
+    assert mini.locator("svg path.line.dashed").count() == 1
+
+
 def test_update_balances_of_every_account_at_once(page):
     """The 'Update balances' dialog saves a balance for each account on one date."""
     open_app(page)
@@ -159,6 +192,9 @@ def test_demo_mode_with_charts(page):
     assert page.locator("#chart svg .trend-bg").count() == 1
     for trend in ("up", "falling", "down"):
         assert page.locator(f"#multiples .trend-{trend}").count() > 0, trend
+    # Investment accounts with contributions: what was put in, dashed, and the gain
+    fund = page.locator("#multiples .mini", has_text="Index fund")
+    assert fund.locator(".mini-contributed").count() == 1 and fund.locator("svg path.line.dashed").count() == 1
     bitcoin = page.locator("#multiples .mini", has_text="Bitcoin")
     assert bitcoin.locator(".trend-falling").count() == 1
     # On a shorter range too, the background agrees with "since the start": red exactly when that is down

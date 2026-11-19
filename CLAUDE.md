@@ -80,7 +80,7 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
   fetched without holding the user's database lock; in multi-user they are stored only in the shared `rates.db`.
   Every rate logs at INFO where it came from (service, stored rates, shared store).
 - **Import / export** (#67): "Export everything (JSON)" is the full, versioned copy (accounts with all fields,
-  balances, milestones); the CSV is only a table of balances and stays that way (no milestones, by choice). Import
+  balances, milestones, contributions); the CSV is only a table of balances and stays that way (no milestones, by choice). Import
   JSON has two modes: *merge* never overwrites: it skips what already exists (same account and date, same milestone)
   and lists it; *replace* asks for confirmation and makes a backup first (`before-import`, newest 3 kept). CSV import
   behaves like merge. A file with any error changes nothing.
@@ -106,6 +106,8 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
 - **TOTP per user** (#105): optional in multi-user; the recovery key logs in without the code; the admin can remove it.
 - **Discarded on purpose** (plan #7): extending an expired account also unblocks one the admin blocked by hand; the
   invitation token appears in the access log; `FORWARDED_ALLOW_IPS` trusts the LAN and Docker ranges by default.
+- **Contributions** (#127): investment-like accounts record contributions by hand; the balance is the value. No price
+  API (decided): the chart draws the cumulative contributions and the gain, computed in the browser.
 - **Mobile app**: parked. A sync would need UUIDs, `updated_at` with soft deletes and `/api/sync` in every database.
 
 ## Project rules

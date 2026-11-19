@@ -71,7 +71,7 @@
   "json.merge": "Fusionar: añadir solo lo que aún no está (lo que ya existe no se importa y se lista)",
   "json.replace": "Sustituir: borrar todos los datos actuales y dejar exactamente los del archivo (antes se hace una copia de seguridad)",
   "json.confirm_replace": "Se borrarán todas tus cuentas, saldos e hitos actuales y se sustituirán por los del archivo. Antes se hace una copia de seguridad. ¿Continuar?",
-  "json.result": "Cuentas creadas: {accounts}. Saldos añadidos: {balances}. Hitos añadidos: {milestones}.",
+  "json.result": "Cuentas creadas: {accounts}. Saldos añadidos: {balances}. Hitos añadidos: {milestones}. Aportaciones añadidas: {contributions}.",
   "import.duplicates": "Ya existían, no importados ({n}):",
   "import.more": "…y {n} más",
   "settings.title": "Ajustes",
@@ -230,5 +230,15 @@
   "account.totp_done_on": "Código de un solo uso activado.",
   "account.totp_done_off": "Código de un solo uso desactivado.",
   "admin.remove_totp": "Quitar código de un solo uso",
-  "admin.confirm_remove_totp": "¿Quitar el código de un solo uso de este usuario? Entrará solo con la contraseña hasta que lo vuelva a activar."
+  "admin.confirm_remove_totp": "¿Quitar el código de un solo uso de este usuario? Entrará solo con la contraseña hasta que lo vuelva a activar.",
+  "contributions.title": "Aportaciones",
+  "contributions.hint": "El dinero que metes (en negativo cuando lo sacas). Las gráficas lo muestran junto al saldo, que es lo que vale la cuenta, y la ganancia entre ambos. Los dividendos reinvertidos son ganancia, no aportaciones.",
+  "contributions.amount": "Importe",
+  "contributions.total": "Aportado",
+  "contributions.none": "No hay aportaciones.",
+  "contributions.confirm_delete": "¿Borrar esta aportación?",
+  "contributions.zero": "Una aportación no puede ser 0",
+  "contributions.summary": "Aportado {contributed} · Vale {value}",
+  "chart.contributed": "Aportado",
+  "chart.gain": "Ganancia"
 }

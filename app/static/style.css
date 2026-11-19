@@ -103,6 +103,8 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .mini-name { flex: 1; font-weight: 600; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mini-value { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .9rem; white-space: nowrap; }
 .mini-sub { font-size: .78rem; color: var(--muted); margin: .1rem 0 .2rem 1.05rem; min-height: 1em; }
+.mini-contributed { margin-left: 0; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+.contributions-summary { margin: .2rem 0 .5rem; }
 .mini-chart { width: 100%; }
 .mini-max { margin-left: .2rem; line-height: 1.2; }
 .detail { color: var(--muted); font-weight: normal; }

@@ -27,6 +27,27 @@ export const milestoneTip = (m) => `
   ${m.account ? `<div class="tt-ms-where">${esc(milestoneWhere(m))}</div>` : ""}`;
 export const SVG_NS = "http://www.w3.org/2000/svg";
 
+// What was contributed to a series' accounts by each of the chart's dates (the sum of their contributions up to
+// that day), null where the series has no value. null when there is nothing to draw: every account of the series
+// needs contributions, in the chart's currency (an account converted from another currency has none to compare).
+export function contributedValues(a, h) {
+  const ids = a.ids ?? [];
+  if (!ids.length) return null;
+  for (const id of ids) {
+    const account = state.accounts.find((x) => x.id === id);
+    if (account?.currency !== h.currency || !state.contributions.some((c) => c.account_id === id)) return null;
+  }
+  const list = state.contributions.filter((c) => ids.includes(c.account_id)); // oldest first, as the API sends them
+  let i = 0, sum = 0;
+  return h.dates.map((day, n) => {
+    while (i < list.length && list[i].date <= day) sum += list[i++].amount;
+    return a.values[n] === null ? null : sum;
+  });
+}
+// "Gain: ▲ +1.200 € (+8,5 %)": the value minus what was contributed, and that in % of what was contributed
+export const gainText = (value, contributed, currency) =>
+  `${esc(t("chart.gain"))}: ${changeCell(value, contributed, currency, true)}`;
+
 // --- Chart ---
 
 export function sinceDate() {
@@ -260,7 +281,7 @@ export function drawChart(box, opts) {
       svg("path", { d: `${d}L${last[0]},${base}L${first[0]},${base}Z`, class: "area", style: `fill: ${s.color}` }, root);
     }
     svg("path", { d, class: `line${s.total ? " total" : ""}${s.dashed ? " dashed" : ""}`, style: `stroke: ${s.color}` }, root);
-    if (times.length <= 24) {
+    if (times.length <= 24 && !s.noDots) {
       for (const p of pts) if (p) svg("circle", { cx: p[0], cy: p[1], r: opts.small ? 3 : 4, class: "dot", style: `fill: ${s.color}` }, root);
     }
   });
@@ -396,7 +417,7 @@ export function renderBlock(h, el) {
       const card = document.createElement("div");
       card.className = "mini";
       const max = `<button type="button" class="icon mini-max" title="${esc(t("chart.maximize"))}" aria-label="${esc(t("chart.maximize"))}: ${esc(a.name)}">⤢</button>`;
-      card.innerHTML = accountHead(a, cur, max) + `<div class="chart mini-chart"></div>`;
+      card.innerHTML = accountHead(a, h, max, true) + `<div class="chart mini-chart"></div>`;
       grid.appendChild(card);
       $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id, cur));
       drawAccountChart($(".mini-chart", card), a, h, true);
@@ -412,28 +433,42 @@ export function renderBlock(h, el) {
 }
 
 // Name, last balance and change since the start of an account (small card and maximized chart)
-export function accountHead(a, cur, extra = "") {
-  const last = [...a.values].reverse().find((v) => v !== null);
+export function accountHead(a, h, extra = "", small = false) {
+  const cur = h.currency;
+  const values = [...a.values].reverse();
+  const at = values.findIndex((v) => v !== null);
+  const last = at < 0 ? null : values[at];
+  // With contributions: what was put in by the last balance, and the gain
+  const contributed = at < 0 ? null : [...(contributedValues(a, h) ?? [])].reverse()[at] ?? null;
+  // On a small card, short: "Contributed 38.2K € · Gain +14.6%"
+  const pct = contributed ? ((last - contributed) / Math.abs(contributed)) * 100 : null;
+  const shortGain = pct === null ? "" : ` · ${esc(t("chart.gain"))} <span class="${pct > 0 ? "up" : pct < 0 ? "down" : ""}">${esc(fmtPct(pct))}</span>`;
+  const gain = contributed === null ? "" : `
+    <div class="mini-sub mini-contributed"><span class="swatch dashed-swatch" style="border-top-color: ${a.color}"></span> ${esc(t("chart.contributed"))} ${esc(small ? compactMoney(contributed, cur) : money(contributed, cur))}${small ? shortGain : ` · ${gainText(last, contributed, cur)}`}</div>`;
   return `
     <div class="mini-head">
       <span class="swatch" style="background: ${a.color}"></span>
       <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
       <span class="mini-value">${esc(money(last, cur))}</span>${extra}
     </div>
-    <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>`;
+    <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>${gain}`;
 }
 
 export function drawAccountChart(box, a, h, small) {
   const cur = h.currency;
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
+  // With contributions: what was put in so far, dashed in the account's colour, and the gain in the tooltip
+  const contributed = contributedValues(a, h);
+  const series = contributed ? [a, { name: t("chart.contributed"), values: contributed, color: a.color, dashed: true, noDots: true, contributed: true }] : [a];
   drawChart(box, {
-    dates: h.dates, series: [a], height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
+    dates: h.dates, series, height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
     trend: trendOf(h.dates, a.values, a.start),
     milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,
     axis: (ticks) => axisLabels(ticks, cur),
-    tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join(""),
+    tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), s.contributed ? "" : sinceText(s, s.values[idx], cur))).join("") +
+      (contributed && a.values[idx] !== null ? `<div class="tt-since tt-gain">${gainText(a.values[idx], contributed[idx], cur)}</div>` : ""),
   });
 }
 
@@ -450,7 +485,7 @@ export function drawMaximized() {
   const h = state.histories.find((x) => x.currency === state.maximized?.currency);
   const a = h && chartSeries(h).find((s) => s.account_id === state.maximized.id);
   if (!a) { $("#chart-dlg").close(); return; }
-  $("#chart-dlg-head").innerHTML = accountHead(a, h.currency);
+  $("#chart-dlg-head").innerHTML = accountHead(a, h);
   const box = $("#chart-dlg-chart");
   box.innerHTML = "";
   drawAccountChart(box, a, h, false);
