@@ -926,6 +926,7 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
     app = rates_app(tmp_path, rates, fx_daily_limit=3)
     admin = admin_client(app, tmp_path)
     ana, _ = sign_up(app, invite(admin))
+    usd_account(ana)
     start = date(2020, 1, 1)
     for n in range(5):
         ana.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}")
@@ -936,6 +937,39 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
     client.post("/login", data={"username": "ana", "password": "ana-password"})
     assert client.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=10)}").status_code == 200
     assert len(rates.calls) == 3
+
+
+def test_one_user_cannot_use_up_the_shared_limit_of_rate_requests(tmp_path):
+    """/api/fx takes only the user's currencies; refused requests don't count; others still get today's rate."""
+    from app.fx import Refused
+    from tests.test_fx import FakeRates
+
+    class Rates(FakeRates):
+        def __call__(self, base, quote, day):
+            if "XXX" in (base, quote):
+                self.calls.append((base, quote, day))
+                raise Refused("unknown currency")
+            return super().__call__(base, quote, day)
+
+    rates = Rates()
+    app = rates_app(tmp_path, rates, fx_daily_limit=3)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    ana.post("/api/accounts", json={"name": "Odd", "currency": "XXX"})
+    for currency in ("GBP", "JPY", "CHF", "SEK"):  # pairs of no account of hers: refused before any request
+        res = ana.get(f"/api/fx?from={currency}&to=EUR&date=2020-01-01")
+        assert res.status_code == 422 and currency in res.json()["detail"]
+    for n in range(5):  # a currency of hers the service doesn't know: asked, refused, not counted
+        assert ana.get(f"/api/fx?from=XXX&to=EUR&date=2020-01-0{n + 1}").status_code == 503
+    assert len(rates.calls) == 5
+    with sqlite3.connect(tmp_path / "rates.db") as db:
+        assert db.execute("SELECT coalesce(sum(count), 0) FROM requests").fetchone()[0] == 0
+
+    bea, _ = sign_up(app, invite(admin), username="bea", email="bea@example.com")
+    usd_account(bea)
+    combined = bea.get("/api/summary/combined").json()
+    assert combined["missing"] == [] and combined["rates"][0]["stale"] is False
+    assert rates.calls[-1] == ("USD", "EUR", None)
 
 
 def test_demos_never_ask_the_rate_service(tmp_path):
