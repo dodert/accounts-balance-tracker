@@ -57,7 +57,7 @@ permissions problem, "Re-run failed jobs" fixes it.
   `DATA_DIR`. Built from `SAMPLES` (en/es), relative to today.
 - **Exchange rates**: `app/fx.py` (Frankfurter API, `FX_URL`); stored rates in the DB, shared `rates.db` in multi-user.
 - **Dates**: the server runs in UTC; the user's "today" comes from the `X-Local-Date` header (`app/clock.py`).
-- **Amounts are integer ten-thousandths** in the API (since 0.37, #120; cents from 0.29); up to 4 decimals stored
+- **Amounts are integer ten-thousandths** in the API (since 0.38, #120; cents from 0.29); up to 4 decimals stored
   (`Numeric(16, 4)`), largest 499,999,999,999.9999; CSV/JSON files keep decimal text.
 - **Backups**: daily copies in `DATA_DIR/backups/<date>/` (`app/backups.py`, `BACKUP_KEEP`), plus copies before a
   migration and before an import that replaces data.
