@@ -32,9 +32,26 @@ export const SVG_NS = "http://www.w3.org/2000/svg";
 export function sinceDate() {
   const months = $("#chart-range").value;
   if (months === "all") return null;
-  const d = new Date();
-  d.setMonth(d.getMonth() - Number(months));
-  return localDate(d); // local, like today(): toISOString() would give the UTC date
+  return localDate(monthsBefore(new Date(), Number(months))); // local, like today(): toISOString() would give the UTC date
+}
+
+// The same day `months` months before `date`, or the last day of that month when it is shorter
+// (31 May − 3 months = 28/29 Feb; setMonth alone would roll over into March)
+export function monthsBefore(date, months) {
+  const d = new Date(date.getFullYear(), date.getMonth() - months, 1);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(date.getDate(), lastDay));
+  return d;
+}
+
+// [min, max] of the values, with a loop: Math.min(...values) throws past ~125,000 values in V8
+export function extent(values) {
+  let min = Infinity, max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return [min, max];
 }
 
 export async function loadHistory() {
@@ -182,7 +199,7 @@ export function drawChart(box, opts) {
   const values = series.flatMap((s) => s.values).filter((v) => v !== null);
   if (ref) values.push(ref.value);
   if (!values.length) return;
-  const ticks = niceTicks(Math.min(...values), Math.max(...values), opts.small ? 3 : 5);
+  const ticks = niceTicks(...extent(values), opts.small ? 3 : 5);
   const labels = opts.axis(ticks);
   // Room for the longest axis label (about 6.5px a character at 11px), e.g. "5,4 mil US$"
   pad.left = Math.max(pad.left, Math.ceil(Math.max(...labels.map((l) => String(l).length)) * 6.5) + 12);
