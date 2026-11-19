@@ -82,19 +82,27 @@ export const getDate = (input) => textToIso(input.value);
 export const notAvailableYet = (a) => !!a?.available_from && a.available_from > today();
 export const lockBadge = (a) => (notAvailableYet(a) ? ` <span class="badge lock" title="${esc(t("account.available_hint"))}">🔒 ${esc(t("accounts.available_on", { date: fmtDate(a.available_from) }))}</span>` : "");
 
-// "1.234,56", "1,234.56", "1234.56" or "-50" -> integer cents (123456, -5000), read from the digits without
-// going through a float; the last of "," and "." is the decimal mark; more decimals round half up
+// The decimal separator of the user's regional format: "," (es-ES, de-DE...) or "." (en-GB, en-US...)
+export function decimalMark(locale = fmtLocale()) {
+  const mark = new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === "decimal")?.value;
+  return mark === "," ? "," : ".";
+}
+
+// Typed text -> integer cents, read from the digits without going through a float. The decimal separator is
+// the one of the regional format (never guessed): the other of "," and "." can only group thousands in the
+// whole part. With ",": "1.234" = 123400, "1.234,56" = 123456, "12,5 €" = 1250; "1,234.56" is an error.
+// More than 2 decimals are rounded half up.
 export const MAX_CENTS = 10 ** 14 - 1; // the database's Numeric(14, 2)
-export function parseAmount(text) {
-  let value = String(text).replace(/[\s €$£]/g, "");
+export function parseAmount(text, mark = decimalMark()) {
+  const value = String(text).replace(/[\s\u00a0\u202f€$£]/g, "");
   if (!value) return null;
-  if (value.includes(",") && value.includes(".")) {
-    value = value.lastIndexOf(",") > value.lastIndexOf(".") ? value.replace(/\./g, "") : value.replace(/,/g, "");
-  }
-  const m = /^([+-]?)(\d*)(?:[.,](\d*))?$/.exec(value);
-  if (!m || !(m[2] || m[3])) throw new Error(t("error.amount", { value: text }));
-  const decimals = (m[3] ?? "").padEnd(3, "0");
-  const cents = Number(m[2] || "0") * 100 + Number(decimals.slice(0, 2)) + (Number(decimals[2]) >= 5 ? 1 : 0);
+  const group = mark === "," ? "." : ",";
+  const [whole, decimals = "", ...rest] = value.split(mark);
+  const grouped = new RegExp(`^[+-]?\\d{1,3}(\\${group}\\d{3})+$`).test(whole);
+  const m = /^([+-]?)(\d*)$/.exec(grouped ? whole.split(group).join("") : whole);
+  if (rest.length || !m || !/^\d*$/.test(decimals) || !(m[2] || decimals)) throw new Error(t("error.amount", { value: text }));
+  const digits = decimals.padEnd(3, "0");
+  const cents = Number(m[2] || "0") * 100 + Number(digits.slice(0, 2)) + (Number(digits[2]) >= 5 ? 1 : 0);
   if (!Number.isSafeInteger(cents) || cents > MAX_CENTS) throw new Error(t("error.amount", { value: text }));
   return m[1] === "-" ? -cents : cents;
 }

@@ -1,12 +1,41 @@
+import pytest
+
 from app.csv_io import parse_amount
 
 
-def test_parse_amount():
-    """Amounts are read in both 1.234,56 and 1,234.56 styles, with or without a symbol."""
-    assert str(parse_amount("1.234,56")) == "1234.56"
-    assert str(parse_amount("1,234.56")) == "1234.56"
-    assert str(parse_amount("-50")) == "-50.00"
-    assert str(parse_amount("12,5 €")) == "12.50"
+@pytest.mark.parametrize("text, decimal, amount", [
+    ("1.234", ",", "1234.00"), ("1,234", ".", "1234.00"), ("12.500", ",", "12500.00"), ("12,500", ".", "12500.00"),
+    ("1.234,56", ",", "1234.56"), ("1,234.56", ".", "1234.56"), ("1234.56", ".", "1234.56"), ("-50", ",", "-50.00"),
+    ("12,5 €", ",", "12.50"), ("1,2345", ",", "1.23"), ("1.2345", ".", "1.23"), ("1.234.567,895", ",", "1234567.90"),
+    ("0,125", ",", "0.13"), ("0.125", ".", "0.13"),  # half up, as the page
+])
+def test_parse_amount(text, decimal, amount):
+    """Amounts are read with the decimal separator given; the other one groups thousands."""
+    assert str(parse_amount(text, decimal)) == amount
+
+
+@pytest.mark.parametrize("text, decimal", [("1,234.56", ","), ("1.234,56", "."), ("12.50", ","), ("1,5", "."),
+                                           ("1.2.3", ","), ("abc", "."), ("-", ",")])
+def test_parse_amount_that_does_not_fit_the_separator_is_an_error(text, decimal):
+    """An amount that doesn't fit the decimal separator given is an error."""
+    with pytest.raises(ValueError, match="invalid amount"):
+        parse_amount(text, decimal)
+
+
+def test_import_reads_amounts_with_the_separator_sent(client):
+    """The CSV import reads amounts with the decimal separator sent (a point when none) and names bad lines."""
+    csv = b"account,date,amount\nA,2026-01-31,1.234\nA,2026-02-28,\"1.234,56\"\nA,2026-03-31,\"1,234.56\"\n"
+    comma = client.post("/api/import/csv", files={"file": ("a.csv", csv, "text/csv")}, data={"decimal": ","}).json()
+    assert comma["balances_created"] == 2 and comma["errors"] == [
+        "Line 4: invalid amount '1,234.56' (decimal separator ',')"]
+    balances = {b["date"]: b["amount"] for b in client.get("/api/accounts/1/balances").json()}
+    assert balances == {"2026-01-31": 123400, "2026-02-28": 123456}
+
+    csv = b"account,date,amount\nB,2026-01-31,\"1,234\"\nB,2026-02-28,1234.5\n"
+    point = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
+    assert point["balances_created"] == 2 and point["errors"] == []
+    assert client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")},
+                       data={"decimal": ";"}).status_code == 422
 
 
 def test_import_creates_accounts_and_never_overwrites_balances(client):
@@ -21,7 +50,7 @@ def test_import_creates_accounts_and_never_overwrites_balances(client):
         "Bad;weird;;2026-02-01;5;\n"
         "\n"
     ).encode("cp1252")
-    res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}).json()
+    res = client.post("/api/import/csv", files={"file": ("b.csv", csv, "text/csv")}, data={"decimal": ","}).json()
     assert (res["accounts_created"], res["balances_created"], res["duplicates_count"]) == (2, 3, 0)
     assert len(res["errors"]) == 3 and res["errors"][0].startswith("Line 5:")
 
