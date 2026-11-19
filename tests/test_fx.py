@@ -114,6 +114,32 @@ def test_only_the_currencies_and_date_are_sent(monkeypatch):
     assert seen == ["https://api.frankfurter.app/2026-01-02?from=USD&to=EUR", "https://api.frankfurter.app/latest?from=USD&to=EUR"]
 
 
+def test_frankfurter_refusals_are_told_apart_from_failures(monkeypatch):
+    """An HTTP 4xx answer or a missing rate is Refused; a server error is a plain failure."""
+    import io
+    import urllib.error
+
+    from app.fx import Refused
+
+    answers = []
+
+    def urlopen(request, timeout):
+        answer = answers.pop(0)
+        if isinstance(answer, int):
+            raise urllib.error.HTTPError(request.full_url, answer, "error", {}, io.BytesIO(b"{}"))
+        return io.BytesIO(json.dumps(answer).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    fetch = frankfurter("https://api.frankfurter.app")
+    answers[:] = [404, {"date": "2026-01-02", "rates": {}}, 500]
+    with pytest.raises(Refused):
+        fetch("XXX", "EUR", None)
+    with pytest.raises(Refused):
+        fetch("USD", "XXX", None)
+    with pytest.raises(urllib.error.HTTPError):
+        fetch("USD", "EUR", None)
+
+
 def test_converted_history_uses_todays_rate(tmp_path):
     """The chart in the default currency converts every date with today's rate."""
     rates = FakeRates("0.9")
