@@ -88,7 +88,9 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
 - **Reads** (#68): balances are read as plain rows with window queries (`history.py`), never as ORM objects; this
   took `/api/accounts` from 2.1 s to 0.2 s with 104k balances. No `/api/dashboard` endpoint (decided: not needed).
 - **Encrypted per-user DB**: every commit re-encrypts and fsyncs the whole file, so batch writes in one commit.
-  Requests of one user are serialized by a per-user lock: keep slow work (network) outside it.
+  Requests of one user are serialized by a per-user turn (`Context.user_turn`, an asyncio lock taken by
+  `get_db` / `read_db` in the event loop, never by a waiting worker thread: #112): keep slow work (network) outside it,
+  as the async routes of `rates.py` do.
 - **Code layout** (#69): one router module per area in `app/routes/`, shared state in `deps.Context`, middleware in
   `middleware.py`, admin HTML in a Jinja template (autoescape), never f-strings.
 - **One process** (#70): `--workers 1`; the last used TOTP step is persisted in `.totp_secret` (atomic write).

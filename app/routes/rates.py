@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,8 +17,8 @@ from ..schemas import CombinedTotal, CurrencyTotal, FxRateOut, HistoryOut
 
 def router(ctx: Context) -> APIRouter:
     router = APIRouter()
-    settings, multi, fetch_rate, shared_rates, get_db, open_db, in_demo = (
-        ctx.settings, ctx.multi, ctx.fetch_rate, ctx.shared_rates, ctx.get_db, ctx.open_db, ctx.in_demo)
+    settings, multi, fetch_rate, shared_rates, get_db, open_db, read_db, in_demo = (
+        ctx.settings, ctx.multi, ctx.fetch_rate, ctx.shared_rates, ctx.get_db, ctx.open_db, ctx.read_db, ctx.in_demo)
 
     # --- Summary and history ---
 
@@ -25,14 +26,13 @@ def router(ctx: Context) -> APIRouter:
     def summary(db: Session = Depends(get_db)):
         return currency_totals(load(db))
 
-    def multi_fallback(request: Request) -> list:
-        """Multi-user: the rates the user's (or demo's) own database already has, used only when the shared store
-        has none for a day. The user's database is opened and closed here: it is never open while the rate service
-        is asked, so the user's other requests don't wait for it, and rates are never written to it."""
-        if not multi:
-            return []
-        with open_db(request) as db:
-            return own_rates(db)
+    # Multi-user: the routes that may ask the rate service are async. They read the user's database first (with
+    # read_db, in the user's turn) and only then ask for rates in a worker thread, outside the turn: the database
+    # is never open while the service is asked, so the user's other requests don't wait for it, and rates are
+    # never written to it (they go to the shared store). `fallback` is the rates the user's (or demo's) own
+    # database already has, used only when the shared store has none for a day.
+    async def multi_fallback(request: Request) -> list:
+        return await read_db(request, own_rates) if multi else []
 
     @contextmanager
     def rate_source(request: Request, fallback: list):
@@ -62,33 +62,37 @@ def router(ctx: Context) -> APIRouter:
         # Rounded to the ten-thousandth (half up) only when sent: schemas.Units
         return CombinedTotal(currency=target, total=total, available=available, rates=rates, missing=missing)
 
-    def totals_and_rates(request: Request) -> tuple[list[dict], list]:
-        with open_db(request) as db:
-            return currency_totals(load(db)), (own_rates(db) if multi else [])
+    async def totals_and_rates(request: Request) -> tuple[list[dict], list]:
+        return await read_db(request, lambda db: (currency_totals(load(db)), own_rates(db) if multi else []))
 
     @router.get("/api/summary/combined", response_model=CombinedTotal)
-    def summary_combined(request: Request):
+    async def summary_combined(request: Request):
         """All currencies in the default one. Today's rates are fetched the first time each day."""
-        return combined_total(request, *totals_and_rates(request), refresh=False)
+        return await run_in_threadpool(combined_total, request, *await totals_and_rates(request), refresh=False)
 
     @router.post("/api/fx/refresh", response_model=CombinedTotal)
-    def fx_refresh(request: Request):
+    async def fx_refresh(request: Request):
         """Fetch today's rates again now, and the combined total with them."""
-        return combined_total(request, *totals_and_rates(request), refresh=True)
+        return await run_in_threadpool(combined_total, request, *await totals_and_rates(request), refresh=True)
 
     @router.get("/api/fx", response_model=FxRateOut)
-    def fx_rate(
+    async def fx_rate(
         request: Request,
         base: str = Query(..., alias="from", pattern=r"^[A-Za-z]{3}$"),
         quote: str = Query(..., alias="to", pattern=r"^[A-Za-z]{3}$"),
         day: date | None = Query(None, alias="date"),
     ):
         """The rate from one currency to another on a day (default today)."""
-        try:
-            with rate_source(request, multi_fallback(request)) as (store, fetch):
-                return FxRateOut(**vars(get_rate(store, fetch, base, quote, day)))
-        except LookupError as exc:
-            raise HTTPException(503, str(exc)) from None
+        fallback = await multi_fallback(request)
+
+        def run():
+            try:
+                with rate_source(request, fallback) as (store, fetch):
+                    return FxRateOut(**vars(get_rate(store, fetch, base, quote, day)))
+            except LookupError as exc:
+                raise HTTPException(503, str(exc)) from None
+
+        return await run_in_threadpool(run)
 
     @router.get("/api/currencies", response_model=list[str])
     def currencies(db: Session = Depends(get_db)):
@@ -119,14 +123,15 @@ def router(ctx: Context) -> APIRouter:
         )
 
     @router.get("/api/history/converted", response_model=HistoryOut)
-    def get_history_converted(request: Request, since: date | None = None):
+    async def get_history_converted(request: Request, since: date | None = None):
         """Every account in the default currency at TODAY's rate, on every date: what the balances are worth now,
         without the changes of the exchange rate. Only the currencies are sent to the rate service; the amounts
         are converted here."""
+        ledger, fallback = await read_db(request, lambda db: (load(db), own_rates(db) if multi else []))
+        return await run_in_threadpool(converted_history, request, ledger, fallback, since)
+
+    def converted_history(request: Request, ledger, fallback: list, since: date | None) -> HistoryOut:
         target = settings.default_currency
-        with open_db(request) as db:
-            ledger = load(db)
-            fallback = own_rates(db) if multi else []
         accounts = ledger.accounts
         all_dates, _, all_values = history(ledger)
         dates, _, values = history(ledger, since)
