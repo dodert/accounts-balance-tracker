@@ -289,6 +289,11 @@ class UserDatabases:
         with self._lock(user_id):
             self._finish_rekey(user_id, key)
             path = self.path(user_id)
+            if not path.exists():
+                # Deleted when the account expired, then extended by the admin: a session from before (or one
+                # opened with the recovery key) starts again with an empty database
+                log.warning("User %s: no database, a new empty one is created", user_id)
+                self.create(user_id, key)
             plain = crypto.unseal(key, path.read_bytes(), db_aad(user_id))
             connection = sqlite3.connect(":memory:", check_same_thread=False)
             try:

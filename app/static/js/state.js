@@ -6,7 +6,7 @@ export const INVESTMENT_TYPES = ["investment", "pension", "crypto"];
 
 // ALL_CURRENCIES: the charts of every currency, one after the other, each in its own currency
 export const ALL_CURRENCIES = "*";
-// CONVERTED: every account converted into the default currency (each date at that date's rate), on one chart
+// CONVERTED: every account converted into the default currency (every date at today's rate), on one chart
 export const CONVERTED = "=";
 export const state = { about: null, accounts: [], milestones: [], contributions: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
 

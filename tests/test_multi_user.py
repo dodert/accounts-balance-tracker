@@ -503,6 +503,28 @@ def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp
     assert again.get("/api/about").json()["days_left"] in (9, 10)
 
 
+@pytest.mark.parametrize("how", ["old session", "recovery key"])
+def test_an_extended_account_gets_an_empty_database_with_an_old_session_or_the_recovery_key(setup, tmp_path, how):
+    """After expiry and extension, an old session or the recovery key gets a new empty database, not an error."""
+    app, admin = setup
+    ana, res = sign_up(app, invite(admin))
+    key = recovery_key(res)
+    ana.post("/api/accounts", json={"name": "Old", "type": "bank"})
+    uid = user_id(tmp_path, "ana")
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    assert app.state.users.purge_expired() == 1
+    admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
+    if how == "recovery key":
+        ana = TestClient(app)
+        ok = ana.post("/recover", data={"username": "ana", "recovery_key": key, "password": "new-password-1",
+                                        "password2": "new-password-1"}, follow_redirects=False)
+        assert ok.headers["location"] == "/"
+    res = ana.get("/api/accounts")
+    assert res.status_code == 200 and res.json() == []
+    assert ana.post("/api/accounts", json={"name": "New", "type": "bank"}).status_code == 201
+    assert [a["name"] for a in ana.get("/api/accounts").json()] == ["New"]
+
+
 def test_extend_adds_days_and_no_expiry_removes_it(setup, tmp_path):
     """The admin can add days to an account or remove its expiry."""
     app, admin = setup
@@ -904,6 +926,7 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
     app = rates_app(tmp_path, rates, fx_daily_limit=3)
     admin = admin_client(app, tmp_path)
     ana, _ = sign_up(app, invite(admin))
+    usd_account(ana)
     start = date(2020, 1, 1)
     for n in range(5):
         ana.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}")
@@ -914,6 +937,39 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
     client.post("/login", data={"username": "ana", "password": "ana-password"})
     assert client.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=10)}").status_code == 200
     assert len(rates.calls) == 3
+
+
+def test_one_user_cannot_use_up_the_shared_limit_of_rate_requests(tmp_path):
+    """/api/fx takes only the user's currencies; refused requests don't count; others still get today's rate."""
+    from app.fx import Refused
+    from tests.test_fx import FakeRates
+
+    class Rates(FakeRates):
+        def __call__(self, base, quote, day):
+            if "XXX" in (base, quote):
+                self.calls.append((base, quote, day))
+                raise Refused("unknown currency")
+            return super().__call__(base, quote, day)
+
+    rates = Rates()
+    app = rates_app(tmp_path, rates, fx_daily_limit=3)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    ana.post("/api/accounts", json={"name": "Odd", "currency": "XXX"})
+    for currency in ("GBP", "JPY", "CHF", "SEK"):  # pairs of no account of hers: refused before any request
+        res = ana.get(f"/api/fx?from={currency}&to=EUR&date=2020-01-01")
+        assert res.status_code == 422 and currency in res.json()["detail"]
+    for n in range(5):  # a currency of hers the service doesn't know: asked, refused, not counted
+        assert ana.get(f"/api/fx?from=XXX&to=EUR&date=2020-01-0{n + 1}").status_code == 503
+    assert len(rates.calls) == 5
+    with sqlite3.connect(tmp_path / "rates.db") as db:
+        assert db.execute("SELECT coalesce(sum(count), 0) FROM requests").fetchone()[0] == 0
+
+    bea, _ = sign_up(app, invite(admin), username="bea", email="bea@example.com")
+    usd_account(bea)
+    combined = bea.get("/api/summary/combined").json()
+    assert combined["missing"] == [] and combined["rates"][0]["stale"] is False
+    assert rates.calls[-1] == ("USD", "EUR", None)
 
 
 def test_demos_never_ask_the_rate_service(tmp_path):
@@ -985,3 +1041,56 @@ def test_json_replace_backs_up_the_encrypted_file_first(setup, tmp_path):
     assert [a["name"] for a in client.get("/api/accounts").json()] == ["Secret savings"]
     backups = list((tmp_path / "users").glob("*.db.enc.backup-before-import-*"))
     assert len(backups) == 1 and b"Extra" not in backups[0].read_bytes()  # encrypted, like the database
+
+
+# --- Many requests at once ---
+
+def test_many_parallel_requests_of_one_user_do_not_freeze_the_app(tmp_path, monkeypatch):
+    """More parallel requests of one user than worker threads are all answered; health and other users keep going."""
+    import socket
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+    import uvicorn
+
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    bea, _ = sign_up(app, invite(admin), username="bea", email="bea@example.com")
+    cookies = {name: {USER_COOKIE: client.cookies[USER_COOKIE]} for name, client in (("ana", ana), ("bea", bea))}
+    real_unseal = crypto.unseal
+
+    def slow_unseal(*args):  # each request of a user holds the database a little while
+        time.sleep(0.03)
+        return real_unseal(*args)
+
+    monkeypatch.setattr(crypto, "unseal", slow_unseal)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    while not server.started:
+        assert time.time() < deadline, "the app did not start"
+        time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}"
+    http = requests.Session()
+    http.trust_env = False  # straight to the local server, never through a proxy from the environment
+    try:
+        def get(who):
+            return http.get(f"{url}/api/accounts", cookies=cookies[who], timeout=60).status_code
+
+        with ThreadPoolExecutor(80) as pool:
+            flood = [pool.submit(get, "ana") for _ in range(80)]
+            time.sleep(0.5)  # the flood is queued now
+            started = time.time()
+            assert http.get(f"{url}/api/health", timeout=5).status_code == 200
+            assert get("bea") == 200
+            assert time.time() - started < 2  # not behind ana's queue
+            assert [f.result() for f in flood] == [200] * 80
+    finally:
+        server.should_exit = True
+        thread.join(5)

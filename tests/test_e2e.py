@@ -108,7 +108,7 @@ def test_add_an_account_and_a_balance(page):
     row = page.locator("#accounts-table tbody tr", has_text="Savings")
     row.wait_for()
     row.click()
-    page.fill("#nb-amount", "1234,50")
+    page.fill("#nb-amount", "1,234.5")  # English regional format: a decimal point
     page.click("#nb-add")
     page.locator("#balances-table tbody td.num", has_text="1,234.50").first.wait_for()
     page.keyboard.press("Escape")
@@ -160,7 +160,7 @@ def test_update_balances_of_every_account_at_once(page):
     page.click("#update-btn")
     inputs = page.locator("#update-rows input")
     inputs.nth(0).fill("100")
-    inputs.nth(1).fill("50,25")
+    inputs.nth(1).fill("50.25")
     page.click("#update-form button[type=submit]")
     page.locator("#totals .tile-value", has_text="150.25").wait_for()
 
@@ -248,8 +248,8 @@ def test_typed_amounts_become_exact_cents(page):
         page.locator("#accounts-table tbody tr", has_text=name).wait_for()
     page.click("#update-btn")
     inputs = page.locator("#update-rows input")
-    inputs.nth(0).fill("1.234.567,895")  # more than 2 decimals: rounded half up
-    inputs.nth(1).fill("0,1")
+    inputs.nth(0).fill("1,234,567.895")  # more than 2 decimals: rounded half up
+    inputs.nth(1).fill("0.1")
     with page.expect_request(lambda r: r.url.endswith("/api/balances/bulk")) as sent:
         page.click("#update-form button[type=submit]")
     assert [i["amount"] for i in sent.value.post_data_json["items"]] == [123456790, 10]
@@ -281,3 +281,61 @@ def test_the_settings_list_the_daily_backups(page, server):
     page.locator("#backups-list li").first.wait_for()
     assert page.locator("#backups-list li").count() == 1
     assert "7 days" in page.locator("#backups-hint").inner_text()
+
+
+def test_typed_amounts_follow_the_decimal_separator_of_the_regional_format(page):
+    """With a comma as decimal separator, 1.234 is one thousand; an amount that doesn't fit it is an error."""
+    page.add_init_script("localStorage.setItem('abt-locale', 'es-ES')")
+    open_app(page)
+    page.click("#add-account-btn")
+    page.fill("#account-form input[name=name]", "Savings")
+    page.click("#account-form button[type=submit]")
+    page.locator("#accounts-table tbody tr", has_text="Savings").wait_for()
+    page.click("#update-btn")
+    amount = page.locator("#update-rows input").first
+    amount.fill("1,234.56")  # a point does not fit es-ES
+    page.click("#update-form button[type=submit]")
+    page.locator("#update-dlg", has_text="Invalid amount: 1,234.56").wait_for()
+    amount.fill("1.234")
+    with page.expect_request(lambda r: r.url.endswith("/api/balances/bulk")) as sent:
+        page.click("#update-form button[type=submit]")
+    assert sent.value.post_data_json["items"][0]["amount"] == 123400
+
+
+def test_csv_import_states_the_decimal_separator(page):
+    """The CSV dialog starts with the regional format's decimal separator, and changing it changes the amounts."""
+    page.add_init_script("localStorage.setItem('abt-locale', 'es-ES')")
+    open_app(page)
+    csv = b"account,date,amount\nComma,2026-01-31,1.234\n"
+    for decimal, name, shown in ((",", "Comma", "1234,00"), (".", "Point", "1,23")):
+        page.click("#data-menu summary")
+        page.click("#csv-import-btn")
+        assert page.locator("#csv-decimal").input_value() == ","  # es-ES: a comma, whatever was chosen before
+        assert "es-ES" in page.locator("#csv-decimal-hint").text_content()
+        page.select_option("#csv-decimal", decimal)
+        data = csv.replace(b"Comma", name.encode())
+        page.set_input_files("#csv-form input[name=file]", files=[{"name": "b.csv", "mimeType": "text/csv", "buffer": data}])
+        page.click("#csv-form button[type=submit]")
+        page.locator("#csv-result").wait_for()
+        page.keyboard.press("Escape")
+        page.locator("#accounts-table tbody tr", has_text=name).locator("td", has_text=shown).first.wait_for()
+
+
+def test_chart_date_and_range_helpers(page):
+    """monthsBefore clamps to the end of a shorter month and extent works past the Math.min spread limit."""
+    open_app(page)
+    src = page.evaluate("[...document.scripts].map((s) => s.src).find((s) => s.includes('/js/main.js'))")
+    result = page.evaluate("""async (src) => {
+        const { monthsBefore, extent } = await import(src.replace('main.js', 'charts.js'));
+        const iso = (d) => [d.getFullYear(), d.getMonth() + 1, d.getDate()].join('-');
+        const many = Array.from({ length: 200000 }, (_, i) => i - 1000);
+        return {
+            may31: iso(monthsBefore(new Date(2026, 4, 31), 3)),
+            may31Leap: iso(monthsBefore(new Date(2028, 4, 31), 3)),
+            mar31: iso(monthsBefore(new Date(2026, 2, 31), 6)),
+            jan15: iso(monthsBefore(new Date(2026, 0, 15), 1)),
+            extent: extent(many),
+        };
+    }""", src)
+    assert result == {"may31": "2026-2-28", "may31Leap": "2028-2-29", "mar31": "2025-9-30", "jan15": "2025-12-15",
+                      "extent": [-1000, 198999]}

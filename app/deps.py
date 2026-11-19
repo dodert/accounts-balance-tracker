@@ -1,13 +1,16 @@
 """What the routers share: the app's state (built once by create_app) and small helpers."""
+import asyncio
 import html
 import ipaddress
 import json
-from contextlib import contextmanager
+from collections.abc import Callable
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, Request, Response
+from fastapi.concurrency import contextmanager_in_threadpool, run_in_threadpool
 from fastapi.responses import HTMLResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -46,6 +49,7 @@ class Context:
     version: str
     new_demos: TryLimit = field(default_factory=lambda: TryLimit(DEMOS_PER_IP, 3600))
     pages: "Pages" = None
+    turns: dict[int, asyncio.Lock] = field(default_factory=dict)  # multi-user: one per user, see user_turn
 
     @property
     def multi(self) -> bool:
@@ -76,10 +80,32 @@ class Context:
             with self.SessionLocal() as db:
                 yield db
 
-    def get_db(self, request: Request):
-        """Dependency: a session on the database of this request (the user's, the demo's or the only one)."""
-        with self.open_db(request) as db:
+    @asynccontextmanager
+    async def user_turn(self, request: Request):
+        """Multi-user: wait until no other request of this user has its database open. The wait is in the event
+        loop, holding no worker thread: waiting on the database's own lock in the thread pool could take every
+        thread, so the request holding it never got one to finish and the app froze for everybody (#112)."""
+        user = getattr(request.state, "user", None)
+        if not self.multi or user is None or self.in_demo(request):
+            yield
+            return
+        async with self.turns.setdefault(user.user_id, asyncio.Lock()):
+            yield
+
+    async def get_db(self, request: Request):
+        """Dependency: a session on the database of this request (the user's, the demo's or the only one), open
+        until the answer is sent."""
+        async with self.user_turn(request), contextmanager_in_threadpool(self.open_db(request)) as db:
             yield db
+
+    async def read_db(self, request: Request, read: Callable[[Session], Any]) -> Any:
+        """`read(db)` in a worker thread, on this request's database opened only for it (in the user's turn)."""
+        def run():
+            with self.open_db(request) as db:
+                return read(db)
+
+        async with self.user_turn(request):
+            return await run_in_threadpool(run)
 
     def set_demo(self, response: Response, request: Request, on: bool, lang: str = "en") -> Response:
         if on:
