@@ -180,6 +180,8 @@ Set them in `docker-compose.yml` (`environment:`) or in the Unraid template.
 | `API_DOCS` | `false` | `true` = interactive API docs at `/docs` and `/redoc`, and the schema at `/openapi.json` (behind the login). Off, they answer `404` |
 | `PUID`, `PGID`, `PORT` | `99`, `100`, `80` | `PORT` is the port inside the container; change it only with host networking |
 
+An empty value means the default (`false` for the yes/no ones).
+
 The app holds financial data: turn the login on, and expose it only on your LAN or behind a reverse proxy with HTTPS.
 
 **Wrong logins**: after 10 wrong passwords, or 10 wrong one-time codes, from one IP in 15 minutes, that IP has to wait (`429`) until the oldest one is 15 minutes old; other IPs can still log in. A right password clears the count of its IP. IPv6 addresses count per /64 (one connection usually has the whole /64). Each user name also allows at most 30 wrong passwords in 15 minutes from all IPs together, so guessing from many addresses doesn't help either. Behind a reverse proxy the limit uses the real client IP only if the proxy's `X-Forwarded-For` is trusted; otherwise every visitor shares the proxy's IP and its limit. See also [SECURITY.md](SECURITY.md).
