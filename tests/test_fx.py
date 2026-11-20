@@ -47,10 +47,20 @@ def test_combined_total_fetches_once_a_day(fx):
     assert refreshed["total"] == 1475 and len(rates.calls) == 2
 
 
-def test_todays_rate_is_asked_again_after_3_hours(fx, tmp_path):
+def test_todays_rate_is_asked_again_after_3_hours(fx, tmp_path, monkeypatch):
     """Today's rate is used for 3 hours, then asked again."""
     import sqlite3
     from datetime import datetime
+
+    import app.fx
+
+    class Noon(datetime):  # "3 hours ago" must stay on the same server day whenever the test runs
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.combine(date.today(), datetime.min.time()).replace(hour=12)
+
+    monkeypatch.setattr(app.fx, "datetime", Noon)
+    datetime = Noon
     client, rates = fx
     client.get("/api/summary/combined")
     client.get("/api/summary/combined")
