@@ -160,6 +160,10 @@ def now() -> datetime:
     return datetime.now().replace(microsecond=0)
 
 
+class AccountExpired(Exception):
+    """The password (or recovery key) is right, but the account has expired: the user should ask the admin."""
+
+
 def expired(user: "User") -> bool:
     return user.expires_at is not None and user.expires_at <= now()
 
@@ -502,7 +506,9 @@ class Users:
         return new
 
     def login(self, username: str, password: str, ip: str | None = None, country: str | None = None) -> LoggedIn | None:
-        """The session if the password opens the user's key; None otherwise (also for blocked or unknown users)."""
+        """The session if the password opens the user's key; None otherwise (also for blocked or unknown users).
+        Raises AccountExpired when the password is right but the account has expired (only then, so nobody learns
+        it without the password)."""
         with self.Session() as db:
             user = db.scalar(select(User).where(User.username == username.strip().lower()))
             if user is None:
@@ -512,7 +518,9 @@ class Users:
                 key = self._data_key(user, self._unwrap(user, password))
             except crypto.WrongKey:
                 return None
-            if user.blocked or expired(user):
+            if expired(user):  # also blocked by purge_expired: the expiry is what the user needs to know
+                raise AccountExpired
+            if user.blocked:
                 return None
             if not self.databases.path(user.id).exists():
                 self.databases.create(user.id, key)  # deleted when the account expired, then extended by the admin
@@ -534,17 +542,22 @@ class Users:
             return self._logged_in(user, self._new_data_key(db, user, account_key, new))
 
     def recover(self, username: str, recovery: str, new: str) -> LoggedIn | None:
-        """Set a new password with the recovery key; None if they don't match."""
+        """Set a new password with the recovery key; None if they don't match. Raises AccountExpired, changing
+        nothing, when the key is right but the account has expired."""
         if len(new) < MIN_PASSWORD:
             raise SignupError("password")
         with self.Session() as db:
             user = db.scalar(select(User).where(User.username == username.strip().lower()))
-            if user is None or user.blocked:
+            if user is None:
                 return None
             try:
                 account_key = crypto.unseal(crypto.recovery_key(recovery, user.recovery_salt), user.key_by_recovery,
                                             key_aad(user.id))
             except crypto.WrongKey:
+                return None
+            if expired(user):
+                raise AccountExpired
+            if user.blocked:
                 return None
             return self._logged_in(user, self._new_data_key(db, user, account_key, new))
 
