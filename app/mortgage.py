@@ -47,6 +47,17 @@ class Extra:
     fee: Decimal = ZERO
     id: int | None = None
     note: str | None = None
+    monthly: bool = False  # one of the payments of a Monthly extra
+
+
+@dataclass(frozen=True)
+class Monthly:
+    """An extra amount paid every month, from `start` until the loan ends (simulated): right after each installment
+    due on or after `start`, as a prepayment of `amount` (and its `fee`) in `mode`."""
+    start: date
+    amount: Decimal
+    mode: str
+    fee: Decimal = ZERO
 
 
 @dataclass
@@ -127,7 +138,7 @@ def months_to_repay(outstanding: Decimal, i: Decimal, payment: Decimal) -> int:
     return max(1, math.ceil(n - 1e-9))
 
 
-def schedule(loan: Loan, extras: list[Extra], today: date) -> Schedule:
+def schedule(loan: Loan, extras: list[Extra], today: date, monthly: Monthly | None = None) -> Schedule:
     i = monthly_rate(loan)
     outstanding = Decimal(loan.principal)
     end = loan.term_months  # the number of the last installment
@@ -137,19 +148,24 @@ def schedule(loan: Loan, extras: list[Extra], today: date) -> Schedule:
     applied: list[Applied] = []
     rows: list[Row] = []
     number = 1
+
+    def prepay(extra: Extra, next_number: int) -> None:
+        """Lower the outstanding principal by the prepayment, before installment `next_number`."""
+        nonlocal outstanding, payment, end
+        amount = min(extra.amount, outstanding)
+        outstanding -= amount
+        if outstanding > 0 and amount > 0:
+            if extra.mode == REDUCE_PAYMENT:
+                payment = annuity(outstanding, i, end - next_number + 1)
+            else:
+                end = next_number - 1 + months_to_repay(outstanding, i, payment)
+        applied.append(Applied(extra, amount, outstanding, next_number if outstanding > 0 else None))
+
     while outstanding > 0 and number <= end:
         due = installment_date(loan, number)
         # Prepayments made before this installment (on the day of the previous one or later)
         while pending and pending[0].date < due:
-            extra = pending.pop(0)
-            amount = min(extra.amount, outstanding)
-            outstanding -= amount
-            if outstanding > 0 and amount > 0:
-                if extra.mode == REDUCE_PAYMENT:
-                    payment = annuity(outstanding, i, end - number + 1)
-                else:
-                    end = number - 1 + months_to_repay(outstanding, i, payment)
-            applied.append(Applied(extra, amount, outstanding, number if outstanding > 0 else None))
+            prepay(pending.pop(0), number)
         if outstanding <= 0:
             break
         interest = _cents(outstanding * i)
@@ -159,6 +175,8 @@ def schedule(loan: Loan, extras: list[Extra], today: date) -> Schedule:
         outstanding -= principal
         rows.append(Row(number, due, interest + principal, interest, principal, outstanding, due <= today))
         number += 1
+        if monthly and due >= monthly.start and outstanding > 0:
+            prepay(Extra(due, monthly.amount, monthly.mode, monthly.fee, monthly=True), number)
     for extra in pending:  # after the last installment: nothing left to repay
         applied.append(Applied(extra, ZERO, ZERO, None))
     result = Schedule(loan, rows, applied, first_payment, today)
@@ -203,12 +221,17 @@ def months_between(a: date | None, b: date | None) -> int:
     return (b.year - a.year) * 12 + b.month - a.month
 
 
-def compare(base: Schedule, simulated: Schedule, extras: list[Extra]) -> dict:
-    """What the simulated prepayments `extras` change: the interest saved (also net of their fees), the payment
-    after the last of them and the end date."""
+def compare(base: Schedule, simulated: Schedule, extras: list[Extra], monthly: Monthly | None = None) -> dict:
+    """What the simulated prepayments `extras` (and the `monthly` extra payment) change: the interest saved (also
+    net of their fees), the payment after the last of them (after the first monthly one) and the end date."""
     saved = base.totals["total_interest"] - simulated.totals["total_interest"]
-    fees = sum((e.fee for e in extras), ZERO)
-    last = max((e.date for e in extras), default=None)
+    # A monthly payment's fee counts only for the months it was paid
+    fees = sum((e.fee for e in extras), ZERO) + sum((p.extra.fee for p in simulated.prepayments
+                                                     if p.extra.monthly and p.applied > 0), ZERO)
+    # With a monthly payment: the date of its first one (after the first installment on or after its start)
+    first_monthly = next((p.extra.date for p in simulated.prepayments if p.extra.monthly), None)
+    dates = [e.date for e in extras] + ([first_monthly] if first_monthly else [])
+    last = max(dates, default=None)
     after = next((r for r in simulated.rows if last is None or r.date > last), None)
     before = next((r for r in base.rows if last is None or r.date > last), None)
     return {

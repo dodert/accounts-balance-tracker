@@ -21,8 +21,10 @@ export function parseRate(text) {
 }
 const rateText = (rate) => amountText(Math.round(rate * 10000)).replace(/([.,]\d\d)00$/, "$1");
 
-// The mortgage being shown, its schedule, the prepayment being edited and the simulated prepayments
-const view = { mortgage: null, schedule: null, editing: null, simulated: [], simulation: null };
+// The mortgage being shown, its schedule, the prepayment being edited, the simulated prepayments and the simulated
+// extra payment every month ({ start, amount, mode, fee } or null)
+const view = { mortgage: null, schedule: null, editing: null, simulated: [], monthly: null, simulation: null };
+const simulating = () => view.simulated.length > 0 || view.monthly !== null;
 
 export async function loadMortgages() {
   const list = await api("/api/mortgages");
@@ -53,6 +55,7 @@ export async function openMortgage(id) {
   view.mortgage = m;
   view.schedule = null;
   view.simulated = [];
+  view.monthly = null;
   view.simulation = null;
   const form = $("#mortgage-form");
   form.reset();
@@ -78,6 +81,7 @@ export async function openMortgage(id) {
     resetPrepaymentForm();
     setDate($("#ns-date"), today());
     for (const input of ["#ns-amount", "#ns-fee"]) $(input).value = "";
+    $("#ns-monthly").checked = false;
     renderSimulation();
     await loadSchedule();
   }
@@ -150,6 +154,7 @@ function drawMortgageChart() {
   const marks = [
     ...prepayments.map((p) => ({ date: p.date, amount: p.applied, currency: cur, color: COLORS.prepayment, description: `${t("mortgages.prepayment")} · ${modeText(p.mode)}` })),
     ...(sim ? view.simulated.map((p) => ({ date: p.date, amount: p.amount, currency: cur, color: COLORS.simulated, description: `${t("mortgages.simulated_prepayment")} · ${modeText(p.mode)}` })) : []),
+    ...(sim && view.monthly ? [{ date: view.monthly.start, amount: view.monthly.amount, currency: cur, color: COLORS.simulated, description: `${t("mortgages.monthly_from", { date: fmtDate(view.monthly.start) })} · ${modeText(view.monthly.mode)}` }] : []),
   ];
   const now = today();
   const drawn = drawChart(box, {
@@ -220,14 +225,14 @@ function readPrepayment(prefix) {
 
 async function afterChange() {
   await Promise.all([loadSchedule(), loadMortgages()]);
-  if (view.simulated.length) await simulate();
+  if (simulating()) await simulate();
 }
 
 // --- Simulator: prepayments that are not saved ---
 
 async function simulate() {
-  view.simulation = view.simulated.length
-    ? await api(`/api/mortgages/${view.mortgage.id}/simulate`, { json: { prepayments: view.simulated } })
+  view.simulation = simulating()
+    ? await api(`/api/mortgages/${view.mortgage.id}/simulate`, { json: { prepayments: view.simulated, monthly: view.monthly } })
     : null;
   renderSimulation();
   drawMortgageChart();
@@ -235,8 +240,15 @@ async function simulate() {
 
 function renderSimulation() {
   const cur = view.mortgage?.currency;
-  $("#simulation").hidden = !view.simulated.length;
-  $("#simulation-table tbody").innerHTML = view.simulated.map((p, i) => `
+  $("#simulation").hidden = !simulating();
+  const m = view.monthly;
+  // The monthly extra payment first: it can't be saved as real
+  $("#simulation-table tbody").innerHTML = (m ? `
+    <tr class="monthly">
+      <td>${esc(t("mortgages.monthly_from", { date: fmtDate(m.start) }))}</td><td class="num">${esc(exactMoney(m.amount, cur))}</td><td>${esc(modeText(m.mode))}</td>
+      <td class="num">${m.fee ? esc(exactMoney(m.fee, cur)) : ""}</td>
+      <td class="actions"><button type="button" class="icon danger" data-remove-monthly title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
+    </tr>` : "") + view.simulated.map((p, i) => `
     <tr>
       <td>${esc(fmtDate(p.date))}</td><td class="num">${esc(exactMoney(p.amount, cur))}</td><td>${esc(modeText(p.mode))}</td>
       <td class="num">${p.fee ? esc(exactMoney(p.fee, cur)) : ""}</td>
@@ -365,8 +377,12 @@ export function initMortgages() {
 
   $("#ns-add").addEventListener("click", async () => {
     try {
-      view.simulated.push(readPrepayment("ns"));
-      view.simulated.sort((a, b) => a.date.localeCompare(b.date));
+      const p = readPrepayment("ns");
+      if ($("#ns-monthly").checked) view.monthly = { start: p.date, amount: p.amount, mode: p.mode, fee: p.fee }; // one at a time
+      else {
+        view.simulated.push(p);
+        view.simulated.sort((a, b) => a.date.localeCompare(b.date));
+      }
       $("#ns-amount").value = "";
       $("#ns-fee").value = "";
       setError($("#mortgage-error"), null);
@@ -375,8 +391,13 @@ export function initMortgages() {
       setError($("#mortgage-error"), err);
     }
   });
-  $("#ns-clear").addEventListener("click", () => { view.simulated = []; simulate().catch(showMortgageError); });
+  $("#ns-clear").addEventListener("click", () => { view.simulated = []; view.monthly = null; simulate().catch(showMortgageError); });
   $("#simulation-table").addEventListener("click", async (e) => {
+    if (e.target.closest("[data-remove-monthly]")) {
+      view.monthly = null;
+      simulate().catch(showMortgageError);
+      return;
+    }
     const remove = e.target.closest("[data-remove]"), save = e.target.closest("[data-save]");
     if (!remove && !save) return;
     const i = Number((remove ?? save).dataset[remove ? "remove" : "save"]);
@@ -385,7 +406,7 @@ export function initMortgages() {
       if (save) await api(`/api/mortgages/${view.mortgage.id}/prepayments`, { json: view.simulated[i] });
       view.simulated.splice(i, 1);
       if (save) await afterChange(); // simulates again when some are left
-      if (!save || !view.simulated.length) await simulate();
+      if (!save || !simulating()) await simulate();
     } catch (err) {
       setError($("#mortgage-error"), err);
     }

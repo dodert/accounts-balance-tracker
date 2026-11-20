@@ -4,7 +4,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from app.mortgage import Extra, Loan, installment_date, schedule
+from app.mortgage import Extra, Loan, Monthly, compare, installment_date, schedule
 
 U = 10000  # ten-thousandths in the API
 
@@ -174,3 +174,42 @@ def test_principal_is_always_fully_repaid(mode):
     s = schedule(loan(principal=D("187654.32"), rate=D("2.17"), term_months=300), extras, date(2019, 1, 1))
     assert sum(r.principal for r in s.rows) + sum(p.applied for p in s.prepayments) == D("187654.32")
     assert s.rows[-1].outstanding == 0 and all(r.principal > 0 for r in s.rows)
+
+
+def test_a_monthly_extra_payment_goes_after_each_installment_until_the_end():
+    """An extra amount every month is paid after each installment from its start date, until nothing is left; its fee
+    counts only for the months it was paid."""
+    base = schedule(loan(), [], date(2019, 1, 1))
+    for mode in ("reduce_term", "reduce_payment"):
+        s = schedule(loan(), [], date(2019, 1, 1), Monthly(date(2021, 1, 1), D(200), mode, fee=D(1)))
+        monthly = [p for p in s.prepayments if p.extra.monthly]
+        assert monthly[0].extra.date == date(2021, 1, 31)  # after the first installment on or after the start
+        assert all(p.applied == 200 for p in monthly[:-1]) and 0 < monthly[-1].applied <= 200
+        assert sum(r.principal for r in s.rows) + sum(p.applied for p in s.prepayments) == D(100000)
+        compared = compare(base, s, [], Monthly(date(2021, 1, 1), D(200), mode, fee=D(1)))
+        assert compared["fees"] == len(monthly) and compared["net_saved"] == compared["interest_saved"] - len(monthly)
+    term = schedule(loan(), [], date(2019, 1, 1), Monthly(date(2021, 1, 1), D(200), "reduce_term"))
+    assert {r.payment for r in term.rows[:-1]} == {D("421.60")} and len(term.rows) < 360
+    payment = schedule(loan(), [], date(2019, 1, 1), Monthly(date(2021, 1, 1), D(200), "reduce_payment"))
+    assert payment.rows[12].payment == D("421.60") and payment.rows[14].payment < payment.rows[13].payment < D("421.60")
+
+
+def test_simulation_with_a_monthly_extra_payment(client):
+    """The simulator takes an extra payment every month, alone or with one-off prepayments, in both modes, and saves
+    nothing."""
+    m = make(client, first_payment="2020-01-31")
+    url = f"/api/mortgages/{m['id']}/simulate"
+    monthly = {"start": "2027-01-01", "amount": 200 * U, "mode": "reduce_term", "fee": U}
+    alone = client.post(url, json={"monthly": monthly}).json()
+    term, payment = alone["reduce_term"]["compared"], alone["reduce_payment"]["compared"]
+    assert alone["as_entered"]["compared"] == term
+    assert term["months_saved"] > 12 and term["interest_saved"] > payment["interest_saved"] > 0
+    assert term["fees"] > 12 * U and term["net_saved"] == term["interest_saved"] - term["fees"]
+    assert payment["payment_after"] < payment["payment_before"] and term["payment_after"] == term["payment_before"]
+    both = client.post(url, json={"monthly": monthly, "prepayments": [
+        {"date": "2028-05-10", "amount": 5000 * U, "mode": "reduce_term"}]}).json()
+    assert both["as_entered"]["compared"]["interest_saved"] > term["interest_saved"]
+    for wrong in ({"amount": 0}, {"fee": -1}, {"start": "nope"}):
+        assert client.post(url, json={"monthly": monthly | wrong}).status_code == 422
+    assert client.post(url, json={}).status_code == 422
+    assert client.get(f"/api/mortgages/{m['id']}/prepayments").json() == []

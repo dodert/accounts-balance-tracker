@@ -299,7 +299,7 @@
   "mortgages.confirm_delete": "¿Borrar la hipoteca \"{name}\" y sus amortizaciones?",
   "mortgages.confirm_delete_prepayment": "¿Borrar esta amortización?",
   "mortgages.simulator": "Simulador de amortizaciones",
-  "mortgages.simulator_hint": "Prueba amortizaciones que podrías hacer: no se guarda nada. Se comparan con la hipoteca tal como está, con las dos modalidades lado a lado, y se dibujan discontinuas en la gráfica.",
+  "mortgages.simulator_hint": "Prueba amortizaciones que podrías hacer, una vez o cada mes: no se guarda nada. Se comparan con la hipoteca tal como está, con las dos modalidades lado a lado, y se dibujan discontinuas en la gráfica.",
   "mortgages.simulate": "Simular",
   "mortgages.simulation_clear": "Borrar la simulación",
   "mortgages.make_real": "Guardar como real",
@@ -315,5 +315,7 @@
   "mortgages.schedule": "Cuadro de amortización",
   "mortgages.interest": "Intereses",
   "mortgages.principal_part": "Capital",
-  "mortgages.paid": "Pagada"
+  "mortgages.paid": "Pagada",
+  "mortgages.monthly": "Cada mes desde esa fecha hasta el final (un pago extra después de cada cuota)",
+  "mortgages.monthly_from": "Cada mes desde el {date}"
 }

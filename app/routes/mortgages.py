@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import clock
 from ..deps import Context
 from ..models import Mortgage, Prepayment, PrepaymentMode
-from ..mortgage import Extra, Loan, compare, schedule
+from ..mortgage import Extra, Loan, Monthly, compare, schedule
 from ..schemas import (
     MortgageIn,
     MortgageOut,
@@ -103,7 +103,8 @@ def router(ctx: Context) -> APIRouter:
 
     @router.post("/api/mortgages/{mortgage_id}/simulate", response_model=SimulateOut)
     def simulate(mortgage_id: int, data: SimulateIn, db: Session = Depends(get_db)):
-        """The schedule with some more prepayments, compared with the real one. Nothing is saved."""
+        """The schedule with some more prepayments and/or an extra payment every month, compared with the real one.
+        Nothing is saved."""
         mortgage = get_mortgage_or_404(db, mortgage_id)
         loan, real, today = loan_of(mortgage), extras_of(mortgage), clock.today()
         base = schedule(loan, real, today)
@@ -111,8 +112,10 @@ def router(ctx: Context) -> APIRouter:
         def run(mode: PrepaymentMode | None) -> dict:
             extras = [Extra(date=p.date, amount=p.amount, mode=(mode or p.mode).value, fee=p.fee)
                       for p in data.prepayments]
-            s = schedule(loan, real + extras, today)
-            return {"totals": s.totals, "compared": compare(base, s, extras),
+            m = data.monthly
+            monthly = m and Monthly(start=m.start, amount=m.amount, mode=(mode or m.mode).value, fee=m.fee)
+            s = schedule(loan, real + extras, today, monthly)
+            return {"totals": s.totals, "compared": compare(base, s, extras, monthly),
                     "outstanding": [r.outstanding for r in s.rows]}
 
         return {"base": base.totals, "as_entered": run(None),
