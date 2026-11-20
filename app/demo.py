@@ -20,7 +20,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from .db import Base, make_engine, make_sessionmaker
-from .models import Account, AccountType, Balance, Contribution, FxRate, Milestone
+from .models import Account, AccountType, Balance, Contribution, FxRate, Milestone, Mortgage, Prepayment, PrepaymentMode
 
 COOKIE = "abt_demo"
 # Most size of a demo database: anyone can try the demo, so its files (in the temporary folder) can't grow without end
@@ -77,6 +77,24 @@ SAMPLES = [
 ]
 
 
+# A mortgage started 5 years ago, with a discount and two partial prepayments (one of each kind, the second with a fee)
+MORTGAGE = {"name": {"en": "Home mortgage", "es": "Hipoteca vivienda"}, "institution": "Caja Litoral",
+            "principal": Decimal("150000"), "rate": Decimal("3.10"), "discount": Decimal("0.60"), "term_months": 300,
+            "months_ago": 60, "payment_day": 5}
+PREPAYMENTS = (  # (months ago, amount, mode, fee, note by language)
+    (30, Decimal("8000"), PrepaymentMode.reduce_term, Decimal("0"), {"en": "Bonus", "es": "Paga extra"}),
+    (8, Decimal("5000"), PrepaymentMode.reduce_payment, Decimal("50"), None),
+)
+
+
+def months_back(today: date, months: int, day: int) -> date:
+    """The `day` (or the month's last) of the month `months` before today's."""
+    year, month = divmod(today.year * 12 + today.month - 1 - months, 12)
+    month += 1
+    last = ((date(year + (month == 12), month % 12 + 1, 1)) - timedelta(days=1)).day
+    return date(year, month, min(day, last))
+
+
 def month_starts(today: date, months: int = MONTHS) -> list[date]:
     """The first day of the last `months` months, today's month included, oldest first."""
     out, year, month = [], today.year, today.month
@@ -121,6 +139,15 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
                 if month == n:  # the expense, a few days into the month, and the balance drops by it
                     account.milestones.append(Milestone(date=day + timedelta(days=12), amount=Decimal(cost), description=description[lang]))
                     value -= cost
+    m = MORTGAGE
+    mortgage = Mortgage(name=m["name"][lang], institution=m["institution"], currency="EUR", principal=m["principal"],
+                        rate=m["rate"], discount=m["discount"], term_months=m["term_months"],
+                        first_payment=months_back(today, m["months_ago"], m["payment_day"]),
+                        payment_day=m["payment_day"])
+    for months, amount, mode, fee, note in PREPAYMENTS:
+        mortgage.prepayments.append(Prepayment(date=months_back(today, months, 20), amount=amount, mode=mode, fee=fee,
+                                               note=note[lang] if note else None))
+    db.add(mortgage)
     # A sample USD/EUR rate from yesterday, so the combined total works offline too: today's real
     # rate is still fetched (only the two currencies are sent) and replaces it when it can be
     yesterday = today - timedelta(days=1)

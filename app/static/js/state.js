@@ -8,7 +8,7 @@ export const INVESTMENT_TYPES = ["investment", "pension", "crypto"];
 export const ALL_CURRENCIES = "*";
 // CONVERTED: every account converted into the default currency (every date at today's rate), on one chart
 export const CONVERTED = "=";
-export const state = { about: null, accounts: [], milestones: [], contributions: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
+export const state = { about: null, accounts: [], milestones: [], contributions: [], mortgages: [], histories: [], currencies: [], mode: "amounts", currency: null, editing: null, maximized: null, group: savedGroup() };
 
 // Chart grouping (by account or by institution), remembered in this browser
 export function savedGroup() {

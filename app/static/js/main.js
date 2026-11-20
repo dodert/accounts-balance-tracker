@@ -7,12 +7,13 @@ import { initDemo, renderDemo } from "./demo.js";
 import { initDialogs } from "./dialogs.js";
 import { $, showError } from "./dom.js";
 import { initFormat } from "./format.js";
+import { initMortgages, loadMortgages } from "./mortgages.js";
 import { initSettings, renderTimeZoneBadge } from "./settings.js";
 import { state } from "./state.js";
 import { initTotals, loadTotals } from "./totals.js";
 
 export async function refresh() {
-  await Promise.all([loadAccounts(), loadTotals(), loadMilestones(), loadContributions()]);
+  await Promise.all([loadAccounts(), loadTotals(), loadMilestones(), loadContributions(), loadMortgages()]);
   await loadHistory();
 }
 
@@ -23,6 +24,7 @@ initTotals();
 initAccounts();
 initCharts();
 initDialogs();
+initMortgages();
 initSettings();
 initDemo();
 

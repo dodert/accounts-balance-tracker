@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -120,3 +121,52 @@ class FxRate(Base):
     rate: Mapped[Decimal] = mapped_column(Numeric(18, 8))
     rate_date: Mapped[date] = mapped_column(Date)  # the day the rate is from
     fetched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class PrepaymentMode(str, enum.Enum):
+    """What a partial prepayment lowers: the monthly payment (same remaining term) or the term (same payment)."""
+    reduce_payment = "reduce_payment"
+    reduce_term = "reduce_term"
+
+
+class Mortgage(Base):
+    """A fixed-rate mortgage (French system: the same payment every month). Its amortization schedule is not stored:
+    app/mortgage.py computes it from these fields and the prepayments. Not linked to any account."""
+    __tablename__ = "mortgages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    institution: Mapped[str | None] = mapped_column(String(100))
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    principal: Mapped[Decimal] = mapped_column(Numeric(16, 4))
+    # Annual nominal rate (TIN) in %, before the discount; the applied rate is rate - discount
+    rate: Mapped[Decimal] = mapped_column(Numeric(7, 4))
+    discount: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=Decimal(0))  # percentage points
+    term_months: Mapped[int] = mapped_column(Integer)
+    first_payment: Mapped[date] = mapped_column(Date)  # the date of the first installment
+    payment_day: Mapped[int] = mapped_column(Integer)  # day of the month of the next ones (the last day if shorter)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    prepayments: Mapped[list["Prepayment"]] = relationship(
+        back_populates="mortgage", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="[Prepayment.date, Prepayment.id]",
+    )
+
+
+class Prepayment(Base):
+    """A partial early repayment of a mortgage. The fee is paid apart: it does not lower the principal."""
+    __tablename__ = "mortgage_prepayments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mortgage_id: Mapped[int] = mapped_column(ForeignKey("mortgages.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 4))
+    mode: Mapped[PrepaymentMode] = mapped_column(
+        Enum(PrepaymentMode, native_enum=False, length=20, values_callable=lambda e: [m.value for m in e]),
+    )
+    fee: Mapped[Decimal] = mapped_column(Numeric(16, 4), default=Decimal(0))
+    note: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    mortgage: Mapped[Mortgage] = relationship(back_populates="prepayments")

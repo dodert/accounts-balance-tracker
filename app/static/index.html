@@ -108,6 +108,28 @@
         <p><button type="button" id="demo-try" data-i18n="demo.try">Try it with sample data</button></p>
       </div>
     </section>
+    <section class="panel" id="mortgages-panel">
+      <div class="panel-head">
+        <h2 data-i18n="mortgages.title">Mortgages</h2>
+        <span class="spacer"></span>
+        <button type="button" id="add-mortgage-btn" data-i18n="mortgages.add">+ Mortgage</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data" id="mortgages-table">
+          <thead>
+            <tr>
+              <th data-i18n="mortgages.name">Mortgage</th>
+              <th class="num" data-i18n="mortgages.applied_rate">Applied rate</th>
+              <th class="num" data-i18n="mortgages.payment">Monthly payment</th>
+              <th class="num" data-i18n="mortgages.outstanding">Outstanding</th>
+              <th data-i18n="mortgages.end_date">Ends</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint" id="mortgages-empty" data-i18n="mortgages.empty">No mortgages. Add a fixed-rate mortgage to see its amortization schedule and simulate partial prepayments.</p>
+    </section>
   </main>
 
   <footer><span id="version"></span> · <a href="https://github.com/dodert/accounts-balance-tracker" target="_blank" rel="noopener">GitHub</a></footer>
@@ -210,6 +232,79 @@
     </form>
   </dialog>
 
+  <!-- A mortgage: its details, summary, chart, prepayments, simulator and amortization schedule -->
+  <dialog id="mortgage-dlg" class="mortgage-dlg">
+    <form method="dialog" id="mortgage-form">
+      <h2 id="mortgage-dlg-title" data-i18n="mortgages.new">New mortgage</h2>
+      <div class="row">
+        <label><span data-i18n="mortgages.name">Mortgage</span> <input name="name" required maxlength="100"></label>
+        <label><span data-i18n="account.institution">Institution</span> <input name="institution" maxlength="100"></label>
+        <label class="narrow"><span data-i18n="account.currency">Currency</span> <input name="currency" required maxlength="3" pattern="[A-Za-z]{3}" autocapitalize="characters"></label>
+      </div>
+      <div class="row">
+        <label><span data-i18n="mortgages.principal">Amount borrowed</span> <input type="text" inputmode="decimal" name="principal" required autocomplete="off"></label>
+        <label><span data-i18n="mortgages.term">Term (months)</span> <input type="number" name="term_months" required min="1" max="600" step="1"></label>
+      </div>
+      <div class="row">
+        <label><span data-i18n="mortgages.rate">Rate without discount (%)</span> <input type="text" inputmode="decimal" name="rate" required autocomplete="off"></label>
+        <label><span data-i18n="mortgages.discount">Discount (points)</span> <input type="text" inputmode="decimal" name="discount" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="mortgage-rate-hint" aria-live="polite"></p>
+      <div class="row">
+        <label><span data-i18n="mortgages.first_payment">First installment</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="first_payment" required><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+        <label><span data-i18n="mortgages.payment_day">Payment day</span> <input type="number" name="payment_day" min="1" max="31" step="1"></label>
+      </div>
+      <label><span data-i18n="account.notes">Notes</span> <textarea name="notes" rows="2" maxlength="5000"></textarea></label>
+      <p class="hint" data-i18n="mortgages.hint">Fixed rate, French system: the same payment every month. Installments are marked paid on their date. Mortgages don't change the totals of your accounts.</p>
+
+      <div id="mortgage-details" hidden>
+        <section class="tiles mortgage-summary" id="mortgage-summary" aria-live="polite"></section>
+        <div id="mortgage-chart" class="chart"></div>
+        <div id="mortgage-legend" class="legend"></div>
+
+        <h3 data-i18n="mortgages.prepayments">Partial prepayments</h3>
+        <p class="hint" data-i18n="mortgages.prepayments_hint">Money paid off the principal before its time. Reducing the term keeps the payment; reducing the payment keeps the end date. The fee is paid apart.</p>
+        <div class="row add-balance">
+          <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="np-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+          <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" id="np-amount" autocomplete="off"></label>
+          <label><span data-i18n="mortgages.mode">It reduces</span> <select id="np-mode"><option value="reduce_term" data-i18n="mortgages.reduce_term">Reduce the term</option><option value="reduce_payment" data-i18n="mortgages.reduce_payment">Reduce the payment</option></select></label>
+          <label><span data-i18n="mortgages.fee">Fee</span> <input type="text" inputmode="decimal" id="np-fee" autocomplete="off"></label>
+          <label><span data-i18n="account.note">Note</span> <input id="np-note" maxlength="300"></label>
+          <button type="button" id="np-add" data-i18n="account.add_balance">Add</button>
+          <button type="button" id="np-cancel" data-i18n="common.cancel" hidden>Cancel</button>
+        </div>
+        <div class="table-wrap balances-wrap"><table class="data" id="prepayments-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="mortgages.mode">It reduces</th><th class="num" data-i18n="mortgages.fee">Fee</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
+
+        <h3 data-i18n="mortgages.simulator">Prepayment simulator</h3>
+        <p class="hint" data-i18n="mortgages.simulator_hint">Try prepayments you could make: nothing is saved. They are compared with the mortgage as it is, with both ways side by side, and drawn dashed on the chart.</p>
+        <div class="row add-balance">
+          <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="ns-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+          <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" id="ns-amount" autocomplete="off"></label>
+          <label><span data-i18n="mortgages.mode">It reduces</span> <select id="ns-mode"><option value="reduce_term" data-i18n="mortgages.reduce_term">Reduce the term</option><option value="reduce_payment" data-i18n="mortgages.reduce_payment">Reduce the payment</option></select></label>
+          <label><span data-i18n="mortgages.fee">Fee</span> <input type="text" inputmode="decimal" id="ns-fee" autocomplete="off"></label>
+          <button type="button" id="ns-add" data-i18n="mortgages.simulate">Simulate</button>
+        </div>
+        <div id="simulation" hidden>
+          <div class="table-wrap"><table class="data" id="simulation-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="mortgages.mode">It reduces</th><th class="num" data-i18n="mortgages.fee">Fee</th><th></th></tr></thead><tbody></tbody></table></div>
+          <div class="table-wrap"><table class="data" id="simulation-result"></table></div>
+          <p><button type="button" id="ns-clear" data-i18n="mortgages.simulation_clear">Clear the simulation</button></p>
+        </div>
+
+        <details id="schedule-wrap">
+          <summary data-i18n="mortgages.schedule">Amortization schedule</summary>
+          <div class="table-wrap schedule-wrap"><table class="data" id="schedule-table"></table></div>
+        </details>
+      </div>
+      <p class="error" id="mortgage-error" hidden></p>
+      <menu>
+        <button type="button" id="mortgage-delete" class="danger" hidden data-i18n="common.delete">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" class="cancel" data-i18n="common.close">Close</button>
+        <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
   <!-- One account's chart, maximized -->
   <dialog id="chart-dlg" class="chart-dlg">
     <div id="chart-dlg-head"></div>
@@ -245,7 +340,7 @@
   <dialog id="json-dlg">
     <form method="dialog" id="json-form">
       <h2 data-i18n="json.title">Import JSON</h2>
-      <p class="hint" data-i18n="json.hint">A file from "Export everything (JSON)": accounts with all their details, balances and milestones.</p>
+      <p class="hint" data-i18n="json.hint">A file from "Export everything (JSON)": accounts with all their details, balances, milestones and contributions, and mortgages with their prepayments.</p>
       <input type="file" name="file" accept=".json,application/json" required>
       <fieldset>
         <label class="radio"><input type="radio" name="mode" value="merge" checked> <span data-i18n="json.merge">Merge: add only what is not there yet (what already exists is not imported, and is listed)</span></label>

@@ -22,7 +22,18 @@ from .deps import STATIC_DIR, Context, Pages
 from .fx import Fetcher, SharedRates, frankfurter
 from .geo import Countries
 from .migrate import sqlite_file, upgrade_database
-from .routes import accounts, admin, balances, contributions, info, login, milestones, rates, transfer
+from .routes import (
+    accounts,
+    admin,
+    balances,
+    contributions,
+    info,
+    login,
+    milestones,
+    mortgages,
+    rates,
+    transfer,
+)
 from .routes import demo as demo_routes
 from .totp import Totp
 from .users import DatabaseTooBig, Users
@@ -132,7 +143,8 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
 
     middleware.install(app, ctx)
     app.add_middleware(LocalDateMiddleware)  # outermost: "today" is the browser's date (clock.py)
-    for area in (info, demo_routes, accounts, balances, milestones, contributions, rates, transfer, login, admin):
+    for area in (info, demo_routes, accounts, balances, milestones, contributions, mortgages, rates, transfer, login,
+                 admin):
         app.include_router(area.router(ctx))
 
     # --- Pages ---

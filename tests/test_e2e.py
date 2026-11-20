@@ -433,3 +433,67 @@ def test_the_login_page_says_when_the_account_expired(page, request, tmp_path):
     page.locator("#login-expired").wait_for()
     assert page.locator("#login-expired").text_content() == "Your account has expired. Contact the administrator to extend it."
     assert page.locator("#login-error").is_hidden()
+
+
+def test_create_a_mortgage_and_add_a_prepayment(page):
+    """A mortgage made in its dialog shows its applied rate, payment and schedule; a prepayment that reduces the term
+    shortens it, and both show in the list."""
+    open_app(page)
+    page.locator("#mortgages-empty").wait_for()
+    page.click("#add-mortgage-btn")
+    form = page.locator("#mortgage-form")
+    form.locator("input[name=name]").fill("Home")
+    form.locator("input[name=principal]").fill("100,000")  # English regional format
+    form.locator("input[name=term_months]").fill("360")
+    form.locator("input[name=rate]").fill("3.5")
+    form.locator("input[name=discount]").fill("0.5")
+    assert page.locator("#mortgage-rate-hint").text_content().startswith("Applied rate: 3.00%")
+    form.locator("input[name=first_payment]").fill("2020-01-31")
+    form.locator("button[type=submit]").click()
+    # Saved: the dialog opens again with its summary, chart and schedule
+    page.locator("#mortgage-summary .tile-value", has_text="€421.60").wait_for()
+    page.locator("#mortgage-chart svg").wait_for()
+    assert page.locator("#mortgage-legend").text_content().count("Today") == 1
+    page.click("#schedule-wrap summary")
+    first = page.locator("#schedule-table tbody tr").first
+    assert "€250.00" in first.text_content() and "Paid" in first.text_content()
+
+    page.fill("#np-date", "2021-01-10")
+    page.fill("#np-amount", "10,000")
+    page.select_option("#np-mode", "reduce_term")
+    page.fill("#np-fee", "100")
+    page.click("#np-add")
+    page.locator("#prepayments-table tbody td", has_text="Reduce the term").wait_for()
+    page.locator("#schedule-table tr.prepayment").wait_for()
+    assert page.locator("#mortgage-chart svg .milestone-line").count() == 1
+    page.keyboard.press("Escape")
+    row = page.locator("#mortgages-table tbody tr", has_text="Home")
+    assert "3.00%" in row.text_content() and "€421.60" in row.text_content()
+    assert "2045" in row.text_content()  # 308 installments instead of 360
+
+
+def test_simulate_prepayments_without_saving_them(page):
+    """The simulator compares a prepayment in both ways, draws it dashed on the chart, saves nothing until asked, and
+    can turn it into a real prepayment."""
+    open_app(page)
+    page.click("#demo-try")
+    row = page.locator("#mortgages-table tbody tr", has_text="Home mortgage")
+    row.click()
+    page.locator("#mortgage-chart svg").wait_for()
+    real = page.locator("#prepayments-table tbody tr").count()
+    page.fill("#ns-amount", "10000")
+    page.select_option("#ns-mode", "reduce_payment")
+    page.click("#ns-add")
+    page.locator("#simulation-result tbody").wait_for()
+    result = page.locator("#simulation-result")
+    assert [h.strip() for h in result.locator("thead th").all_text_contents()[1:]] == [
+        "As entered", "All reducing the term", "All reducing the payment"]
+    assert "months sooner" in result.locator("tbody tr", has_text="Ends").text_content()
+    assert "instead of" in result.locator("tbody tr", has_text="Payment after them").text_content()
+    assert page.locator("#mortgage-chart svg path.line.dashed").count() == 1
+    assert "Outstanding (simulated)" in page.locator("#mortgage-legend").text_content()
+    assert page.locator("#prepayments-table tbody tr").count() == real  # nothing saved
+    page.click("#simulation-table [data-save]")
+    page.locator("#prepayments-table tbody tr").nth(real).wait_for()
+    page.locator("#simulation").wait_for(state="hidden")
+    assert page.locator("#mortgage-chart svg path.line.dashed").count() == 0
