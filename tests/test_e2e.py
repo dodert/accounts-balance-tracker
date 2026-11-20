@@ -12,6 +12,7 @@ import re
 import socket
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -34,23 +35,35 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture
-def server(tmp_path):
-    """The app (single user, no login) served by uvicorn on a free local port."""
+@contextmanager
+def serve(app):
+    """`app` served by uvicorn on a free local port; yields its address."""
     import uvicorn
     port = free_port()
-    config = uvicorn.Config(create_app(Settings(data_dir=tmp_path, default_currency="EUR")), host="127.0.0.1",
-                            port=port, log_level="warning")
-    app_server = uvicorn.Server(config)
+    app_server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=app_server.run, daemon=True)
     thread.start()
     deadline = time.time() + 10
     while not app_server.started:
         assert time.time() < deadline, "the app did not start"
         time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    app_server.should_exit = True
-    thread.join(5)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        app_server.should_exit = True
+        thread.join(5)
+
+
+@pytest.fixture
+def server(request, tmp_path):
+    """The app served on a free local port: single user and no login, unless the test is marked
+    `@pytest.mark.settings(...)` with other settings."""
+    marker = request.node.get_closest_marker("settings")
+    settings = Settings(data_dir=tmp_path, default_currency="EUR", **(marker.kwargs if marker else {}))
+    app = create_app(settings)
+    request.node.app = app
+    with serve(app) as address:
+        yield address
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +105,7 @@ def test_the_page_loads_with_no_data(page):
     """The page loads its modules, shows the version, the time zone and the 'no accounts yet' message."""
     open_app(page)
     assert page.locator("#version").text_content().startswith("v")
-    assert page.locator("#empty").is_visible()
+    page.locator("#empty").wait_for()  # shown once the accounts are loaded, after the version
     assert page.locator("#empty .hint").text_content().startswith("No accounts yet")
     zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
     assert page.locator("#tz-badge").text_content() == f"🕒 {zone.replace('_', ' ')}"  # the browser's time zone
@@ -398,3 +411,25 @@ def test_the_legend_explains_each_kind_of_line_drawn(page):
     page.click("#chart-panel .views button[data-mode=percent]")
     page.wait_for_selector("#chart-legend .legend-line")
     check("#chart-legend", "#chart svg")
+@pytest.mark.settings(multi_user=True, auth_username="admin", auth_password="admin-password-1", country_db=False)
+def test_the_login_page_says_when_the_account_expired(page, request, tmp_path):
+    """With the right password of an expired account, the login page says it expired; with a wrong one, the usual error."""
+    import sqlite3
+    users = request.node.app.state.users
+    users.sign_up(users.invite(), "ana", "ana@example.com", "ana-password")
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        db.execute("UPDATE users SET expires_at = '2020-01-01 00:00:00' WHERE username = 'ana'")
+
+    def log_in(password):
+        page.goto("/login")
+        page.fill("input[name=username]", "ana")
+        page.fill("input[name=password]", password)
+        page.click("button[type=submit]")
+        page.wait_for_url("**/login?error=*")
+
+    log_in("not-hers")
+    assert page.locator("#login-error").is_visible() and page.locator("#login-expired").is_hidden()
+    log_in("ana-password")
+    page.locator("#login-expired").wait_for()
+    assert page.locator("#login-expired").text_content() == "Your account has expired. Contact the administrator to extend it."
+    assert page.locator("#login-error").is_hidden()
