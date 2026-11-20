@@ -337,7 +337,7 @@ export function initDialogs() {
     if (body.get("mode") === "replace" && !confirm(t("json.confirm_replace"))) return;
     try {
       const r = await api("/api/import/json", { method: "POST", body });
-      out.textContent = [t("json.result", { accounts: r.accounts_created, balances: r.balances_created, milestones: r.milestones_created, contributions: r.contributions_created }),
+      out.textContent = [t("json.result", { accounts: r.accounts_created, balances: r.balances_created, milestones: r.milestones_created, contributions: r.contributions_created, mortgages: r.mortgages_created, prepayments: r.prepayments_created }),
         ...duplicateLines(r)].join("\n");
       await refresh();
     } catch (err) {

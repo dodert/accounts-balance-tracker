@@ -14,7 +14,7 @@ from pydantic import (
     field_validator,
 )
 
-from .models import AccountType
+from .models import AccountType, PrepaymentMode
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Currency = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")]
@@ -270,6 +270,176 @@ class JsonImportOut(BaseModel):
     balances_created: int
     milestones_created: int
     contributions_created: int
+    mortgages_created: int = 0
+    prepayments_created: int = 0
     # What was already there (merge): not imported, listed (the first ones)
     duplicates_count: int
     duplicates: list[str]
+
+
+# --- Mortgages (app/mortgage.py) ---
+
+# An annual rate or a discount in %, with up to 4 decimals (2.95 is 2.95 %): sent and read as a JSON number
+Rate = Annotated[Decimal, Field(ge=0, le=100, max_digits=7, decimal_places=4)]
+RateOut = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
+
+
+def _more_than_zero(value: Decimal) -> Decimal:
+    if value <= 0:
+        raise ValueError("must be more than 0")
+    return value
+
+
+def _not_negative(value: Decimal) -> Decimal:
+    if value < 0:
+        raise ValueError("can't be negative")
+    return value
+
+
+class MortgageIn(BaseModel):
+    name: Name
+    institution: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] | None = None
+    currency: Currency | None = None  # None -> DEFAULT_CURRENCY
+    principal: Amount
+    rate: Rate  # before the discount
+    discount: Rate = Decimal(0)
+    term_months: int = Field(ge=1, le=600)
+    first_payment: Date
+    payment_day: int | None = Field(None, ge=1, le=31)  # None -> the day of the first payment
+    notes: Notes | None = None
+
+    _blanks = field_validator("institution", "notes", "currency", mode="before")(_blank_is_none)
+    _positive = field_validator("principal")(_more_than_zero)
+
+    @field_validator("discount")
+    @classmethod
+    def discount_below_rate(cls, value: Decimal, info) -> Decimal:
+        rate = info.data.get("rate")
+        if rate is not None and value > rate:
+            raise ValueError("the discount can't be more than the rate")
+        return value
+
+
+class MortgageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    institution: str | None
+    currency: str
+    principal: Units
+    rate: RateOut
+    discount: RateOut
+    term_months: int
+    first_payment: Date
+    payment_day: int
+    notes: str | None
+
+
+class PrepaymentIn(BaseModel):
+    date: Date
+    amount: Amount
+    mode: PrepaymentMode
+    fee: Amount = Decimal(0)
+    note: Note | None = None
+
+    _blanks = field_validator("note", mode="before")(_blank_is_none)
+    _positive = field_validator("amount")(_more_than_zero)
+    _fee = field_validator("fee")(_not_negative)
+
+
+class PrepaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    mortgage_id: int
+    date: Date
+    amount: Units
+    mode: PrepaymentMode
+    fee: Units
+    note: str | None
+
+
+class ScheduleRow(BaseModel):
+    number: int
+    date: Date
+    payment: Units
+    interest: Units
+    principal: Units
+    outstanding: Units  # after this installment
+    paid: bool          # its date has come (the user's today)
+
+
+class AppliedPrepayment(BaseModel):
+    id: int | None
+    date: Date
+    amount: Units
+    applied: Units      # what lowered the principal: less than the amount when that was more than what was left
+    mode: PrepaymentMode
+    fee: Units
+    note: str | None
+    outstanding: Units  # after it
+    before_installment: int | None  # the next installment's number; None when nothing was left to repay
+
+
+class ScheduleTotals(BaseModel):
+    applied_rate: RateOut
+    first_payment: Units
+    current_payment: Units | None   # the next installment's
+    next_date: Date | None
+    outstanding: Units               # today
+    principal_paid: Units            # by the installments paid so far
+    interest_paid: Units
+    prepaid: Units                   # prepayments made so far
+    fees_paid: Units
+    installments_paid: int
+    installments_left: int
+    end_date: Date | None
+    total_interest: Units            # over the whole loan
+    total_prepaid: Units
+    total_fees: Units
+    installments: int
+
+
+class ScheduleOut(BaseModel):
+    mortgage: MortgageOut
+    rows: list[ScheduleRow]
+    prepayments: list[AppliedPrepayment]
+    totals: ScheduleTotals
+
+
+class SimulatedPrepayment(BaseModel):
+    date: Date
+    amount: Amount
+    mode: PrepaymentMode = PrepaymentMode.reduce_term
+    fee: Amount = Decimal(0)
+
+    _positive = field_validator("amount")(_more_than_zero)
+    _fee = field_validator("fee")(_not_negative)
+
+
+class SimulateIn(BaseModel):
+    prepayments: list[SimulatedPrepayment] = Field(min_length=1, max_length=100)
+
+
+class Comparison(BaseModel):
+    interest_saved: Units
+    fees: Units
+    net_saved: Units
+    months_saved: int
+    end_date: Date | None
+    payment_before: Units | None
+    payment_after: Units | None
+
+
+class Simulation(BaseModel):
+    totals: ScheduleTotals
+    compared: Comparison
+    outstanding: list[Units]  # after each installment, by number (shorter when it ends sooner)
+
+
+class SimulateOut(BaseModel):
+    base: ScheduleTotals            # the mortgage as it is (real prepayments included)
+    as_entered: Simulation          # with the simulated prepayments as entered
+    reduce_payment: Simulation      # the same prepayments, all lowering the payment
+    reduce_term: Simulation         # the same prepayments, all shortening the term

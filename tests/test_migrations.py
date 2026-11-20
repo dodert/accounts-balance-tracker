@@ -1,4 +1,6 @@
 import sqlite3
+from datetime import date
+from decimal import Decimal
 
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -171,7 +173,47 @@ def test_upgrade_to_four_decimals_keeps_every_amount(tmp_path):
         assert conn.scalar(text("SELECT count(*) FROM balances")) == 0  # the cascade still works
         assert conn.scalar(text("SELECT count(*) FROM milestones")) == 0
         assert conn.scalar(text("SELECT count(*) FROM contributions")) == 0
-    assert len(list(tmp_path.glob("db.sqlite.backup-0006-to-0007-*"))) == 1
+    assert len(list(tmp_path.glob("db.sqlite.backup-0006-to-*"))) == 1
+
+
+def test_upgrade_to_mortgages_keeps_the_data(tmp_path):
+    """0008 adds the mortgages and their prepayments; every account, balance, milestone and contribution of a 0007
+    database stays, and a prepayment goes with its mortgage."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")  # the app's engine: foreign keys on
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0007")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'loan', 'EUR', 0)"))
+        conn.execute(text("INSERT INTO balances (account_id, date, amount) VALUES (1, '2026-01-01', -150000.1234)"))
+        conn.execute(text("INSERT INTO milestones (account_id, date, amount, description) VALUES (1, '2026-01-10', 300, 'Car')"))
+        conn.execute(text("INSERT INTO contributions (account_id, date, amount) VALUES (1, '2026-01-02', 4)"))
+    upgrade_database(engine)
+    from sqlalchemy.orm import Session
+
+    from app.models import Balance, Mortgage, Prepayment, PrepaymentMode
+    with Session(engine) as db:
+        assert [b.amount for b in db.query(Balance)] == [Decimal("-150000.1234")]
+        db.add(Mortgage(name="Home", currency="EUR", principal=Decimal("150000"), rate=Decimal("3.1"),
+                        discount=Decimal("0.6"), term_months=300, first_payment=date(2026, 1, 5), payment_day=5,
+                        prepayments=[Prepayment(date=date(2026, 6, 1), amount=Decimal("5000"),
+                                                mode=PrepaymentMode.reduce_term, fee=Decimal("0"))]))
+        db.commit()
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM milestones")) == 1
+        assert conn.scalar(text("SELECT count(*) FROM contributions")) == 1
+        conn.execute(text("DELETE FROM mortgages"))
+        assert conn.scalar(text("SELECT count(*) FROM mortgage_prepayments")) == 0  # deleted with its mortgage
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
+    assert len(list(tmp_path.glob("db.sqlite.backup-0007-to-0008-*"))) == 1
 
 
 def _mode(path):

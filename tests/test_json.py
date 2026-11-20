@@ -16,6 +16,11 @@ def fill(client):
     client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 70000})
     client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 3000000, "description": "Car"})
     client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-05", "amount": 5000000, "note": "first"})
+    m = client.post("/api/mortgages", json={"name": "Home", "institution": "ING Bank", "principal": 1500001234,
+                                            "rate": 3.1, "discount": 0.625, "term_months": 300,
+                                            "first_payment": "2024-02-05", "notes": "flat"}).json()
+    client.post(f"/api/mortgages/{m['id']}/prepayments", json={"date": "2025-06-10", "amount": 60000000,
+                                                               "mode": "reduce_term", "fee": 500000, "note": "bonus"})
 
 
 def snapshot(client):
@@ -36,7 +41,7 @@ def test_export_has_everything(client):
     res = client.get("/api/export/json")
     assert res.headers["content-disposition"].startswith("attachment") and ".json" in res.headers["content-disposition"]
     data = res.json()
-    assert (data["format"], data["version"]) == ("accounts-balance-tracker", 2)
+    assert (data["format"], data["version"]) == ("accounts-balance-tracker", 3)
     accounts = {a["name"]: a for a in data["accounts"]}
     assert set(accounts) == {"ING", "Old", "Empty"}  # also an account without balances
     ing = accounts["ING"]
@@ -47,6 +52,11 @@ def test_export_has_everything(client):
     assert ing["contributions"] == [{"date": "2026-01-05", "amount": "500.00", "note": "first"}]
     assert accounts["Old"]["contributions"] == []
     assert accounts["Old"]["archived"] is True and accounts["Old"]["currency"] == "USD"
+    assert data["mortgages"] == [{
+        "name": "Home", "institution": "ING Bank", "currency": "EUR", "principal": "150000.1234", "rate": "3.1",
+        "discount": "0.625", "term_months": 300, "first_payment": "2024-02-05", "payment_day": 5, "notes": "flat",
+        "prepayments": [{"date": "2025-06-10", "amount": "6000.00", "mode": "reduce_term", "fee": "50.00",
+                         "note": "bonus"}]}]
 
 
 def test_replace_round_trip_gives_the_same_data(client, tmp_path):
@@ -58,8 +68,10 @@ def test_replace_round_trip_gives_the_same_data(client, tmp_path):
     res = post(other, exported, "replace")
     assert res.status_code == 200, res.text
     assert res.json() == {"accounts_created": 3, "balances_created": 3, "milestones_created": 1,
-                          "contributions_created": 1, "duplicates_count": 0, "duplicates": []}
+                          "contributions_created": 1, "mortgages_created": 1, "prepayments_created": 1,
+                          "duplicates_count": 0, "duplicates": []}
     assert snapshot(other)["accounts"] == snapshot(client)["accounts"]
+    assert snapshot(other)["mortgages"] == snapshot(client)["mortgages"]
     # A backup of the database was made before replacing it
     assert len(list((tmp_path / "other").glob("balances.db.backup-before-import-*"))) == 1
 
@@ -98,10 +110,10 @@ def test_merge_imports_only_what_is_not_there_and_lists_it(client, tmp_path):
     data["accounts"].append({"name": "New", "balances": [{"date": "2026-01-31", "amount": "5"}]})
     res = post(client, json.dumps(data).encode(), "merge").json()
     assert (res["accounts_created"], res["balances_created"], res["milestones_created"], res["contributions_created"]) == (1, 2, 1, 1)
-    assert res["duplicates_count"] == 5
+    assert res["duplicates_count"] == 6
     assert res["duplicates"] == ["ING (ING Bank): balance on 2026-01-31", "ING (ING Bank): balance on 2026-02-28",
                                  "ING (ING Bank): milestone 'Car' on 2026-02-01", "ING (ING Bank): contribution on 2026-01-05",
-                                 "Old: balance on 2026-01-31"]
+                                 "Old: balance on 2026-01-31", "Home (ING Bank): prepayment on 2025-06-10"]
     after = {a["name"]: a for a in snapshot(client)["accounts"]}
     assert after["ING"]["balances"][0]["amount"] == "1000.50" and after["ING"]["notes"] == "joint account"
     assert len(after["ING"]["balances"]) == 3 and len(after["ING"]["milestones"]) == 2
@@ -159,3 +171,28 @@ def test_four_decimals_survive_export_and_import_and_version_1_files_are_read(cl
     assert {a["name"]: a["balance"] for a in other.get("/api/accounts").json()}["Old file"] == 12345000
     too_many = {**old, "accounts": [{"name": "X", "balances": [{"date": "2026-01-31", "amount": "1.23456"}]}]}
     assert post(other, json.dumps(too_many).encode(), "merge").status_code == 422
+
+
+def test_mortgages_merge_and_older_files_without_them(client, tmp_path):
+    """Merging adds a new mortgage, and to an existing one only the prepayments it lacks (listed otherwise); replace
+    deletes the mortgages that are not in the file; a version 2 file (no mortgages) still imports."""
+    fill(client)
+    exported = json.loads(client.get("/api/export/json").content)
+    home = exported["mortgages"][0]
+    home["prepayments"].append({"date": "2026-01-10", "amount": "1000", "mode": "reduce_payment"})
+    exported["mortgages"].append({**home, "name": "Flat", "prepayments": []})
+    res = post(client, json.dumps(exported).encode(), "merge").json()
+    assert (res["mortgages_created"], res["prepayments_created"]) == (1, 1)
+    assert "Home (ING Bank): prepayment on 2025-06-10" in res["duplicates"]
+    by_name = {m["name"]: m for m in client.get("/api/mortgages").json()}
+    assert set(by_name) == {"Home", "Flat"} and by_name["Flat"]["discount"] == 0.625
+    assert len(client.get(f"/api/mortgages/{by_name['Home']['id']}/prepayments").json()) == 2
+
+    v2 = {"format": "accounts-balance-tracker", "version": 2, "accounts": [{"name": "Only"}]}
+    assert post(client, json.dumps(v2).encode(), "replace").status_code == 200
+    assert client.get("/api/mortgages").json() == []
+    twice = {**v2, "version": 3, "mortgages": [home, home]}
+    assert "twice" in post(client, json.dumps(twice).encode(), "merge").json()["detail"]
+    wrong = {**v2, "version": 3, "mortgages": [{**home, "discount": "9"}]}
+    assert post(client, json.dumps(wrong).encode(), "merge").status_code == 422
+    assert client.get("/api/mortgages").json() == []  # a file with an error changes nothing

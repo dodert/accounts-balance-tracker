@@ -59,6 +59,12 @@ def test_demo_covers_the_features(client):
     for a in (a for a in accounts if a["type"] in ("investment", "pension") and a["name"] != "Stock options"):
         put_in = sum(c["amount"] for c in contributions if c["account_id"] == a["id"])
         assert 0 < put_in < a["balance"], a["name"]
+    # A mortgage with a discount and a past prepayment of each kind, one with a fee
+    mortgage = client.get("/api/mortgages").json()[0]
+    assert mortgage["discount"] > 0
+    schedule = client.get(f"/api/mortgages/{mortgage['id']}/schedule").json()
+    assert {p["mode"] for p in schedule["prepayments"]} == {"reduce_term", "reduce_payment"}
+    assert schedule["totals"]["fees_paid"] > 0 and 0 < schedule["totals"]["installments_paid"] < len(schedule["rows"])
     # An account that rises and then falls, but ends above its start: the orange chart background (#104)
     bitcoin = next(a for a in history["accounts"] if a["name"] == "Bitcoin")
     values = [v for v in bitcoin["values"] if v is not None]
