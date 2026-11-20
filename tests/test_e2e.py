@@ -361,3 +361,40 @@ def test_chart_date_and_range_helpers(page):
     }""", src)
     assert result == {"may31": "2026-2-28", "may31Leap": "2028-2-29", "mar31": "2025-9-30", "jan15": "2025-12-15",
                       "extent": [-1000, 198999]}
+
+
+def test_the_legend_explains_each_kind_of_line_drawn(page):
+    """The legends list a sample of each kind of line drawn on their charts (solid, dashed, start, milestone), no other."""
+    open_app(page)
+    page.click("#demo-try")
+    page.wait_for_selector("#multiples .grid-legend")
+
+    def check(legend, charts):
+        """The kinds in a legend match the lines drawn on its charts."""
+        kinds = set(page.locator(f"{legend} .legend-line").evaluate_all("els => els.map((e) => e.dataset.kind)"))
+        drawn = page.evaluate("""(charts) => {
+            const has = (sel) => [...document.querySelectorAll(charts)].some((svg) => svg.querySelector(sel));
+            return { start: has('.start-line'), milestone: has('.milestone-line'), marker: has('.avail-line'),
+                     dashed: has('path.line.dashed') };
+        }""", charts)
+        for kind, present in drawn.items():
+            assert (kind in kinds) == present, (legend, kind, kinds)
+        assert page.locator(f"{legend} .legend-line svg.legend-sample line").count() == len(kinds)  # a sample each
+        return kinds
+
+    total = check("#chart-legend", "#chart svg")
+    assert {"total", "start", "milestone"} <= total
+    grid = check("#multiples .grid-legend", "#multiples .mini svg")
+    assert {"solid", "dashed", "start", "milestone"} <= grid  # contributed (index fund) and milestones in the demo
+    assert page.locator("#multiples .grid-legend").count() == 1  # one for the whole grid, not one per card
+    assert "Milestone (notable expense)" in page.locator("#multiples .grid-legend").inner_text()
+    # An account without milestones nor contributions: its maximized chart's legend has neither
+    page.locator("#multiples .mini", has_text="Cash").locator(".mini-max").click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-legend .legend-line")
+    kinds = check("#chart-dlg-legend", "#chart-dlg-chart svg")
+    assert "milestone" not in kinds and "dashed" not in kinds and "solid" in kinds
+    page.keyboard.press("Escape")
+    # The percent view: the accounts by colour, then the start (0 %) and milestones
+    page.click("#chart-panel .views button[data-mode=percent]")
+    page.wait_for_selector("#chart-legend .legend-line")
+    check("#chart-legend", "#chart svg")

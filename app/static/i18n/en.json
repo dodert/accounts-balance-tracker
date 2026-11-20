@@ -244,5 +244,9 @@
   "contributions.zero": "A contribution can't be 0",
   "contributions.summary": "Contributed {contributed} · Worth {value}",
   "chart.contributed": "Contributed",
-  "chart.gain": "Gain"
+  "chart.gain": "Gain",
+  "legend.balance": "Balance",
+  "legend.start": "Start: first balance",
+  "legend.milestone": "Milestone (notable expense)",
+  "legend.available_from": "Date it becomes available"
 }
