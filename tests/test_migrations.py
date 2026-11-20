@@ -102,6 +102,34 @@ def test_upgrade_to_milestones_keeps_the_data(tmp_path):
     assert len(list(tmp_path.glob("db.sqlite.backup-0004-to-*"))) == 1
 
 
+def test_upgrade_to_contributions_keeps_the_data(tmp_path):
+    """0006 adds the contributions table; the accounts, balances and milestones of a 0005 database stay."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0005")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'investment', 'EUR', 0)"))
+        conn.execute(text("INSERT INTO balances (account_id, date, amount) VALUES (1, '2026-01-01', 5)"))
+        conn.execute(text("INSERT INTO milestones (account_id, date, amount, description) VALUES (1, '2026-01-10', 300, 'Car')"))
+    upgrade_database(engine)
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
+        assert conn.scalar(text("SELECT count(*) FROM milestones")) == 1
+        conn.execute(text("INSERT INTO contributions (account_id, date, amount) VALUES (1, '2026-01-02', 4)"))
+        conn.execute(text("DELETE FROM accounts"))
+        assert conn.scalar(text("SELECT count(*) FROM contributions")) == 0  # deleted with its account
+    assert len(list(tmp_path.glob("db.sqlite.backup-0005-to-*"))) == 1
+
+
 def _mode(path):
     return path.stat().st_mode & 0o777
 

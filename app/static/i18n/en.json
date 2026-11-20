@@ -75,7 +75,7 @@
   "json.merge": "Merge: add only what is not there yet (what already exists is not imported, and is listed)",
   "json.replace": "Replace: delete all the current data and leave exactly the file's (a backup is made first)",
   "json.confirm_replace": "All your current accounts, balances and milestones will be deleted and replaced by the file's. A backup is made first. Continue?",
-  "json.result": "Accounts created: {accounts}. Balances added: {balances}. Milestones added: {milestones}.",
+  "json.result": "Accounts created: {accounts}. Balances added: {balances}. Milestones added: {milestones}. Contributions added: {contributions}.",
   "import.duplicates": "Already there, not imported ({n}):",
   "import.more": "…and {n} more",
   "settings.title": "Settings",
@@ -234,5 +234,15 @@
   "account.totp_done_on": "One-time code turned on.",
   "account.totp_done_off": "One-time code turned off.",
   "admin.remove_totp": "Remove one-time code",
-  "admin.confirm_remove_totp": "Remove this user's one-time code? They will log in with only the password until they turn it on again."
+  "admin.confirm_remove_totp": "Remove this user's one-time code? They will log in with only the password until they turn it on again.",
+  "contributions.title": "Contributions",
+  "contributions.hint": "The money you put in (negative when you take it out). The charts show it next to the balance, which is what the account is worth, and the gain between them. Reinvested dividends are gain, not contributions.",
+  "contributions.amount": "Amount",
+  "contributions.total": "Contributed",
+  "contributions.none": "No contributions.",
+  "contributions.confirm_delete": "Delete this contribution?",
+  "contributions.zero": "A contribution can't be 0",
+  "contributions.summary": "Contributed {contributed} · Worth {value}",
+  "chart.contributed": "Contributed",
+  "chart.gain": "Gain"
 }

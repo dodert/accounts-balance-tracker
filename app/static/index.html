@@ -177,6 +177,19 @@
         </div>
         <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="column.balance">Balance</th><th class="num" data-i18n="column.change">Change</th><th class="num" data-i18n="column.since_first">Since the start</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
 
+        <div id="contributions-section" hidden>
+          <h3 data-i18n="contributions.title">Contributions</h3>
+          <p class="hint" data-i18n="contributions.hint">The money you put in (negative when you take it out). The charts show it next to the balance, which is what the account is worth, and the gain between them. Reinvested dividends are gain, not contributions.</p>
+          <p class="contributions-summary" id="contributions-summary"></p>
+          <div class="row add-balance">
+            <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="nc-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
+            <label><span data-i18n="contributions.amount">Amount</span> <input type="text" inputmode="decimal" id="nc-amount"></label>
+            <label><span data-i18n="account.note">Note</span> <input id="nc-note" maxlength="300"></label>
+            <button type="button" id="nc-add" data-i18n="account.add_balance">Add</button>
+          </div>
+          <div class="table-wrap balances-wrap"><table class="data" id="contributions-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="contributions.amount">Amount</th><th class="num" data-i18n="contributions.total">Contributed</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
+        </div>
+
         <h3 data-i18n="milestones.title">Milestones</h3>
         <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
         <div class="row add-balance">

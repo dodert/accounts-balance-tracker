@@ -131,6 +131,31 @@ class MilestoneOut(BaseModel):
     description: str
 
 
+class ContributionIn(BaseModel):
+    date: Date
+    amount: Amount  # negative: money taken out
+    note: Note | None = None
+
+    _blanks = field_validator("note", mode="before")(_blank_is_none)
+
+    @field_validator("amount")
+    @classmethod
+    def not_zero(cls, value: Decimal) -> Decimal:
+        if value == 0:
+            raise ValueError("a contribution can't be 0")
+        return value
+
+
+class ContributionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    account_id: int
+    date: Date
+    amount: Cents
+    note: str | None
+
+
 class BalanceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -232,6 +257,7 @@ class JsonImportOut(BaseModel):
     accounts_created: int
     balances_created: int
     milestones_created: int
+    contributions_created: int
     # What was already there (merge): not imported, listed (the first ones)
     duplicates_count: int
     duplicates: list[str]

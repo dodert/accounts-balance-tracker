@@ -20,7 +20,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from .db import Base, make_engine, make_sessionmaker
-from .models import Account, AccountType, Balance, FxRate, Milestone
+from .models import Account, AccountType, Balance, Contribution, FxRate, Milestone
 
 COOKIE = "abt_demo"
 # Most size of a demo database: anyone can try the demo, so its files (in the temporary folder) can't grow without end
@@ -47,6 +47,8 @@ class Sample:
     # instead: rises and then falls, but ends above its start (the orange chart background, #104)
     peak_month: int | None = None
     after_peak: float = 0
+    # Money put in: (on its first month, every month after it); the rest of the change is gain or loss
+    contributed: tuple[float, float] | None = None
 
 
 SAMPLES = [
@@ -59,12 +61,15 @@ SAMPLES = [
     Sample({"en": "Mortgage", "es": "Hipoteca"}, "Caja Litoral", AccountType.loan, "EUR", -96000, 480, 0),
     Sample({"en": "Term deposit", "es": "Depósito a plazo"}, "Caja Litoral", AccountType.savings, "EUR", 10000, 0, 0,
            closed_month=14, note={"en": "Matured", "es": "Vencido"}),
-    Sample({"en": "Index fund", "es": "Fondo indexado"}, "Northwind Brokers", AccountType.investment, "EUR", 32000, 600, 1200),
-    Sample({"en": "US stocks", "es": "Acciones EE. UU."}, "Northwind Brokers", AccountType.investment, "USD", 9000, 250, 700),
+    Sample({"en": "Index fund", "es": "Fondo indexado"}, "Northwind Brokers", AccountType.investment, "EUR", 32000, 600, 1200,
+           contributed=(29000, 400)),
+    Sample({"en": "US stocks", "es": "Acciones EE. UU."}, "Northwind Brokers", AccountType.investment, "USD", 9000, 250, 700,
+           contributed=(8500, 150)),
     Sample({"en": "Stock options", "es": "Stock options"}, "Northwind Brokers", AccountType.investment, "USD", 4000, 250, 600,
            first_month=6, available_in_days=400, note={"en": "Vesting", "es": "Pendiente de consolidar"}),
     Sample({"en": "Checking", "es": "Cuenta en dólares"}, "Liberty Bank", AccountType.bank, "USD", 1500, 30, 250),
-    Sample({"en": "Pension plan", "es": "Plan de pensiones"}, "Seguros Atlántico", AccountType.pension, "EUR", 34000, 300, 400),
+    Sample({"en": "Pension plan", "es": "Plan de pensiones"}, "Seguros Atlántico", AccountType.pension, "EUR", 34000, 300, 400,
+           contributed=(31000, 250)),
     Sample({"en": "Bitcoin", "es": "Bitcoin"}, "Coinvault", AccountType.crypto, "EUR", 1200, 300, 80, first_month=8,
            peak_month=12, after_peak=-90),
     Sample({"en": "Cash", "es": "Efectivo"}, None, AccountType.cash, "EUR", 300, 0, 80),
@@ -105,6 +110,10 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
             if sample.type == AccountType.loan and amount > 0:
                 amount = 0
             account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
+            if sample.contributed and not closing:
+                first, monthly_in = sample.contributed
+                put_in = first if n == sample.first_month else monthly_in
+                account.contributions.append(Contribution(date=day, amount=Decimal(put_in)))
             monthly = sample.after_peak if sample.peak_month is not None and n >= sample.peak_month else sample.monthly
             value += monthly + rng.uniform(-sample.noise, sample.noise)
             for month, cost, description in sample.milestones:

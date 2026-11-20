@@ -11,6 +11,10 @@ export async function loadMilestones() {
   state.milestones = await api("/api/milestones");
 }
 
+export async function loadContributions() {
+  state.contributions = await api("/api/contributions");
+}
+
 export async function loadAccounts() {
   state.accounts = await api("/api/accounts");
   renderAccounts();

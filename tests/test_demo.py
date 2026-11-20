@@ -54,6 +54,11 @@ def test_demo_covers_the_features(client):
     assert summary["USD"]["available"] < summary["USD"]["total"]
     history = client.get("/api/history?currency=EUR").json()
     assert len(history["dates"]) >= 12
+    # Investment accounts with contributions: what was put in, below what they are worth now
+    contributions = client.get("/api/contributions").json()
+    for a in (a for a in accounts if a["type"] in ("investment", "pension") and a["name"] != "Stock options"):
+        put_in = sum(c["amount"] for c in contributions if c["account_id"] == a["id"])
+        assert 0 < put_in < a["balance"], a["name"]
     # An account that rises and then falls, but ends above its start: the orange chart background (#104)
     bitcoin = next(a for a in history["accounts"] if a["name"] == "Bitcoin")
     values = [v for v in bitcoin["values"] if v is not None]

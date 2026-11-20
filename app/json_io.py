@@ -1,4 +1,5 @@
-"""Export and import of all the data as JSON: every account with all its fields, balances and milestones.
+"""Export and import of all the data as JSON: every account with all its fields, balances, milestones and
+contributions.
 
 Format (FORMAT_VERSION 1):
 
@@ -6,13 +7,17 @@ Format (FORMAT_VERSION 1):
      "accounts": [{"name": "...", "type": "bank", "currency": "EUR", "institution": null,
                    "available_from": null, "notes": null, "archived": false,
                    "balances": [{"date": "2026-01-31", "amount": "1234.56", "note": null}],
-                   "milestones": [{"date": "2026-02-01", "amount": "300.00", "description": "..."}]}]}
+                   "milestones": [{"date": "2026-02-01", "amount": "300.00", "description": "..."}],
+                   "contributions": [{"date": "2026-01-05", "amount": "500.00", "note": null}]}]}
+
+`contributions` came later (0.36.0); a file without it imports as before.
 
 Amounts are text, so they keep their exact decimals. Two ways to import:
 - replace: the database ends up with exactly the file's data (the caller makes a backup first).
 - merge: only what is not there yet is added. An account is found by its name and institution (as in the
   CSV import); a balance that already exists for that account and date, or the same milestone (account,
-  date, amount and description), is not imported and is listed as a duplicate. An existing account keeps
+  date, amount and description), or the same contribution (account, date, amount and note), is not imported
+  and is listed as a duplicate. An existing account keeps
   its own fields.
 The whole file is checked before anything is changed: a file with an error changes nothing.
 """
@@ -25,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError, 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import Account, AccountType, Balance, Milestone
+from .models import Account, AccountType, Balance, Contribution, Milestone
 from .schemas import Currency, DecimalAmount, Name, Note, Notes
 
 FORMAT = "accounts-balance-tracker"
@@ -54,6 +59,12 @@ class MilestoneIn(_Item):
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 
 
+class ContributionIn(_Item):
+    date: date
+    amount: DecimalAmount
+    note: Note | None = None
+
+
 class AccountIn(_Item):
     name: Name
     type: AccountType = AccountType.bank
@@ -64,6 +75,7 @@ class AccountIn(_Item):
     archived: bool = False
     balances: list[BalanceIn] = []
     milestones: list[MilestoneIn] = []
+    contributions: list[ContributionIn] = []
 
 
 class Backup(_Item):
@@ -78,7 +90,8 @@ def _text(value: Decimal) -> str:
 
 def export_json(db: Session, app_version: str = "") -> str:
     accounts = db.scalars(select(Account).order_by(Account.name, Account.institution, Account.id)
-                          .options(selectinload(Account.balances), selectinload(Account.milestones)))
+                          .options(selectinload(Account.balances), selectinload(Account.milestones),
+                                   selectinload(Account.contributions)))
     data = {
         "format": FORMAT, "version": FORMAT_VERSION,
         "exported_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
@@ -90,6 +103,8 @@ def export_json(db: Session, app_version: str = "") -> str:
             "balances": [{"date": b.date.isoformat(), "amount": _text(b.amount), "note": b.note} for b in a.balances],
             "milestones": [{"date": m.date.isoformat(), "amount": _text(m.amount), "description": m.description}
                            for m in a.milestones],
+            "contributions": [{"date": c.date.isoformat(), "amount": _text(c.amount), "note": c.note}
+                              for c in a.contributions],
         } for a in accounts],
     }
     return json.dumps(data, ensure_ascii=False, indent=1)
@@ -137,7 +152,7 @@ def _new_account(account: AccountIn) -> Account:
 
 
 def import_json(db: Session, backup: Backup, replace: bool) -> dict:
-    result = {"accounts_created": 0, "balances_created": 0, "milestones_created": 0,
+    result = {"accounts_created": 0, "balances_created": 0, "milestones_created": 0, "contributions_created": 0,
               "duplicates_count": 0, "duplicates": []}
 
     def duplicate(text: str) -> None:
@@ -149,6 +164,7 @@ def import_json(db: Session, backup: Backup, replace: bool) -> dict:
         # Balances and milestones go with their account (ON DELETE CASCADE); deleted explicitly too, in case
         db.execute(delete(Balance))
         db.execute(delete(Milestone))
+        db.execute(delete(Contribution))
         db.execute(delete(Account))
         db.flush()
         existing: dict[tuple[str, str], Account] = {}
@@ -163,11 +179,13 @@ def import_json(db: Session, backup: Backup, replace: bool) -> dict:
             db.add(account)
             db.flush()
             result["accounts_created"] += 1
-            days, milestones = set(), set()
+            days, milestones, contributions = set(), set(), set()
         else:
             days = set(db.scalars(select(Balance.date).where(Balance.account_id == account.id)))
             milestones = {(m.date, m.amount, m.description)
                           for m in db.scalars(select(Milestone).where(Milestone.account_id == account.id))}
+            contributions = {(c.date, c.amount, c.note)
+                             for c in db.scalars(select(Contribution).where(Contribution.account_id == account.id))}
         for b in item.balances:
             if b.date in days:
                 duplicate(f"{label}: balance on {b.date.isoformat()}")
@@ -183,5 +201,13 @@ def import_json(db: Session, backup: Backup, replace: bool) -> dict:
             db.add(Milestone(account_id=account.id, date=m.date, amount=m.amount, description=m.description))
             milestones.add(key)
             result["milestones_created"] += 1
+        for c in item.contributions:
+            key = (c.date, c.amount, c.note)
+            if key in contributions:
+                duplicate(f"{label}: contribution on {c.date.isoformat()}")
+                continue
+            db.add(Contribution(account_id=account.id, date=c.date, amount=c.amount, note=c.note))
+            contributions.add(key)
+            result["contributions_created"] += 1
     db.commit()
     return result
