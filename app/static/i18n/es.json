@@ -86,6 +86,7 @@
   "login.username": "Usuario",
   "login.password": "Contraseña",
   "login.error": "Usuario o contraseña incorrectos.",
+  "login.expired": "Tu cuenta ha caducado. Contacta con el administrador para que la amplíe.",
   "login.submit": "Entrar",
   "totp.setup_help": "Añade esta cuenta a tu app de autenticación: escanea el código QR o escribe el código de abajo. Después introduce el código de 6 dígitos que muestra.",
   "totp.code": "Código de un solo uso",

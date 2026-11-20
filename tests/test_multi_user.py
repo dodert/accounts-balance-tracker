@@ -12,7 +12,7 @@ from app import crypto
 from app.config import Settings
 from app.main import create_app
 from app.totp import code_at
-from app.users import USER_COOKIE, UserDatabases, db_aad, now
+from app.users import USER_COOKIE, USER_PENDING_COOKIE, UserDatabases, db_aad, now
 
 ADMIN = {"username": "admin", "password": "admin-pass"}
 
@@ -494,13 +494,68 @@ def test_expired_account_loses_its_data_and_is_blocked_until_extended(setup, tmp
     assert not (tmp_path / "users" / f"{uid}.db.enc").exists()
     assert "admin.status_expired" in admin.get("/admin").text
     login = {"username": "ana", "password": "ana-password"}
-    assert TestClient(app).post("/login", data=login, follow_redirects=False).headers["location"] == "/login?error=1"
+    assert TestClient(app).post("/login", data=login, follow_redirects=False).headers["location"] == "/login?error=expired"
 
     admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
     again = TestClient(app)
     assert again.post("/login", data=login, follow_redirects=False).headers["location"] == "/"
     assert again.get("/api/accounts").json() == []  # a new, empty database
     assert again.get("/api/about").json()["days_left"] in (9, 10)
+
+
+@pytest.mark.parametrize("purged", [False, True])
+def test_the_right_password_of_an_expired_account_says_it_expired(setup, tmp_path, purged):
+    """A right password of an expired account says it expired, with no session; a wrong one gets the usual error."""
+    app, admin = setup
+    sign_up(app, invite(admin))
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    if purged:
+        app.state.users.purge_expired()  # also blocked, by the expiry
+    client = TestClient(app)
+    res = client.post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+    assert res.headers["location"] == "/login?error=expired"
+    assert client.cookies.get(USER_COOKIE) is None and client.cookies.get(USER_PENDING_COOKIE) is None
+    assert client.get("/api/accounts").status_code == 401
+    wrong = TestClient(app).post("/login", data={"username": "ana", "password": "not-hers"}, follow_redirects=False)
+    assert wrong.headers["location"] == "/login?error=1"
+    assert 'data-i18n="login.expired"' in client.get("/login").text
+
+
+def test_a_right_password_of_an_expired_account_is_not_a_wrong_try(setup, tmp_path):
+    """Logging in to an expired account with the right password doesn't use up the wrong-password tries."""
+    app, admin = setup
+    sign_up(app, invite(admin))
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    for _ in range(12):
+        res = TestClient(app).post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+        assert res.status_code == 303 and res.headers["location"] == "/login?error=expired"
+
+
+def test_an_account_blocked_by_the_admin_keeps_the_usual_error(setup, tmp_path):
+    """An account the admin blocked by hand (not expired) gets the usual error, even with the right password."""
+    app, admin = setup
+    sign_up(app, invite(admin))
+    app.state.users.set_blocked(user_id(tmp_path, "ana"), True)
+    res = TestClient(app).post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+    assert res.headers["location"] == "/login?error=1"
+
+
+def test_the_recovery_key_of_an_expired_account_says_it_expired(setup, tmp_path):
+    """A right recovery key of an expired account says it expired and changes nothing; a wrong one the usual error."""
+    app, admin = setup
+    _, res = sign_up(app, invite(admin))
+    key = recovery_key(res)
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    form = {"username": "ana", "recovery_key": key, "password": "new-password-1", "password2": "new-password-1"}
+    client = TestClient(app)
+    page = client.post("/recover", data=form, follow_redirects=False)
+    assert page.status_code == 200 and 'data-i18n="login.expired"' in page.text
+    assert client.cookies.get(USER_COOKIE) is None
+    wrong = TestClient(app).post("/recover", data={**form, "recovery_key": "A" * len(key)}, follow_redirects=False)
+    assert 'data-i18n="recover.error"' in wrong.text
+    admin.post(f"/admin/users/{user_id(tmp_path, 'ana')}/extend", data={"days": "10"})
+    old = TestClient(app).post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+    assert old.headers["location"] == "/"  # the password was not changed
 
 
 @pytest.mark.parametrize("how", ["old session", "recovery key"])

@@ -16,3 +16,7 @@ def pytest_collection_modifyitems(items):
         doc = (getattr(item, "function", None).__doc__ or "").strip().splitlines()
         if doc:
             item.user_properties.append(("description", doc[0]))
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "settings(**kwargs): other Settings for the E2E server (tests/test_e2e.py)")

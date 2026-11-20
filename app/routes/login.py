@@ -14,7 +14,7 @@ from ..deps import Context, client_ip, is_https, limit_key
 from ..ratelimit import TooManyTries, TryLimit
 from ..users import PENDING_SECONDS as USER_PENDING_SECONDS
 from ..users import SESSION_SECONDS as USER_SESSION_SECONDS
-from ..users import USER_COOKIE, USER_PENDING_COOKIE, SignupError
+from ..users import USER_COOKIE, USER_PENDING_COOKIE, AccountExpired, SignupError
 
 WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
@@ -85,8 +85,11 @@ def router(ctx: Context) -> APIRouter:
         try:
             with password_tries.attempt(limit_key(ip)) as attempt, user_password_tries.attempt(name) as user_attempt:
                 if multi and username != auth.username:
-                    session = await with_password_check(users.login, username, password, ip,
-                                                        countries.country(ip, request.headers))
+                    try:
+                        session = await with_password_check(users.login, username, password, ip,
+                                                            countries.country(ip, request.headers))
+                    except AccountExpired:  # the password is right: not a wrong try
+                        return RedirectResponse("/login?error=expired", status_code=303)
                     ok = session is not None
                 else:
                     ok = auth.check_credentials(username, password)
@@ -242,6 +245,8 @@ def router(ctx: Context) -> APIRouter:
                     session = await with_password_check(users.recover, username, recovery_key, password)
                 except SignupError:
                     return fill(recover_html, ERROR=message("register.error.password"))
+                except AccountExpired:  # the key is right: not a wrong try
+                    return fill(recover_html, ERROR=message("login.expired"))
                 if session is None:
                     attempt.wrong()
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
