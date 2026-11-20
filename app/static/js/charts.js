@@ -210,7 +210,8 @@ export function placeTooltip(e) {
 
 // One line chart in `box`. opts: dates, series [{name, values, color, total?}], height,
 // axis(ticks) -> labels, ref {value, label} for the dashed start line, area (fill under the
-// first series), small (fewer labels), tooltip(idx, rows) -> html, trend (trendOf: background colour)
+// first series), small (fewer labels), tooltip(idx, rows) -> html, trend (trendOf: background colour).
+// Returns which kinds of line it drew besides the series (for lineLegend): { start, marker, milestones }, or null.
 export function drawChart(box, opts) {
   const { dates, series, ref } = opts;
   const width = Math.max(box.clientWidth, 200);
@@ -219,7 +220,8 @@ export function drawChart(box, opts) {
   const times = dates.map((d) => Date.parse(`${d}T00:00:00Z`));
   const values = series.flatMap((s) => s.values).filter((v) => v !== null);
   if (ref) values.push(ref.value);
-  if (!values.length) return;
+  if (!values.length) return null;
+  const drawn = { start: false, marker: false, milestones: false };
   const ticks = niceTicks(...extent(values), opts.small ? 3 : 5);
   const labels = opts.axis(ticks);
   // Room for the longest axis label (about 6.5px a character at 11px), e.g. "5,4 mil US$"
@@ -261,6 +263,7 @@ export function drawChart(box, opts) {
   if (ref) {
     const ys = y(ref.value);
     svg("line", { x1: pad.left, x2: width - pad.right, y1: ys, y2: ys, class: "start-line" }, root);
+    drawn.start = true;
     const below = ys - pad.top < 14;
     svg("text", { x: pad.left + 6, y: below ? ys + 13 : ys - 5, class: "start-label" }, root).textContent = ref.label;
   }
@@ -270,12 +273,14 @@ export function drawChart(box, opts) {
     if (time >= t0 && time <= t1 && t1 > t0) {
       const xm = x(time);
       svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "avail-line" }, root);
+      drawn.marker = true;
       svg("text", { x: xm + 4, y: pad.top + 10, class: "avail-label" }, root).textContent = opts.marker.label;
     }
   }
   // Milestones (notable expenses): a dotted vertical line on their date, in their account's colour
   const milestones = (opts.milestones ?? []).map((m) => ({ ...m, time: Date.parse(`${m.date}T00:00:00Z`) }))
     .filter((m) => m.time >= t0 && m.time <= t1);
+  drawn.milestones = milestones.length > 0;
   for (const m of milestones) {
     const xm = (m.x = x(m.time));
     m.line = svg("line", { x1: xm, x2: xm, y1: pad.top, y2: height - pad.bottom, class: "milestone-line", style: `stroke: ${m.color}` }, root);
@@ -342,7 +347,31 @@ export function drawChart(box, opts) {
     $("#tooltip").innerHTML = `<div class="tt-date">${esc(fmtDate(dates[idx]))}</div>` + opts.tooltip(idx, rows) + notes;
     placeTooltip(e);
   });
+  return drawn;
 }
+
+// A legend of the kinds of line on a chart (#137): each with a small sample drawn with the chart's own classes (so a
+// style change updates it too). items: [{ kind, label, color? }], only for the kinds that were drawn.
+const LINE_SAMPLES = {
+  solid: (c) => `<line x1="2" x2="22" y1="6" y2="6" class="line" style="stroke: ${c}"/>`,
+  total: (c) => `<line x1="2" x2="22" y1="6" y2="6" class="line total" style="stroke: ${c}"/>`,
+  dashed: (c) => `<line x1="1" x2="23" y1="6" y2="6" class="line dashed" style="stroke: ${c}"/>`,
+  start: () => `<line x1="0" x2="24" y1="6" y2="6" class="start-line"/>`,
+  milestone: (c) => `<line x1="12" x2="12" y1="0" y2="12" class="milestone-line" style="stroke: ${c}"/>`,
+  marker: () => `<line x1="12" x2="12" y1="0" y2="12" class="avail-line"/>`,
+};
+export function lineLegend(items) {
+  return items.map(({ kind, label, color = "var(--muted)" }) =>
+    `<span class="legend-item legend-line${kind === "total" ? " legend-total" : ""}" data-kind="${kind}">` +
+    `<svg class="legend-sample" width="24" height="12" viewBox="0 0 24 12" aria-hidden="true">${LINE_SAMPLES[kind](color)}</svg>${esc(label)}</span>`).join("");
+}
+
+// The legend entries of the start line, milestones and available-from line, when a chart drew them
+export const extraLines = (drawn) => [
+  drawn?.start && { kind: "start", label: t("legend.start") },
+  drawn?.milestones && { kind: "milestone", label: t("legend.milestone") },
+  drawn?.marker && { kind: "marker", label: t("legend.available_from") },
+].filter(Boolean);
 
 export const ttRow = (s, value, sub = "") =>
   `<div class="tt-row${s.total ? " tt-total" : ""}"><span class="swatch${s.dashed ? " dashed-swatch" : ""}" style="${s.dashed ? `border-top-color: ${s.color}` : `background: ${s.color}`}"></span><span class="tt-name">${seriesName(s)}</span><span class="tt-value">${esc(value)}</span></div>` +
@@ -401,14 +430,15 @@ export function renderBlock(h, el) {
     // Every account and the total on one axis: % change since each one's own first balance
     grid.hidden = true;
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
-    drawChart(box, {
+    const drawn = drawChart(box, {
       dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: trendOf(h.dates, total.values, total.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
     });
     el.legend.innerHTML = series.map((s) =>
-      `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${seriesName(s)}</span>`).join("");
+      `<span class="legend-item${s.total ? " legend-total" : ""}"><span class="swatch" style="background: ${s.color}"></span>${seriesName(s)}</span>`).join("") +
+      lineLegend(extraLines(drawn));
   } else {
     // The total on its own chart, then one small chart per account with its own scale and start
     // The available part of the total, when some balance was not available on some date
@@ -417,7 +447,7 @@ export function renderBlock(h, el) {
     const summary = state.totals?.find((c) => c.currency === cur);
     const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: h.first_available ?? summary?.first_available ?? firstValue(h.available) } : total;
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
-    drawChart(box, {
+    const drawn = drawChart(box, {
       dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: trendOf(h.dates, main.values, main.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
@@ -425,11 +455,14 @@ export function renderBlock(h, el) {
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), sinceText(s, s.values[idx], cur))).join("") +
         accounts.filter((a) => a.values[idx] !== null).map((a) => ttRow(a, money(a.values[idx], cur))).join(""),
     });
-    if (locked) {
-      el.legend.innerHTML = `<span class="legend-item legend-total"><span class="swatch" style="background: var(--total)"></span>${esc(t("chart.available"))}</span>` +
-        `<span class="legend-item"><span class="swatch dashed-swatch" style="border-top-color: var(--muted)"></span>${esc(t("chart.with_locked"))}</span>`;
-    }
+    el.legend.innerHTML = lineLegend([
+      { kind: "total", label: main.name, color: "var(--total)" },
+      locked && { kind: "dashed", label: t("chart.with_locked") },
+      ...extraLines(drawn),
+    ].filter(Boolean));
     grid.hidden = accounts.length === 0;
+    // One legend for the whole grid: every kind of line drawn on any of the small charts
+    const kinds = { start: false, marker: false, milestones: false, contributed: false };
     for (const a of accounts) {
       const card = document.createElement("div");
       card.className = "mini";
@@ -437,7 +470,14 @@ export function renderBlock(h, el) {
       card.innerHTML = accountHead(a, h, max, true) + `<div class="chart mini-chart"></div>`;
       grid.appendChild(card);
       $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id, cur));
-      drawAccountChart($(".mini-chart", card), a, h, true);
+      const drawnHere = drawAccountChart($(".mini-chart", card), a, h, true);
+      for (const kind in kinds) kinds[kind] ||= !!drawnHere?.[kind];
+    }
+    if (accounts.length) {
+      const legend = document.createElement("div");
+      legend.className = "legend grid-legend";
+      legend.innerHTML = accountLineLegend(kinds);
+      grid.appendChild(legend);
     }
   }
 
@@ -471,13 +511,21 @@ export function accountHead(a, h, extra = "", small = false) {
     <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>${gain}`;
 }
 
+// The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from
+export const accountLineLegend = (drawn, color = "var(--muted)") => lineLegend([
+  { kind: "solid", label: t("legend.balance"), color },
+  drawn.contributed && { kind: "dashed", label: t("chart.contributed"), color },
+  ...extraLines(drawn),
+].filter(Boolean));
+
+// Returns which kinds of line it drew (drawChart's, plus `contributed`)
 export function drawAccountChart(box, a, h, small) {
   const cur = h.currency;
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   // With contributions: what was put in so far, dashed in the account's colour, and the gain in the tooltip
   const contributed = contributedValues(a, h);
   const series = contributed ? [a, { name: t("chart.contributed"), values: contributed, color: a.color, dashed: true, noDots: true, contributed: true }] : [a];
-  drawChart(box, {
+  const drawn = drawChart(box, {
     dates: h.dates, series, height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
     trend: trendOf(h.dates, a.values, a.start),
     milestones: milestonesFor(a.ids ?? []),
@@ -487,6 +535,7 @@ export function drawAccountChart(box, a, h, small) {
     tooltip: (idx, rows) => rows.map((s) => ttRow(s, money(s.values[idx], cur), s.contributed ? "" : sinceText(s, s.values[idx], cur))).join("") +
       (contributed && a.values[idx] !== null ? `<div class="tt-since tt-gain">${gainText(a.values[idx], contributed[idx], cur)}</div>` : ""),
   });
+  return drawn && { ...drawn, contributed: !!contributed };
 }
 
 // One account's chart, big, in a dialog (the tooltip moves into the dialog so it shows above it)
@@ -505,7 +554,8 @@ export function drawMaximized() {
   $("#chart-dlg-head").innerHTML = accountHead(a, h);
   const box = $("#chart-dlg-chart");
   box.innerHTML = "";
-  drawAccountChart(box, a, h, false);
+  const drawn = drawAccountChart(box, a, h, false);
+  $("#chart-dlg-legend").innerHTML = drawn ? accountLineLegend(drawn, a.color) : "";
 }
 
 export function initCharts() {

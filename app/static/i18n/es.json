@@ -245,5 +245,9 @@
   "contributions.zero": "Una aportación no puede ser 0",
   "contributions.summary": "Aportado {contributed} · Vale {value}",
   "chart.contributed": "Aportado",
-  "chart.gain": "Ganancia"
+  "chart.gain": "Ganancia",
+  "legend.balance": "Saldo",
+  "legend.start": "Inicio: primer saldo",
+  "legend.milestone": "Hito (gasto destacado)",
+  "legend.available_from": "Fecha en que estará disponible"
 }

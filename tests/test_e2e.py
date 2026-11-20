@@ -105,7 +105,7 @@ def test_the_page_loads_with_no_data(page):
     """The page loads its modules, shows the version, the time zone and the 'no accounts yet' message."""
     open_app(page)
     assert page.locator("#version").text_content().startswith("v")
-    assert page.locator("#empty").is_visible()
+    page.locator("#empty").wait_for()  # shown once the accounts are loaded, after the version
     assert page.locator("#empty .hint").text_content().startswith("No accounts yet")
     zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
     assert page.locator("#tz-badge").text_content() == f"🕒 {zone.replace('_', ' ')}"  # the browser's time zone
@@ -376,6 +376,41 @@ def test_chart_date_and_range_helpers(page):
                       "extent": [-1000, 198999]}
 
 
+def test_the_legend_explains_each_kind_of_line_drawn(page):
+    """The legends list a sample of each kind of line drawn on their charts (solid, dashed, start, milestone), no other."""
+    open_app(page)
+    page.click("#demo-try")
+    page.wait_for_selector("#multiples .grid-legend")
+
+    def check(legend, charts):
+        """The kinds in a legend match the lines drawn on its charts."""
+        kinds = set(page.locator(f"{legend} .legend-line").evaluate_all("els => els.map((e) => e.dataset.kind)"))
+        drawn = page.evaluate("""(charts) => {
+            const has = (sel) => [...document.querySelectorAll(charts)].some((svg) => svg.querySelector(sel));
+            return { start: has('.start-line'), milestone: has('.milestone-line'), marker: has('.avail-line'),
+                     dashed: has('path.line.dashed') };
+        }""", charts)
+        for kind, present in drawn.items():
+            assert (kind in kinds) == present, (legend, kind, kinds)
+        assert page.locator(f"{legend} .legend-line svg.legend-sample line").count() == len(kinds)  # a sample each
+        return kinds
+
+    total = check("#chart-legend", "#chart svg")
+    assert {"total", "start", "milestone"} <= total
+    grid = check("#multiples .grid-legend", "#multiples .mini svg")
+    assert {"solid", "dashed", "start", "milestone"} <= grid  # contributed (index fund) and milestones in the demo
+    assert page.locator("#multiples .grid-legend").count() == 1  # one for the whole grid, not one per card
+    assert "Milestone (notable expense)" in page.locator("#multiples .grid-legend").inner_text()
+    # An account without milestones nor contributions: its maximized chart's legend has neither
+    page.locator("#multiples .mini", has_text="Cash").locator(".mini-max").click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-legend .legend-line")
+    kinds = check("#chart-dlg-legend", "#chart-dlg-chart svg")
+    assert "milestone" not in kinds and "dashed" not in kinds and "solid" in kinds
+    page.keyboard.press("Escape")
+    # The percent view: the accounts by colour, then the start (0 %) and milestones
+    page.click("#chart-panel .views button[data-mode=percent]")
+    page.wait_for_selector("#chart-legend .legend-line")
+    check("#chart-legend", "#chart svg")
 @pytest.mark.settings(multi_user=True, auth_username="admin", auth_password="admin-password-1", country_db=False)
 def test_the_login_page_says_when_the_account_expired(page, request, tmp_path):
     """With the right password of an expired account, the login page says it expired; with a wrong one, the usual error."""
