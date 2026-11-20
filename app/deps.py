@@ -22,7 +22,7 @@ from .demo import Demo, VisitorDemos
 from .fx import Fetcher, SharedRates
 from .geo import Countries
 from .history import latest_balances
-from .models import Account, Balance, Milestone
+from .models import Account, Balance, Contribution, Milestone
 from .ratelimit import TooManyTries, TryLimit
 from .schemas import AccountOut
 from .totp import Totp
@@ -194,6 +194,13 @@ def get_milestone_or_404(db: Session, milestone_id: int) -> Milestone:
     if not milestone:
         raise HTTPException(404, "Milestone not found")
     return milestone
+
+
+def get_contribution_or_404(db: Session, contribution_id: int) -> Contribution:
+    contribution = db.get(Contribution, contribution_id)
+    if not contribution:
+        raise HTTPException(404, "Contribution not found")
+    return contribution
 
 
 def commit(db: Session, conflict: str) -> None:

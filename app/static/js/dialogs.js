@@ -1,9 +1,10 @@
-// The dialogs: update balances, milestones, account (with its balances), CSV and JSON import.
+// The dialogs: update balances, milestones, account (with its balances and contributions), CSV and JSON import.
 import { api, localDate } from "./api.js";
 import { $, $$, esc } from "./dom.js";
-import { amountText, changeCell, decimalMark, exactMoney, fmtDate, getDate, parseAmount, setDate, today } from "./format.js";
+import { amountText, changeCell, decimalMark, exactMoney, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
+import { gainText } from "./charts.js";
 import { refresh } from "./main.js";
-import { ACCOUNT_TYPES, state } from "./state.js";
+import { ACCOUNT_TYPES, INVESTMENT_TYPES, state } from "./state.js";
 
 export function setError(el, err) {
   el.textContent = err ? err.message ?? String(err) : "";
@@ -34,7 +35,11 @@ export async function openAccount(id) {
     setDate($("#nm-date"), today());
     $("#nm-amount").value = "";
     $("#nm-desc").value = "";
+    setDate($("#nc-date"), today());
+    $("#nc-amount").value = "";
+    $("#nc-note").value = "";
     renderMilestones();
+    renderContributions();
     await loadBalances();
   }
   $("#account-dlg").showModal();
@@ -69,6 +74,29 @@ export function renderMilestones() {
       <td class="note">${esc(m.description)}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${m.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("") : `<tr><td class="hint">${esc(t("milestones.none"))}</td></tr>`;
+}
+
+// The account's contributions, newest first, each with what was contributed up to it. The section shows for
+// investment-like accounts, and for any account that already has contributions.
+export function renderContributions() {
+  // Its latest balance, as loaded after the last change (state.editing is the account as the dialog opened)
+  const account = state.accounts.find((a) => a.id === state.editing.id) ?? state.editing;
+  const mine = state.contributions.filter((c) => c.account_id === account.id); // oldest first
+  $("#contributions-section").hidden = !(INVESTMENT_TYPES.includes($("#account-type").value) || mine.length);
+  let sum = 0;
+  const rows = mine.map((c) => ({ ...c, total: (sum += c.amount) })).reverse();
+  $("#contributions-summary").innerHTML = mine.length && account.balance !== null
+    ? `${esc(t("contributions.summary", { contributed: money(sum, account.currency), value: money(account.balance, account.currency) }))} · ${gainText(account.balance, sum, account.currency)}`
+    : "";
+  $("#contributions-table thead").hidden = !rows.length;
+  $("#contributions-table tbody").innerHTML = rows.length ? rows.map((c) => `
+    <tr>
+      <td>${esc(fmtDate(c.date))}</td>
+      <td class="num">${esc(exactMoney(c.amount, account.currency))}</td>
+      <td class="num">${esc(money(c.total, account.currency))}</td>
+      <td class="note">${esc(c.note ?? "")}</td>
+      <td class="actions"><button type="button" class="icon danger" data-delete="${c.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
+    </tr>`).join("") : `<tr><td class="hint">${esc(t("contributions.none"))}</td></tr>`;
 }
 
 // What an import did not add because it was already there (the answer lists the first ones)
@@ -159,6 +187,7 @@ export function initDialogs() {
       $("#nb-note").value = "";
       setError($("#account-error"), null);
       await Promise.all([loadBalances(), refresh()]);
+      renderContributions();
     } catch (err) {
       setError($("#account-error"), err);
     }
@@ -174,6 +203,34 @@ export function initDialogs() {
       setError($("#account-error"), null);
       await refresh();
       renderMilestones();
+    } catch (err) {
+      setError($("#account-error"), err);
+    }
+  });
+
+  $("#account-type").addEventListener("change", () => { if (state.editing) renderContributions(); });
+  $("#nc-add").addEventListener("click", async () => {
+    try {
+      const amount = parseAmount($("#nc-amount").value);
+      if (amount === null) throw new Error(t("error.amount_required"));
+      if (amount === 0) throw new Error(t("contributions.zero"));
+      await api(`/api/accounts/${state.editing.id}/contributions`, { json: { date: getDate($("#nc-date")), amount, note: $("#nc-note").value } });
+      $("#nc-amount").value = "";
+      $("#nc-note").value = "";
+      setError($("#account-error"), null);
+      await refresh();
+      renderContributions();
+    } catch (err) {
+      setError($("#account-error"), err);
+    }
+  });
+  $("#contributions-table").addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-delete]");
+    if (!btn || !confirm(t("contributions.confirm_delete"))) return;
+    try {
+      await api(`/api/contributions/${btn.dataset.delete}`, { method: "DELETE" });
+      await refresh();
+      renderContributions();
     } catch (err) {
       setError($("#account-error"), err);
     }
@@ -197,6 +254,7 @@ export function initDialogs() {
     try {
       await api(`/api/balances/${btn.dataset.delete}`, { method: "DELETE" });
       await Promise.all([loadBalances(), refresh()]);
+      renderContributions();
     } catch (err) {
       setError($("#account-error"), err);
     }
@@ -279,7 +337,7 @@ export function initDialogs() {
     if (body.get("mode") === "replace" && !confirm(t("json.confirm_replace"))) return;
     try {
       const r = await api("/api/import/json", { method: "POST", body });
-      out.textContent = [t("json.result", { accounts: r.accounts_created, balances: r.balances_created, milestones: r.milestones_created }),
+      out.textContent = [t("json.result", { accounts: r.accounts_created, balances: r.balances_created, milestones: r.milestones_created, contributions: r.contributions_created }),
         ...duplicateLines(r)].join("\n");
       await refresh();
     } catch (err) {

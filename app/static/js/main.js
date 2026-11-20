@@ -1,6 +1,6 @@
 // Start: loads everything and wires every part of the page. The other modules are in this folder, one
 // per part of the page; i18n.js (t, initI18n...) is a classic script loaded before, shared with the other pages.
-import { initAccounts, loadAccounts, loadMilestones } from "./accounts.js";
+import { initAccounts, loadAccounts, loadContributions, loadMilestones } from "./accounts.js";
 import { api } from "./api.js";
 import { initCharts, loadHistory } from "./charts.js";
 import { initDemo, renderDemo } from "./demo.js";
@@ -12,7 +12,7 @@ import { state } from "./state.js";
 import { initTotals, loadTotals } from "./totals.js";
 
 export async function refresh() {
-  await Promise.all([loadAccounts(), loadTotals(), loadMilestones()]);
+  await Promise.all([loadAccounts(), loadTotals(), loadMilestones(), loadContributions()]);
   await loadHistory();
 }
 

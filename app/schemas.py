@@ -18,7 +18,7 @@ from .models import AccountType
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Currency = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=r"^[A-Za-z]{3}$")]
-# Amounts in the JSON API, in and out, are integers in ten-thousandths (1234.5 -> 12345000; since 0.38, #120):
+# Amounts in the JSON API, in and out, are integers in ten-thousandths (1234.5 -> 12345000; since 0.40, #120):
 # exact in any client, also in JavaScript, whose numbers are binary floats but hold integers exactly up to 2**53.
 # The server works with Decimal; ten-thousandths are only how amounts travel.
 SCALE = 4  # decimals kept: the database's Numeric(16, 4)
@@ -143,6 +143,31 @@ class MilestoneOut(BaseModel):
     description: str
 
 
+class ContributionIn(BaseModel):
+    date: Date
+    amount: Amount  # negative: money taken out
+    note: Note | None = None
+
+    _blanks = field_validator("note", mode="before")(_blank_is_none)
+
+    @field_validator("amount")
+    @classmethod
+    def not_zero(cls, value: Decimal) -> Decimal:
+        if value == 0:
+            raise ValueError("a contribution can't be 0")
+        return value
+
+
+class ContributionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    account_id: int
+    date: Date
+    amount: Units
+    note: str | None
+
+
 class BalanceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -244,6 +269,7 @@ class JsonImportOut(BaseModel):
     accounts_created: int
     balances_created: int
     milestones_created: int
+    contributions_created: int
     # What was already there (merge): not imported, listed (the first ones)
     duplicates_count: int
     duplicates: list[str]

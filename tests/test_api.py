@@ -14,7 +14,7 @@ def test_health_and_about(client):
     """The health check, the app info and the main page answer."""
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0006" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0007" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
@@ -178,6 +178,30 @@ def test_available_from(client):
     cleared = client.patch(f"/api/accounts/{options['id']}", json={"available_from": ""}).json()
     assert cleared["available_from"] is None
     assert client.get("/api/summary").json()[0]["available"] == 1160
+
+
+def test_contributions(client):
+    """Contributions (negative: withdrawals) can be created, edited, listed and deleted, and go with their account."""
+    a = client.post("/api/accounts", json={"name": "Fund", "type": "investment"}).json()
+    r = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 1500000, "note": " "})
+    assert r.status_code == 201, r.text
+    c = r.json()
+    assert (c["account_id"], c["date"], c["amount"], c["note"]) == (a["id"], "2026-03-10", 1500000, None)
+    assert client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 0}).status_code == 422
+    assert client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 1.5}).status_code == 422
+    assert client.post("/api/accounts/999/contributions", json={"date": "2026-03-10", "amount": 1}).status_code == 404
+    w = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-01", "amount": -20000, "note": "out"}).json()
+    c = client.put(f"/api/contributions/{c['id']}", json={"date": "2026-03-11", "amount": 1200000, "note": "monthly"}).json()
+    assert (c["date"], c["amount"], c["note"]) == ("2026-03-11", 1200000, "monthly")
+    # Oldest first
+    assert [x["id"] for x in client.get("/api/contributions").json()] == [w["id"], c["id"]]
+    assert client.get("/api/contributions", params={"account_id": 999}).json() == []
+    assert client.put("/api/contributions/999", json={"date": "2026-03-11", "amount": 1}).status_code == 404
+    assert client.delete(f"/api/contributions/{w['id']}").status_code == 204
+    assert [x["id"] for x in client.get("/api/contributions").json()] == [c["id"]]
+    # Deleting the account deletes its contributions
+    client.delete(f"/api/accounts/{a['id']}")
+    assert client.get("/api/contributions").json() == []
 
 
 def test_milestones(client):
