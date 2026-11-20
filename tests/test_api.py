@@ -14,7 +14,7 @@ def test_health_and_about(client):
     """The health check, the app info and the main page answer."""
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0006" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0007" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
@@ -41,7 +41,7 @@ def test_account_crud(client):
 def test_balances_one_per_day(client):
     """An account has one balance per day: a second one that day replaces it."""
     account = make_account(client)
-    add(client, account["id"], "2026-01-31", 100050)  # amounts in cents: 1000.50
+    add(client, account["id"], "2026-01-31", 100050)  # amounts in ten-thousandths: 10.005
     add(client, account["id"], "2026-02-28", 120000)
     again = add(client, account["id"], "2026-02-28", 125025, "bonus")  # same day: replaced
     balances = client.get(f"/api/accounts/{account['id']}/balances").json()
@@ -57,8 +57,8 @@ def test_balances_one_per_day(client):
     assert client.patch(f"/api/balances/{first}", json={"amount": 999}).json()["amount"] == 999
     assert client.delete(f"/api/balances/{first}").status_code == 204
     assert client.delete(f"/api/balances/{first}").status_code == 404
-    for not_cents in (12.5, "1250", True, 10**14):  # a decimal, text, a boolean, past Numeric(14, 2)
-        assert client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": not_cents}).status_code == 422
+    for wrong in (12.5, "1250", True, 5 * 10**15):  # a decimal, text, a boolean, past the largest amount
+        assert client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": wrong}).status_code == 422
 
 
 def test_bulk_update(client):
@@ -183,16 +183,16 @@ def test_available_from(client):
 def test_contributions(client):
     """Contributions (negative: withdrawals) can be created, edited, listed and deleted, and go with their account."""
     a = client.post("/api/accounts", json={"name": "Fund", "type": "investment"}).json()
-    r = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 150000, "note": " "})
+    r = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 1500000, "note": " "})
     assert r.status_code == 201, r.text
     c = r.json()
-    assert (c["account_id"], c["date"], c["amount"], c["note"]) == (a["id"], "2026-03-10", 150000, None)
+    assert (c["account_id"], c["date"], c["amount"], c["note"]) == (a["id"], "2026-03-10", 1500000, None)
     assert client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 0}).status_code == 422
     assert client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-03-10", "amount": 1.5}).status_code == 422
     assert client.post("/api/accounts/999/contributions", json={"date": "2026-03-10", "amount": 1}).status_code == 404
-    w = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-01", "amount": -2000, "note": "out"}).json()
-    c = client.put(f"/api/contributions/{c['id']}", json={"date": "2026-03-11", "amount": 120000, "note": "monthly"}).json()
-    assert (c["date"], c["amount"], c["note"]) == ("2026-03-11", 120000, "monthly")
+    w = client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-01", "amount": -20000, "note": "out"}).json()
+    c = client.put(f"/api/contributions/{c['id']}", json={"date": "2026-03-11", "amount": 1200000, "note": "monthly"}).json()
+    assert (c["date"], c["amount"], c["note"]) == ("2026-03-11", 1200000, "monthly")
     # Oldest first
     assert [x["id"] for x in client.get("/api/contributions").json()] == [w["id"], c["id"]]
     assert client.get("/api/contributions", params={"account_id": 999}).json() == []
@@ -250,18 +250,20 @@ def test_the_page_loads_its_modules_by_version(client):
     assert client.get(f"/static/v/{version}/js/nothing.js").status_code == 404
 
 
-def test_amounts_travel_as_exact_integer_cents(client):
-    """Amounts go in and out of the API as integer cents, exact up to the largest one the database holds."""
+def test_amounts_travel_as_exact_integer_ten_thousandths(client):
+    """Amounts go in and out of the API as integer ten-thousandths, exact up to the largest one allowed."""
     a, b = make_account(client, "A"), make_account(client, "B")
-    largest = 10**14 - 1  # 999,999,999,999.99
+    largest = 5 * 10**15 - 1  # 499,999,999,999.9999
     add(client, a["id"], "2026-01-01", largest)
-    add(client, b["id"], "2026-01-01", 10)  # 0.10
-    add(client, b["id"], "2026-02-01", 30)  # 0.30: 0.1 + 0.2 in floats is 0.30000000000000004
+    add(client, b["id"], "2026-01-01", 1000)  # 0.1
+    add(client, b["id"], "2026-02-01", 3000)  # 0.3: 0.1 + 0.2 in floats is 0.30000000000000004
     out = client.get(f"/api/accounts/{a['id']}").json()
     assert out["balance"] == largest and isinstance(out["balance"], int)
     total = client.get("/api/summary").json()[0]
-    assert (total["total"], total["previous_total"]) == (largest + 30, largest + 10)
+    assert (total["total"], total["previous_total"]) == (largest + 3000, largest + 1000)
     assert all(isinstance(v, int) for v in client.get("/api/history").json()["total"])
+    add(client, b["id"], "2026-03-01", 12345)  # 1.2345: four decimals are kept
+    assert client.get(f"/api/accounts/{b['id']}").json()["balance"] == 12345
     schemas = client.app.openapi()["components"]["schemas"]  # the API docs say so
     assert schemas["BalanceIn"]["properties"]["amount"]["type"] == "integer"
     assert schemas["BalanceOut"]["properties"]["amount"]["type"] == "integer"

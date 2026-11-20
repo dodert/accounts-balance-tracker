@@ -4,22 +4,27 @@ import { $, $$, esc } from "./dom.js";
 
 // --- Formatting ---
 
-// Amounts are integer cents everywhere in the page, as the API sends them (1234.50 = 123450): integers are exact
-// in JavaScript, so sums and differences never pick up float errors. Only the formatting turns them into units.
-// The cents as exact decimal text ("1234.50"), which Intl formats without going through a float
-export function centsText(cents) {
-  const n = Math.round(Number(cents)), abs = Math.abs(n);
-  return `${n < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+// Amounts are integers in ten-thousandths everywhere in the page, as the API sends them (1234.5 = 12345000, #120):
+// integers are exact in JavaScript, so sums and differences never pick up float errors. Only the formatting turns
+// them into units. Totals and charts show the currency's usual decimals (2 for EUR); one balance shown or edited
+// shows up to 4 (exactMoney, amountText).
+export const SCALE = 10000;
+// The amount as exact decimal text ("1234.5000"), which Intl formats without going through a float
+export function unitsText(units) {
+  const n = Math.round(Number(units)), abs = Math.abs(n);
+  return `${n < 0 ? "-" : ""}${Math.floor(abs / SCALE)}.${String(abs % SCALE).padStart(4, "0")}`;
 }
 
-export const money = (cents, currency, opts = {}) => {
-  if (cents === null || cents === undefined) return "";
+export const money = (units, currency, opts = {}) => {
+  if (units === null || units === undefined) return "";
   try {
-    return new Intl.NumberFormat(fmtLocale(), { style: "currency", currency, ...opts }).format(centsText(cents));
+    return new Intl.NumberFormat(fmtLocale(), { style: "currency", currency, ...opts }).format(unitsText(units));
   } catch {
-    return `${centsText(cents)} ${currency}`;
+    return `${unitsText(units)} ${currency}`;
   }
 };
+// One balance (or milestone) as stored: up to 4 decimals (1.234,5678 €), at least the currency's usual ones
+export const exactMoney = (units, currency) => money(units, currency, { maximumFractionDigits: 4 });
 export const compactMoney = (value, currency, digits = 1) => money(value, currency, { notation: "compact", maximumFractionDigits: digits });
 // Axis labels: compact (1,2 K), with more decimals when that would repeat a label, or in full
 export function axisLabels(ticks, currency) {
@@ -29,8 +34,8 @@ export function axisLabels(ticks, currency) {
   }
   return ticks.map((v) => money(v, currency, { maximumFractionDigits: 0 }));
 }
-// An amount (cents) for an input box, in the regional format without thousands separators (1234,50)
-export const amountText = (cents) => (cents === null || cents === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }).format(centsText(cents)));
+// An amount for an input box, in the regional format without thousands separators (1234,50 or 1,2345)
+export const amountText = (units) => (units === null || units === undefined ? "" : new Intl.NumberFormat(fmtLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false }).format(unitsText(units)));
 export const signedMoney = (value, currency) => (value > 0 ? "+" : "") + money(value, currency);
 export const fmtDate = (iso, opts = { dateStyle: "medium" }) => (iso ? new Intl.DateTimeFormat(fmtLocale(), { ...opts, timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`)) : "");
 export const today = () => localDate();
@@ -88,11 +93,11 @@ export function decimalMark(locale = fmtLocale()) {
   return mark === "," ? "," : ".";
 }
 
-// Typed text -> integer cents, read from the digits without going through a float. The decimal separator is
-// the one of the regional format (never guessed): the other of "," and "." can only group thousands in the
-// whole part. With ",": "1.234" = 123400, "1.234,56" = 123456, "12,5 €" = 1250; "1,234.56" is an error.
-// More than 2 decimals are rounded half up.
-export const MAX_CENTS = 10 ** 14 - 1; // the database's Numeric(14, 2)
+// Typed text -> integer ten-thousandths, read from the digits without going through a float. The decimal separator
+// is the one of the regional format (never guessed): the other of "," and "." can only group thousands in the
+// whole part. With ",": "1.234" = 12340000, "1.234,56" = 12345600, "12,5 €" = 125000; "1,234.56" is an error.
+// More than 4 decimals are rounded half up.
+export const MAX_UNITS = 4999999999999999; // 499,999,999,999.9999: schemas.MAX_AMOUNT
 export function parseAmount(text, mark = decimalMark()) {
   const value = String(text).replace(/[\s\u00a0\u202f€$£]/g, "");
   if (!value) return null;
@@ -101,16 +106,16 @@ export function parseAmount(text, mark = decimalMark()) {
   const grouped = new RegExp(`^[+-]?\\d{1,3}(\\${group}\\d{3})+$`).test(whole);
   const m = /^([+-]?)(\d*)$/.exec(grouped ? whole.split(group).join("") : whole);
   if (rest.length || !m || !/^\d*$/.test(decimals) || !(m[2] || decimals)) throw new Error(t("error.amount", { value: text }));
-  const digits = decimals.padEnd(3, "0");
-  const cents = Number(m[2] || "0") * 100 + Number(digits.slice(0, 2)) + (Number(digits[2]) >= 5 ? 1 : 0);
-  if (!Number.isSafeInteger(cents) || cents > MAX_CENTS) throw new Error(t("error.amount", { value: text }));
-  return m[1] === "-" ? -cents : cents;
+  const digits = decimals.padEnd(5, "0");
+  const units = Number(m[2] || "0") * SCALE + Number(digits.slice(0, 4)) + (Number(digits[4]) >= 5 ? 1 : 0);
+  if (!Number.isSafeInteger(units) || units > MAX_UNITS) throw new Error(t("error.amount", { value: text }));
+  return m[1] === "-" ? -units : units;
 }
 
 // The change from `previous` to `current`, coloured; with percent=true also in % of `previous`
 export function changeCell(current, previous, currency, percent = false) {
   if (current === null || previous === null || previous === undefined) return "";
-  const diff = current - previous; // cents: exact
+  const diff = current - previous; // ten-thousandths: exact
   const cls = diff > 0 ? "up" : diff < 0 ? "down" : "";
   const arrow = diff > 0 ? "▲ " : diff < 0 ? "▼ " : "";
   const pct = percent && previous !== 0

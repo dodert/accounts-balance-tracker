@@ -11,11 +11,11 @@ def fill(client):
                                           "notes": "joint account", "available_from": "2027-01-01"}).json()
     b = client.post("/api/accounts", json={"name": "Old", "currency": "USD", "archived": True}).json()
     client.post("/api/accounts", json={"name": "Empty"})
-    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-31", "amount": 100050, "note": "pay"})  # cents
-    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-02-28", "amount": 110000})
-    client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 700})
-    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 30000, "description": "Car"})
-    client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-05", "amount": 50000, "note": "first"})
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-31", "amount": 10005000, "note": "pay"})  # ten-thousandths
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-02-28", "amount": 11000000})
+    client.post(f"/api/accounts/{b['id']}/balances", json={"date": "2026-01-31", "amount": 70000})
+    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 3000000, "description": "Car"})
+    client.post(f"/api/accounts/{a['id']}/contributions", json={"date": "2026-01-05", "amount": 5000000, "note": "first"})
 
 
 def snapshot(client):
@@ -36,7 +36,7 @@ def test_export_has_everything(client):
     res = client.get("/api/export/json")
     assert res.headers["content-disposition"].startswith("attachment") and ".json" in res.headers["content-disposition"]
     data = res.json()
-    assert (data["format"], data["version"]) == ("accounts-balance-tracker", 1)
+    assert (data["format"], data["version"]) == ("accounts-balance-tracker", 2)
     accounts = {a["name"]: a for a in data["accounts"]}
     assert set(accounts) == {"ING", "Old", "Empty"}  # also an account without balances
     ing = accounts["ING"]
@@ -137,3 +137,25 @@ def test_demo_can_export_and_import(client):
     res = post(client, exported, "merge").json()
     assert res["accounts_created"] == 0 and res["balances_created"] == 0 and res["duplicates_count"] > 0
     assert post(client, exported, "replace").status_code == 200
+
+
+def test_four_decimals_survive_export_and_import_and_version_1_files_are_read(client, tmp_path):
+    """Amounts with four decimals go out and back in (format 2); a format 1 file (two decimals) is still read."""
+    a = client.post("/api/accounts", json={"name": "Fund"}).json()
+    client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-31", "amount": 12345})  # 1.2345
+    client.post(f"/api/accounts/{a['id']}/milestones", json={"date": "2026-02-01", "amount": 5, "description": "Fee"})
+    exported = client.get("/api/export/json").content
+    fund = json.loads(exported)["accounts"][0]
+    assert fund["balances"][0]["amount"] == "1.2345" and fund["milestones"][0]["amount"] == "0.0005"
+
+    other = TestClient(create_app(Settings(data_dir=tmp_path / "other")))
+    assert post(other, exported, "replace").status_code == 200
+    assert other.get("/api/accounts").json()[0]["balance"] == 12345
+    assert other.get("/api/milestones").json()[0]["amount"] == 5
+
+    old = {"format": "accounts-balance-tracker", "version": 1, "accounts": [
+        {"name": "Old file", "balances": [{"date": "2026-01-31", "amount": "1234.50"}]}]}
+    assert post(other, json.dumps(old).encode(), "merge").json()["balances_created"] == 1
+    assert {a["name"]: a["balance"] for a in other.get("/api/accounts").json()}["Old file"] == 12345000
+    too_many = {**old, "accounts": [{"name": "X", "balances": [{"date": "2026-01-31", "amount": "1.23456"}]}]}
+    assert post(other, json.dumps(too_many).encode(), "merge").status_code == 422

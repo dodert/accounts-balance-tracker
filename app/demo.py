@@ -47,6 +47,7 @@ class Sample:
     # instead: rises and then falls, but ends above its start (the orange chart background, #104)
     peak_month: int | None = None
     after_peak: float = 0
+    decimals: int = 2             # of each balance (a fund's value often has 4, #120)
     # Money put in: (on its first month, every month after it); the rest of the change is gain or loss
     contributed: tuple[float, float] | None = None
 
@@ -62,7 +63,7 @@ SAMPLES = [
     Sample({"en": "Term deposit", "es": "Depósito a plazo"}, "Caja Litoral", AccountType.savings, "EUR", 10000, 0, 0,
            closed_month=14, note={"en": "Matured", "es": "Vencido"}),
     Sample({"en": "Index fund", "es": "Fondo indexado"}, "Northwind Brokers", AccountType.investment, "EUR", 32000, 600, 1200,
-           contributed=(29000, 400)),
+           decimals=4, contributed=(29000, 400)),
     Sample({"en": "US stocks", "es": "Acciones EE. UU."}, "Northwind Brokers", AccountType.investment, "USD", 9000, 250, 700,
            contributed=(8500, 150)),
     Sample({"en": "Stock options", "es": "Stock options"}, "Northwind Brokers", AccountType.investment, "USD", 4000, 250, 600,
@@ -109,7 +110,7 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
             amount = 0 if closing else value
             if sample.type == AccountType.loan and amount > 0:
                 amount = 0
-            account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, 2)))))
+            account.balances.append(Balance(date=day, amount=Decimal(str(round(amount, sample.decimals)))))
             if sample.contributed and not closing:
                 first, monthly_in = sample.contributed
                 put_in = first if n == sample.first_month else monthly_in

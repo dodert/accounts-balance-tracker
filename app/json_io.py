@@ -1,18 +1,18 @@
 """Export and import of all the data as JSON: every account with all its fields, balances, milestones and
 contributions.
 
-Format (FORMAT_VERSION 1):
+Format (FORMAT_VERSION 2; version 1 files are still read):
 
-    {"format": "accounts-balance-tracker", "version": 1, "exported_at": "...", "app_version": "...",
+    {"format": "accounts-balance-tracker", "version": 2, "exported_at": "...", "app_version": "...",
      "accounts": [{"name": "...", "type": "bank", "currency": "EUR", "institution": null,
                    "available_from": null, "notes": null, "archived": false,
                    "balances": [{"date": "2026-01-31", "amount": "1234.56", "note": null}],
                    "milestones": [{"date": "2026-02-01", "amount": "300.00", "description": "..."}],
                    "contributions": [{"date": "2026-01-05", "amount": "500.00", "note": null}]}]}
 
-`contributions` came later (0.36.0); a file without it imports as before.
+`contributions` came later (0.39.0); a file without it imports as before.
 
-Amounts are text, so they keep their exact decimals. Two ways to import:
+Amounts are text, so they keep their exact decimals: up to 4 since version 2 (#120; version 1 had 2). Two ways to import:
 - replace: the database ends up with exactly the file's data (the caller makes a backup first).
 - merge: only what is not there yet is added. An account is found by its name and institution (as in the
   CSV import); a balance that already exists for that account and date, or the same milestone (account,
@@ -31,10 +31,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import Account, AccountType, Balance, Contribution, Milestone
-from .schemas import Currency, DecimalAmount, Name, Note, Notes
+from .schemas import Currency, DecimalAmount, Name, Note, Notes, amount_text
 
 FORMAT = "accounts-balance-tracker"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 MAX_LISTED = 200  # duplicates listed in the answer; the count is always the full one
 
 
@@ -85,7 +85,7 @@ class Backup(_Item):
 
 
 def _text(value: Decimal) -> str:
-    return f"{value:.2f}"
+    return amount_text(value)
 
 
 def export_json(db: Session, app_version: str = "") -> str:

@@ -1,7 +1,7 @@
 // The dialogs: update balances, milestones, account (with its balances and contributions), CSV and JSON import.
 import { api, localDate } from "./api.js";
 import { $, $$, esc } from "./dom.js";
-import { amountText, changeCell, decimalMark, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
+import { amountText, changeCell, decimalMark, exactMoney, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
 import { gainText } from "./charts.js";
 import { refresh } from "./main.js";
 import { ACCOUNT_TYPES, INVESTMENT_TYPES, state } from "./state.js";
@@ -54,7 +54,7 @@ export async function loadBalances() {
   $("#balances-table tbody").innerHTML = balances.length ? balances.map((b, i) => `
     <tr>
       <td>${esc(fmtDate(b.date))}</td>
-      <td class="num">${esc(money(b.amount, account.currency))}</td>
+      <td class="num">${esc(exactMoney(b.amount, account.currency))}</td>
       <td class="num">${balances[i + 1] ? changeCell(b.amount, balances[i + 1].amount, account.currency) : ""}</td>
       <td class="num">${balances[i + 1] ? changeCell(b.amount, first.amount, account.currency, true) : ""}</td>
       <td class="note">${esc(b.note ?? "")}</td>
@@ -70,7 +70,7 @@ export function renderMilestones() {
   $("#milestones-table tbody").innerHTML = list.length ? list.map((m) => `
     <tr>
       <td>${esc(fmtDate(m.date))}</td>
-      <td class="num">${esc(money(m.amount, account.currency))}</td>
+      <td class="num">${esc(exactMoney(m.amount, account.currency))}</td>
       <td class="note">${esc(m.description)}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${m.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("") : `<tr><td class="hint">${esc(t("milestones.none"))}</td></tr>`;
@@ -92,7 +92,7 @@ export function renderContributions() {
   $("#contributions-table tbody").innerHTML = rows.length ? rows.map((c) => `
     <tr>
       <td>${esc(fmtDate(c.date))}</td>
-      <td class="num">${esc(money(c.amount, account.currency))}</td>
+      <td class="num">${esc(exactMoney(c.amount, account.currency))}</td>
       <td class="num">${esc(money(c.total, account.currency))}</td>
       <td class="note">${esc(c.note ?? "")}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${c.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
@@ -122,7 +122,7 @@ export function initDialogs() {
     $("#update-rows").innerHTML = active.map((a, i) => (i === 0 || inst(a) !== inst(active[i - 1])
       ? `<h3 class="update-group">${esc(inst(a) || t("chart.no_institution"))}</h3>` : "") + `
       <label class="update-row">
-        <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: money(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
+        <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: exactMoney(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
         <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
       </label>`).join("");
     setError($("#update-error"), null);

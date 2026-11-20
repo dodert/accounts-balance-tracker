@@ -130,6 +130,50 @@ def test_upgrade_to_contributions_keeps_the_data(tmp_path):
     assert len(list(tmp_path.glob("db.sqlite.backup-0005-to-*"))) == 1
 
 
+def test_upgrade_to_four_decimals_keeps_every_amount(tmp_path):
+    """0007 rebuilds balances, milestones and contributions with 4 decimals; no amount or row of a 0006 database changes."""
+    from decimal import Decimal
+
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+    from app.models import Balance, Contribution, Milestone
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")  # foreign keys on, like the app
+    amounts = ["1234.50", "-0.01", "999999999.99", "0", "12.3"]
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0006")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'bank', 'EUR', 0)"))
+        for n, amount in enumerate(amounts):
+            conn.execute(text("INSERT INTO balances (account_id, date, amount, note) VALUES (1, :d, :a, 'n')"),
+                         {"d": f"2026-01-0{n + 1}", "a": amount})
+        conn.execute(text("INSERT INTO milestones (account_id, date, amount, description) VALUES (1, '2026-01-10', 300.25, 'Car')"))
+        conn.execute(text("INSERT INTO contributions (account_id, date, amount, note) VALUES (1, '2025-12-01', -50.5, 'out')"))
+    upgrade_database(engine)
+    from sqlalchemy.orm import Session
+    with Session(engine) as db:
+        assert [b.amount for b in db.query(Balance).order_by(Balance.date)] == [Decimal(a) for a in amounts]
+        assert [(m.amount, m.description) for m in db.query(Milestone)] == [(Decimal("300.25"), "Car")]
+        assert [(c.amount, c.note) for c in db.query(Contribution)] == [(Decimal("-50.5"), "out")]
+        db.add(Balance(account_id=1, date=Balance.date.type.python_type(2026, 2, 1), amount=Decimal("1.2345")))
+        db.commit()
+        assert db.query(Balance).filter(Balance.amount == Decimal("1.2345")).one().amount == Decimal("1.2345")
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM balances WHERE note = 'n'")) == len(amounts)
+        assert conn.scalar(text("PRAGMA foreign_keys")) == 1
+        conn.execute(text("DELETE FROM accounts"))
+        assert conn.scalar(text("SELECT count(*) FROM balances")) == 0  # the cascade still works
+        assert conn.scalar(text("SELECT count(*) FROM milestones")) == 0
+        assert conn.scalar(text("SELECT count(*) FROM contributions")) == 0
+    assert len(list(tmp_path.glob("db.sqlite.backup-0006-to-0007-*"))) == 1
+
+
 def _mode(path):
     return path.stat().st_mode & 0o777
 

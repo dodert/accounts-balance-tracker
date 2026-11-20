@@ -8,7 +8,7 @@ import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
 // The big figure: available now (main colour) and, if part is not available yet, the total with it
 // `conv` (a box in another currency): {rate, currency} to also show each figure in the default currency, small
-// (amounts in cents; a converted one rounded to the cent)
+// (amounts in ten-thousandths; a converted one rounded to the ten-thousandth)
 export const converted = (value, conv) => (conv ? Math.round(value * conv.rate) : null);
 export const convertedLine = (value, conv) => (conv ? `<div class="tile-converted">≈ ${esc(money(converted(value, conv), conv.currency))}</div>` : "");
 export const figures = (c, conv = null) => (c.available !== c.total ? `

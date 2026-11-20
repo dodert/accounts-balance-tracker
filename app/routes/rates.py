@@ -56,7 +56,7 @@ def router(ctx: Context) -> APIRouter:
                 available += c["available"] * rate.rate
                 if c["currency"] != target:
                     rates.append(FxRateOut(**vars(rate)))
-        # Rounded to the cent (half up) only when sent: schemas.Cents
+        # Rounded to the ten-thousandth (half up) only when sent: schemas.Units
         return CombinedTotal(currency=target, total=total, available=available, rates=rates, missing=missing)
 
     async def totals_and_rates(request: Request) -> tuple[list[dict], list]:
@@ -169,7 +169,7 @@ def router(ctx: Context) -> APIRouter:
         total, available = totals(per_account, dates)
         all_per_account = {a.id: convert(a, all_values[a.id]) for a in used}
         all_total, all_available = totals(all_per_account, all_dates)
-        money = lambda v: v  # noqa: E731  (rounded to the cent when sent: schemas.Cents)
+        money = lambda v: v  # noqa: E731  (rounded to the ten-thousandth when sent: schemas.Units)
         return HistoryOut(
             currency=target, dates=dates, total=[money(v) for v in total], available=[money(v) for v in available],
             accounts=[

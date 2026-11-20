@@ -18,7 +18,7 @@ def utc_today() -> str:
 def single_user(tmp_path, **settings):
     client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR", **settings)))
     account = client.post("/api/accounts", json={"name": "Savings"}).json()
-    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": 123456})
+    client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-31", "amount": 12345600})
     return client
 
 

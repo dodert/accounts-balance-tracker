@@ -57,7 +57,8 @@ permissions problem, "Re-run failed jobs" fixes it.
   `DATA_DIR`. Built from `SAMPLES` (en/es), relative to today.
 - **Exchange rates**: `app/fx.py` (Frankfurter API, `FX_URL`); stored rates in the DB, shared `rates.db` in multi-user.
 - **Dates**: the server runs in UTC; the user's "today" comes from the `X-Local-Date` header (`app/clock.py`).
-- **Amounts are integer cents** in the API (since 0.29); CSV/JSON files keep decimal text.
+- **Amounts are integer ten-thousandths** in the API (since 0.40, #120; cents from 0.29); up to 4 decimals stored
+  (`Numeric(16, 4)`), largest 499,999,999,999.9999; CSV/JSON files keep decimal text.
 - **Backups**: daily copies in `DATA_DIR/backups/<date>/` (`app/backups.py`, `BACKUP_KEEP`), plus copies before a
   migration and before an import that replaces data.
 - **Frontend**: plain ES modules in `app/static/js/` (no build step), served from `/static/v/<version>/js/`.
@@ -98,7 +99,12 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
 - **Time** (#72, #92): the server always runs in UTC (`use_utc()` forces it, `TZ` is not offered). The user's dates
   use the browser's time zone or the one chosen in ⚙ (`localStorage` `abt-tz`), sent as `X-Local-Date`
   (`?local_date=` on downloads).
-- **Amounts** (#94): integer cents in the API; the JS works in cents too. Database, JSON and CSV unchanged.
+- **Amounts** (#94, #120): integers in ten-thousandths in the API, and the JS works in them too (exact up to 2^53).
+  Totals and charts show the currency's usual decimals, one balance shown or edited up to 4; sums keep 4 decimals and
+  round only when shown; more than 4 typed or in a CSV are rounded half up (a JSON file with more is refused). The
+  largest amount is 499,999,999,999.9999: SQLite stores amounts as floats, exact to 4 decimals only below 2^39.
+- **Decimal separator** (#113): never guessed. Forms use the regional format's; the CSV import dialog states it and
+  sends it (`decimal`, a point when missing).
 - **Port** (#82): the app listens on 80 inside the container; the host port defaults to 8085.
 - **Backups** (#96): daily, `BACKUP_KEEP=7`; multi-user copies `users.db` and the `.enc` files still encrypted; users
   see their own list in ⚙ (`/api/backups`); deleting a user removes them from the backups too.
