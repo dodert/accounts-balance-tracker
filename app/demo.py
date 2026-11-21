@@ -72,7 +72,7 @@ SAMPLES = [
     Sample({"en": "Pension plan", "es": "Plan de pensiones"}, "Seguros Atlántico", AccountType.pension, "EUR", 34000, 300, 400,
            contributed=(31000, 250)),
     Sample({"en": "Bitcoin", "es": "Bitcoin"}, "Coinvault", AccountType.crypto, "EUR", 1200, 300, 80, first_month=8,
-           peak_month=12, after_peak=-90),
+           peak_month=12, after_peak=-90, contributed=(1200, 0)),
     Sample({"en": "Cash", "es": "Efectivo"}, None, AccountType.cash, "EUR", 300, 0, 80),
 ]
 
@@ -132,7 +132,8 @@ def seed(db: Session, lang: str = "en", today: date | None = None) -> None:
             if sample.contributed and not closing:
                 first, monthly_in = sample.contributed
                 put_in = first if n == sample.first_month else monthly_in
-                account.contributions.append(Contribution(date=day, amount=Decimal(put_in)))
+                if put_in:  # a contribution is never 0
+                    account.contributions.append(Contribution(date=day, amount=Decimal(put_in)))
             monthly = sample.after_peak if sample.peak_month is not None and n >= sample.peak_month else sample.monthly
             value += monthly + rng.uniform(-sample.noise, sample.noise)
             for month, cost, description in sample.milestones:

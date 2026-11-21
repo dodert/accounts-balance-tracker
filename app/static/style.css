@@ -100,6 +100,10 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .chart .trend-up { fill: var(--ok); }
 .chart .trend-falling { fill: var(--warn); }
 .chart .trend-down { fill: var(--danger); }
+/* "Since the start" in the colour of its chart's background (#148) */
+.trend-text-up .up, .trend-text-up .down { color: var(--ok); }
+.trend-text-falling .up, .trend-text-falling .down { color: var(--warn); }
+.trend-text-down .up, .trend-text-down .down { color: var(--danger); }
 @media (prefers-color-scheme: dark) { .chart .trend-bg { opacity: .16; } }
 .chart .zero { stroke: var(--muted); stroke-width: 1; }
 .chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -139,6 +143,11 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .chart .avail-label { fill: var(--muted); font-size: 11px; }
 .dashed-swatch { background: none; border-top: 2px dashed var(--total); border-radius: 0; height: 0; width: 14px; }
 .badge.lock { white-space: nowrap; }
+/* A contribution missing (#153) */
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.warning { color: var(--warn); border: 1px solid var(--warn); border-radius: 6px; padding: .4rem .6rem; }
+.warning button { margin-left: .4rem; }
+.update-row .u-warn { color: var(--warn); }
 dialog.chart-dlg { width: min(1000px, 95vw); }
 .chart-dlg .mini-head { font-size: 1.1rem; }
 .chart-dlg .mini-name, .chart-dlg .mini-value { font-size: 1.1rem; }

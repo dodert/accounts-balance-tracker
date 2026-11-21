@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import clock
-from .models import Account, Balance
+from .models import Account, Balance, Contribution
 
 Series = list[tuple[date, Decimal]]  # an account's balances, oldest first
 
@@ -46,7 +46,8 @@ def subset(ledger: Ledger, accounts: list[Account]) -> Ledger:
 
 
 def latest_balances(db: Session, account_ids: list[int] | None = None) -> dict[int, dict]:
-    """Per account: its last, previous and first balance (date, amount), in one query."""
+    """Per account: its last, previous and first balance (date, amount), in one query; and the dates of its first
+    balance that is not 0 and of its first contribution."""
     newest = func.row_number().over(partition_by=Balance.account_id, order_by=Balance.date.desc()).label("newest")
     oldest = func.row_number().over(partition_by=Balance.account_id, order_by=Balance.date).label("oldest")
     inner = select(Balance.account_id, Balance.date, Balance.amount, newest, oldest)
@@ -63,6 +64,14 @@ def latest_balances(db: Session, account_ids: list[int] | None = None) -> dict[i
             found["previous"] = (day, amount)
         if n_oldest == 1:
             found["first"] = (day, amount)
+    # The first balance that is not 0 and the first contribution: an investment-like account's balance before any
+    # money was put in is a contribution missing (#153)
+    for key, model, cond in (("first_value", Balance, Balance.amount != 0), ("first_contribution", Contribution, True)):
+        stmt = select(model.account_id, func.min(model.date)).where(cond).group_by(model.account_id)
+        if account_ids is not None:
+            stmt = stmt.where(model.account_id.in_(account_ids))
+        for account_id, day in db.execute(stmt):
+            out.setdefault(account_id, {})[key] = day
     return out
 
 

@@ -110,6 +110,8 @@ class AccountOut(BaseModel):
     # The first balance recorded, to show the change since then
     first_balance: Units | None = None
     first_date: Date | None = None
+    # Investment-like accounts: the first balance (not 0) dated before any contribution, a contribution missing (#153)
+    uncovered_from: Date | None = None
 
 
 class BalanceIn(BaseModel):

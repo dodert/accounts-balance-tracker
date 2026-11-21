@@ -5,7 +5,7 @@ import { amountText, changeCell, decimalMark, exactMoney, fmtDate, getDate, mone
 import { gainText } from "./charts.js";
 import { refresh } from "./main.js";
 import { markClean, openDialog } from "./modal.js";
-import { ACCOUNT_TYPES, INVESTMENT_TYPES, state } from "./state.js";
+import { ACCOUNT_TYPES, INVESTMENT_TYPES, contributionMissing, state } from "./state.js";
 
 export function setError(el, err) {
   el.textContent = err ? err.message ?? String(err) : "";
@@ -98,6 +98,32 @@ export function renderContributions() {
       <td class="note">${esc(c.note ?? "")}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${c.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("") : `<tr><td class="hint">${esc(t("contributions.none"))}</td></tr>`;
+  renderUncovered();
+}
+
+// A contribution missing (#153): the account's warning, and the one under a new balance dated before any contribution
+export function renderUncovered() {
+  const account = state.accounts.find((a) => a.id === state.editing?.id);
+  const from = account?.uncovered_from ?? null;
+  $("#uncovered-warning").hidden = !from;
+  $("#uncovered-text").textContent = from ? t("account.uncovered", { date: fmtDate(from) }) : "";
+  checkNewBalance();
+}
+
+const safeDate = (input) => { try { return getDate(input); } catch { return null; } };
+
+export function checkNewBalance() {
+  if (!state.editing) return;
+  $("#nb-warning").hidden = !contributionMissing(state.editing.id, $("#account-type").value, safeDate($("#nb-date")));
+}
+
+// In "Update balances": a warning on the investment-like accounts with no contribution by the date chosen
+export function checkUpdateRows() {
+  const day = safeDate($("#update-form").date);
+  $$("#update-rows .u-warn").forEach((el) => {
+    const account = state.accounts.find((a) => a.id === Number(el.dataset.id));
+    el.hidden = !contributionMissing(account.id, account.type, day);
+  });
 }
 
 // What an import did not add because it was already there (the answer lists the first ones)
@@ -121,10 +147,11 @@ export function initDialogs() {
     $("#update-rows").innerHTML = active.map((a, i) => (i === 0 || inst(a) !== inst(active[i - 1])
       ? `<h3 class="update-group">${esc(inst(a) || t("chart.no_institution"))}</h3>` : "") + `
       <label class="update-row">
-        <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: exactMoney(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span></span>
+        <span class="u-name">${esc(a.name)} <span class="sub">${esc(a.balance !== null ? t("update.last", { amount: exactMoney(a.balance, a.currency), date: fmtDate(a.balance_date) }) : t("update.never"))}</span> <span class="sub u-warn" data-id="${a.id}" hidden>${esc(t("update.uncovered"))}</span></span>
         <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
       </label>`).join("");
     setError($("#update-error"), null);
+    checkUpdateRows();
     openDialog($("#update-dlg"));
   });
 
@@ -210,6 +237,16 @@ export function initDialogs() {
   });
 
   $("#account-type").addEventListener("change", () => { if (state.editing) renderContributions(); });
+  $("#nb-date").addEventListener("input", checkNewBalance);
+  $("#update-form").date.addEventListener("input", checkUpdateRows);
+  $("#uncovered-fix").addEventListener("click", () => {
+    const account = state.accounts.find((a) => a.id === state.editing?.id);
+    if (!account?.uncovered_from) return;
+    setDate($("#nc-date"), account.uncovered_from);
+    $("#contributions-section").hidden = false;
+    $("#nc-amount").scrollIntoView({ block: "center" });
+    $("#nc-amount").focus();
+  });
   $("#nc-add").addEventListener("click", async () => {
     try {
       const amount = parseAmount($("#nc-amount").value);

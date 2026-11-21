@@ -2,7 +2,7 @@
 import { api } from "./api.js";
 import { openAccount } from "./dialogs.js";
 import { $, $$, esc } from "./dom.js";
-import { changeCell, exactMoney, fmtDate, lockBadge } from "./format.js";
+import { changeCell, exactMoney, fmtDate, lockBadge, uncoveredBadge } from "./format.js";
 import { state } from "./state.js";
 
 // --- Accounts ---
@@ -64,7 +64,7 @@ export function renderAccounts() {
   $("#accounts-table").hidden = rows.length === 0;
   $("#accounts-table tbody").innerHTML = rows.map((a) => `
     <tr data-id="${a.id}" tabindex="0" class="${a.archived ? "archived" : ""}">
-      <td><span class="t">${highlight(a.name)}</span>${a.institution ? `<span class="sub">${highlight(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${lockBadge(a)}</td>
+      <td><span class="t">${highlight(a.name)}</span>${a.institution ? `<span class="sub">${highlight(a.institution)}</span>` : ""}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${lockBadge(a)}${uncoveredBadge(a)}</td>
       <td>${highlight(t(`type.${a.type}`))}</td>
       <td class="num">${esc(exactMoney(a.balance, a.currency))}</td>
       <td class="num">${changeCell(a.balance, a.previous_balance, a.currency)}</td>

@@ -191,6 +191,7 @@
       <p class="hint" data-i18n="account.loan_hint">For loans and credit cards, record the debt as a negative balance.</p>
 
       <div id="balances-section" hidden>
+        <p class="warning" id="uncovered-warning" hidden><span id="uncovered-text"></span> <button type="button" id="uncovered-fix" data-i18n="account.uncovered_fix">Add that contribution</button></p>
         <h3 data-i18n="account.balances">Balances</h3>
         <div class="row add-balance">
           <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="nb-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
@@ -198,6 +199,7 @@
           <label><span data-i18n="account.note">Note</span> <input id="nb-note" maxlength="300"></label>
           <button type="button" id="nb-add" data-i18n="account.add_balance">Add</button>
         </div>
+        <p class="warning" id="nb-warning" hidden data-i18n="account.balance_uncovered">⚠ No contribution on or before this date: add the money you put in (Contributions, below), or the gain will be wrong.</p>
         <div class="table-wrap balances-wrap"><table class="data" id="balances-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="column.balance">Balance</th><th class="num" data-i18n="column.change">Change</th><th class="num" data-i18n="column.since_first">Since the start</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
 
         <div id="contributions-section" hidden>

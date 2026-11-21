@@ -2,7 +2,7 @@
 import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
 import { openDialog } from "./modal.js";
-import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
+import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money, uncoveredBadge } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
 export const SERIES_SLOTS = 16; // categorical colours; past these they repeat (never grey)
@@ -192,8 +192,8 @@ export function contributionsUpTo(ids, h, startDay) {
     while (i < list.length && list[i].date <= day) sum += list[i++].amount;
     return sum;
   });
-  const atStart = startDay ? list.filter((c) => c.date <= startDay).reduce((total, c) => total + c.amount, 0) : null;
-  return { values, atStart };
+  const upTo = (day) => list.filter((c) => c.date <= day).reduce((total, c) => total + c.amount, 0);
+  return { values, atStart: startDay ? upTo(startDay) : null, firstDate: list[0].date, atFirst: upTo(list[0].date) };
 }
 
 // The trend for a chart's background (#148). With the "gain" setting (the default), for accounts with
@@ -210,8 +210,26 @@ export function backgroundTrend(h, ids, values, start) {
     return trend && { trend, gain: false };
   }
   const gain = values.map((v, n) => (v === null || v === undefined ? null : v - contributed.values[n]));
-  const trend = trendOf(h.dates, gain, start === null || start === undefined ? null : start - contributed.atStart);
-  return trend && { trend, gain: true };
+  let gainStart = start === null || start === undefined ? null : start - contributed.atStart;
+  let valueStart = start ?? null, putInStart = contributed.atStart;
+  // Nothing can be gained before money was put in: with a balance older than the first contribution (a contribution
+  // missing, #153), the gain starts at the first contribution, with the balance of that day
+  if (startDay && contributed.firstDate > startDay) {
+    let at = h.dates.findLastIndex((day, n) => day <= contributed.firstDate && values[n] !== null && values[n] !== undefined);
+    if (at < 0) at = values.findIndex((v) => v !== null && v !== undefined);
+    if (at >= 0) {
+      valueStart = values[at];
+      putInStart = h.dates[at] <= contributed.firstDate ? contributed.atFirst : contributed.values[at];
+      gainStart = valueStart - putInStart;
+      for (let n = 0; n < at; n++) gain[n] = null;
+      gain[at] = gainStart;
+    }
+  }
+  const trend = trendOf(h.dates, gain, gainStart);
+  const lastAt = gain.findLastIndex((v) => v !== null);
+  // What the change of the gain is a % of: the value at the start plus what was put in since then
+  const base = valueStart === null || lastAt < 0 ? null : valueStart + contributed.values[lastAt] - putInStart;
+  return trend && { trend, gain: true, start: gainStart, last: lastAt < 0 ? null : gain[lastAt], base };
 }
 const trendText = ({ trend, gain }) => (gain
   ? { up: t("chart.gain_trend_up"), falling: t("chart.gain_trend_falling"), down: t("chart.gain_trend_down") }
@@ -547,10 +565,25 @@ export function accountHead(a, h, extra = "", small = false) {
   return `
     <div class="mini-head">
       <span class="swatch" style="background: ${a.color}"></span>
-      <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
+      <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${(a.ids ?? []).map((id) => uncoveredBadge(state.accounts.find((x) => x.id === id))).join("")}</span>
       <span class="mini-value">${esc(money(last, cur))}</span>${extra}
     </div>
-    <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>${gain}`;
+    <div class="mini-sub">${headSince(a, h, last)}${lockBadge(a)}</div>${gain}`;
+}
+
+// "Since the start" of an account's head, tied to its background (#148): the same trend and colour (green, orange
+// or red) and the same setting. With the gain, it is how much the gain changed: the value's change minus what was
+// contributed since the start
+function headSince(a, h, last) {
+  const bg = backgroundTrend(h, a.ids ?? [], a.values, a.start);
+  if (!bg) return sinceText(a, last, h.currency);
+  let text = sinceText(a, last, h.currency);
+  if (bg.gain) {
+    // The % of what was at stake: the value at the start plus what was put in since (not of the gain at the start)
+    const pct = bg.base > 0 && bg.last !== null ? ` <span class="pct">(${esc(fmtPct(((bg.last - bg.start) / bg.base) * 100))})</span>` : "";
+    text = `${changeCell(bg.last, bg.start, h.currency).replace(/<\/span>$/, `${pct}</span>`)} ${esc(t("chart.since_start"))}`;
+  }
+  return `<span class="trend-text trend-text-${bg.trend}">${text}</span>`;
 }
 
 // The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from

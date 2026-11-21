@@ -22,7 +22,7 @@ from .demo import Demo, VisitorDemos
 from .fx import Fetcher, SharedRates
 from .geo import Countries
 from .history import latest_balances
-from .models import Account, Balance, Contribution, Milestone
+from .models import INVESTMENT_TYPES, Account, Balance, Contribution, Milestone
 from .ratelimit import TooManyTries, TryLimit
 from .schemas import AccountOut
 from .totp import Totp
@@ -223,6 +223,10 @@ def account_out(account: Account, latest: dict[int, dict]) -> AccountOut:
         out.previous_balance = amount
         out.first_date, amount = found["first"]
         out.first_balance = amount
+    # An investment-like account worth something before its first contribution (#153)
+    first_value, first_contribution = found.get("first_value"), found.get("first_contribution")
+    if account.type in INVESTMENT_TYPES and first_value and (not first_contribution or first_value < first_contribution):
+        out.uncovered_from = first_value
     return out
 
 

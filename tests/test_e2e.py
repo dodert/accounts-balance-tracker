@@ -169,13 +169,17 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
     cash = page.request.post("/api/accounts", data={"name": "Cash", "type": "cash"}).json()
     for account, day, amount in ((fund, "2026-01-01", 1000), (fund, "2026-02-01", 1500), (cash, "2026-01-01", 100)):
         page.request.post(f"/api/accounts/{account['id']}/balances", data={"date": day, "amount": amount * euro})
-    # Up 500 in value, but 600 of it was put in: the gain went from 1,000 to 900
-    page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": "2026-01-15", "amount": 600 * euro})
+    # Up 500 in value, but 600 of it was put in: the gain went from 0 to -100
+    for day, amount in (("2026-01-01", 1000), ("2026-01-15", 600)):
+        page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": day, "amount": amount * euro})
     open_app(page)
     mini = page.locator("#multiples .mini", has_text="Fund")
     mini.locator(".trend-bg").wait_for()
     assert mini.locator(".trend-down.trend-gain").count() == 1
-    assert page.locator("#chart svg .trend-down.trend-gain").count() == 1  # the total too: 1,100 then 1,000 of gain
+    assert page.locator("#chart svg .trend-down.trend-gain").count() == 1  # the total too: 100 then 0 of gain
+    # "Since the start" says how the gain changed, in the background's colour
+    since = mini.locator(".trend-text-down")
+    assert "-€100.00" in since.text_content(), since.text_content()
     assert page.locator("#multiples .mini", has_text="Cash").locator(".trend-up:not(.trend-gain)").count() == 1
     assert "Gain down" in mini.locator(".trend-bg title").text_content()
 
@@ -185,6 +189,7 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
     page.click("#settings-form button[type=submit]")
     mini.locator(".trend-up").wait_for()
     assert mini.locator(".trend-gain").count() == 0 and page.locator("#chart svg .trend-up").count() == 1
+    assert "+€500.00" in mini.locator(".trend-text-up").text_content()
     page.reload()  # remembered in this browser
     page.locator("#multiples .mini", has_text="Fund").locator(".trend-up").wait_for()
 
@@ -202,7 +207,53 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
         [state.accounts, state.contributions] = saved;
         return out;
     }""", src)
-    assert result == {"converted": {"values": [0, 900, 950], "atStart": 900}, "none": None}
+    assert result == {"converted": {"values": [0, 900, 950], "atStart": 900, "firstDate": "2026-01-10", "atFirst": 900},
+                      "none": None}
+
+
+def test_a_balance_before_any_contribution_is_flagged_until_the_contribution_is_added(page):
+    """An investment account worth something before its first contribution shows a warning everywhere until fixed."""
+    euro = 10000
+    fund = page.request.post("/api/accounts", data={"name": "Shares", "type": "investment"}).json()
+    page.request.post("/api/accounts", data={"name": "Crypto", "type": "crypto"})
+    page.request.post("/api/accounts", data={"name": "Bank", "type": "bank"})
+    for day, amount in (("2025-10-01", 556.67), ("2026-01-10", 510), ("2026-11-20", 855.42)):
+        page.request.post(f"/api/accounts/{fund['id']}/balances", data={"date": day, "amount": round(amount * euro)})
+    for day, amount in (("2026-01-05", 500), ("2026-11-15", 502.07)):
+        page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": day, "amount": round(amount * euro)})
+    open_app(page)
+    row = page.locator("#accounts-table tbody tr", has_text="Shares")
+    row.locator(".uncovered").wait_for()
+    assert page.locator("#accounts-table tbody tr", has_text="Bank").locator(".uncovered").count() == 0
+    mini = page.locator("#multiples .mini", has_text="Shares")
+    mini.locator(".uncovered").wait_for()
+    # Until then the gain starts at the first contribution: 556.67 - 500 = 56.67, now 855.42 - 1,002.07 = -146.65
+    assert "-€203.32" in mini.locator(".trend-text-down").text_content()
+
+    row.click()
+    warning = page.locator("#uncovered-warning")
+    warning.wait_for()
+    assert "Oct" in warning.text_content() and page.locator("#nb-warning").is_hidden()
+    page.fill("#nb-date", "2025-09-01")  # a balance before any contribution: warned while typing it
+    page.locator("#nb-warning").wait_for()
+    page.fill("#nb-date", "2026-02-01")
+    assert page.locator("#nb-warning").is_hidden()
+    page.click("#uncovered-fix")  # takes to the contribution, dated on that balance
+    assert "2025" in page.locator("#nc-date").input_value() and page.evaluate("document.activeElement.id") == "nc-amount"
+    page.fill("#nc-amount", "556.67")
+    page.click("#nc-add")
+    warning.wait_for(state="hidden")
+    page.keyboard.press("Escape")
+    page.locator("#accounts-table tbody tr", has_text="Shares").locator(".uncovered").wait_for(state="detached")
+    assert page.locator("#multiples .mini", has_text="Shares").locator(".uncovered").count() == 0
+
+    # "Update balances": the investment-like accounts without a contribution by that date
+    page.click("#update-btn")
+    page.locator("#update-dlg[open]").wait_for()
+    assert page.locator(".u-warn:not([hidden])").count() == 1  # Crypto, with no contributions
+    page.fill("#update-form input[name=date]", "2025-01-01")
+    page.locator("#update-form input[name=date]").dispatch_event("input")
+    assert page.locator(".u-warn:not([hidden])").count() == 2  # and Shares, before its first contribution
 
 
 def test_update_balances_of_every_account_at_once(page):

@@ -24,3 +24,11 @@ export function setTrendMode(mode) {
   state.trendMode = mode === "value" ? "value" : "gain";
   try { localStorage.setItem("abt-trend", state.trendMode); } catch {}
 }
+
+// Whether a balance on `day` needs a contribution first (#153): an investment-like account can't be worth anything
+// before money was put in. `type`: the account's type (as chosen in its dialog, maybe not saved yet)
+export function contributionMissing(accountId, type, day) {
+  if (!INVESTMENT_TYPES.includes(type) || !day) return false;
+  const first = state.contributions.find((c) => c.account_id === accountId); // oldest first, as the API sends them
+  return !first || day < first.date;
+}
