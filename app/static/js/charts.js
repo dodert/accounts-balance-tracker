@@ -466,6 +466,7 @@ export function renderChart() {
     renderBlock(h, { box: $(".chart", block), legend: $(".legend", block), grid: $(".multiples", block), table: $("table", block), tableWrap: $("details", block) });
   }
   if ($("#chart-dlg").open) drawMaximized();
+  document.dispatchEvent(new Event("abt-history")); // the accounts list's "since the start" follows the charts
 }
 
 export function renderBlock(h, el) {
@@ -574,16 +575,28 @@ export function accountHead(a, h, extra = "", small = false) {
 // "Since the start" of an account's head, tied to its background (#148): the same trend and colour (green, orange
 // or red) and the same setting. With the gain, it is how much the gain changed: the value's change minus what was
 // contributed since the start
-function headSince(a, h, last) {
+function headSince(a, h, last, label = true) {
+  const tail = label ? ` ${esc(t("chart.since_start"))}` : "";
+  const plain = a.start !== null && a.start !== undefined ? `${changeCell(last, a.start, h.currency, true)}${tail}` : "";
   const bg = backgroundTrend(h, a.ids ?? [], a.values, a.start);
-  if (!bg) return sinceText(a, last, h.currency);
-  let text = sinceText(a, last, h.currency);
+  if (!bg) return plain;
+  let text = plain;
   if (bg.gain) {
     // The % of what was at stake: the value at the start plus what was put in since (not of the gain at the start)
     const pct = bg.base > 0 && bg.last !== null ? ` <span class="pct">(${esc(fmtPct(((bg.last - bg.start) / bg.base) * 100))})</span>` : "";
-    text = `${changeCell(bg.last, bg.start, h.currency).replace(/<\/span>$/, `${pct}</span>`)} ${esc(t("chart.since_start"))}`;
+    text = `${changeCell(bg.last, bg.start, h.currency).replace(/<\/span>$/, `${pct}</span>`)}${tail}`;
   }
   return `<span class="trend-text trend-text-${bg.trend}">${text}</span>`;
+}
+
+// An account's "since the start" in the accounts list, the same as on its chart (#148): from the history of its own
+// currency (not the converted one); null until that history is loaded
+export function accountSinceCell(account) {
+  if (account.first_balance === null || account.first_balance === undefined) return null; // one balance: nothing to compare
+  const h = state.histories.find((x) => !x.isConverted && x.currency === account.currency && x.accounts.some((s) => s.account_id === account.id));
+  const a = h && accountSeries(h).find((s) => s.account_id === account.id);
+  if (!a) return null;
+  return headSince(a, h, [...a.values].reverse().find((v) => v !== null) ?? null, false);
 }
 
 // The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from

@@ -1,5 +1,6 @@
 // The accounts list, with its search.
 import { api } from "./api.js";
+import { accountSinceCell } from "./charts.js";
 import { openAccount } from "./dialogs.js";
 import { $, $$, esc } from "./dom.js";
 import { changeCell, exactMoney, fmtDate, lockBadge, uncoveredBadge } from "./format.js";
@@ -68,13 +69,14 @@ export function renderAccounts() {
       <td>${highlight(t(`type.${a.type}`))}</td>
       <td class="num">${esc(exactMoney(a.balance, a.currency))}</td>
       <td class="num">${changeCell(a.balance, a.previous_balance, a.currency)}</td>
-      <td class="num">${changeCell(a.balance, a.first_balance, a.currency, true)}</td>
+      <td class="num">${accountSinceCell(a) ?? changeCell(a.balance, a.first_balance, a.currency, true)}</td>
       <td>${esc(fmtDate(a.balance_date))}</td>
     </tr>`).join("");
   applySearch();
 }
 
 export function initAccounts() {
+  document.addEventListener("abt-history", renderAccounts);
   $("#show-archived").addEventListener("change", renderAccounts);
   $("#account-search").addEventListener("input", renderAccounts);
   $("#account-search").addEventListener("keydown", (e) => {

@@ -180,6 +180,9 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
     # "Since the start" says how the gain changed, in the background's colour
     since = mini.locator(".trend-text-down")
     assert "-€100.00" in since.text_content(), since.text_content()
+    # and so does the accounts list
+    row = page.locator("#accounts-table tbody tr", has_text="Fund")
+    assert "-€100.00" in row.locator(".trend-text-down").text_content()
     assert page.locator("#multiples .mini", has_text="Cash").locator(".trend-up:not(.trend-gain)").count() == 1
     assert "Gain down" in mini.locator(".trend-bg title").text_content()
 
@@ -190,6 +193,7 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
     mini.locator(".trend-up").wait_for()
     assert mini.locator(".trend-gain").count() == 0 and page.locator("#chart svg .trend-up").count() == 1
     assert "+€500.00" in mini.locator(".trend-text-up").text_content()
+    assert "+€500.00" in row.locator(".trend-text-up").text_content()
     page.reload()  # remembered in this browser
     page.locator("#multiples .mini", has_text="Fund").locator(".trend-up").wait_for()
 
