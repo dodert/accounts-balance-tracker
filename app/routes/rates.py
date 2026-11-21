@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .. import clock
 from ..deps import Context
 from ..fx import DbStore, SharedStore, get_rate, own_rates, retry_now
 from ..history import available_totals, currency_totals, history, load
@@ -32,11 +33,12 @@ def router(ctx: Context) -> APIRouter:
     # never written to it (they go to the shared store). `fallback` is the rates the user's (or demo's) own
     # database already has, used only when the shared store has none for a day.
     @contextmanager
-    def rate_source(request: Request, fallback: list):
+    def rate_source(request: Request, fallback: list, network: bool = True):
         """(store, fetcher) of the rates. Single user: the database's own table and the service. Multi-user: the
-        store shared by everybody, which demos only read (a demo never makes the app ask the service)."""
+        store shared by everybody, which demos only read (a demo never makes the app ask the service); with
+        network=False nobody makes it ask."""
         if multi:
-            yield SharedStore(shared_rates, fallback), shared_rates.fetcher(network=not in_demo(request))
+            yield SharedStore(shared_rates, fallback), shared_rates.fetcher(network=network and not in_demo(request))
             return
         with open_db(request) as db:
             yield DbStore(db), fetch_rate
@@ -83,7 +85,8 @@ def router(ctx: Context) -> APIRouter:
     ):
         """The rate from one currency to another on a day (default today). Multi-user: only between the currencies
         of the user's accounts and the default one, so nobody can use up the shared daily limit of requests to the
-        rate service with other pairs."""
+        rate service with other pairs; and a past day only from the stored rates (the app itself only uses today's), so
+        nobody can use it up with many days either (#165)."""
         base, quote = base.upper(), quote.upper()
         fallback = []
         if multi:
@@ -97,7 +100,8 @@ def router(ctx: Context) -> APIRouter:
 
         def run():
             try:
-                with rate_source(request, fallback) as (store, fetch):
+                past = day is not None and day < clock.today()
+                with rate_source(request, fallback, network=not (multi and past)) as (store, fetch):
                     return FxRateOut(**vars(get_rate(store, fetch, base, quote, day)))
             except LookupError as exc:
                 raise HTTPException(503, str(exc)) from None
