@@ -363,6 +363,11 @@
       <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
       <label><span data-i18n="settings.locale">Date and number format</span> <select name="locale" id="locale-select"></select></label>
       <label><span data-i18n="settings.time_zone">Time zone</span> <select name="time_zone" id="tz-select"></select></label>
+      <label><span data-i18n="settings.trend">Chart background colour</span> <select name="trend" id="trend-select">
+        <option value="gain" data-i18n="settings.trend_gain">Gain: value minus contributions</option>
+        <option value="value" data-i18n="settings.trend_value">Value over time</option>
+      </select></label>
+      <p class="hint" data-i18n="settings.trend_hint">For accounts with contributions, green, orange or red can follow the gain (so money put in doesn't count as growth) or just the value.</p>
       <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
       <fieldset class="demo-setting">
         <legend data-i18n="demo.title">Demo mode</legend>

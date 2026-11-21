@@ -255,6 +255,7 @@ class HistoryOut(BaseModel):
     converted: list[str] = []              # currencies converted
     missing: list[str] = []                # currencies left out: no rate stored and the service down
     stale: bool = False                    # today's rate could not be updated: the last stored one is used
+    rates: dict[str, float] = {}           # today's rate of each converted currency (for the contributions, #148)
 
 
 class CsvImportOut(BaseModel):

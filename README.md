@@ -248,6 +248,8 @@ These backups sit in the same folder as the data. Keep a copy somewhere else too
 
   *Currency*: with accounts in more than one currency, *All currencies* (the default) shows the charts of each currency one after the other, each in its own currency (no conversion); or pick one currency. *All in EUR* (the default currency) converts every account into it, each date at that date's ECB rate, and draws them on one chart; the rates are stored, so each date is asked for once, and only currencies and dates are sent, never amounts.
 
+  *Background*: each chart is green when it went up or stayed the same since its start, orange when it is still above its start but trending down, and red when it went down. For accounts with contributions (and the totals and groups that include them) it follows the **gain** by default, the value minus what was contributed up to each date, so money put in doesn't count as growth; in the converted chart contributions in another currency count at the same rate as the balances. In ⚙ *Chart background colour* can follow the value alone instead (saved in the browser).
+
   Each account keeps its colour in every chart (16 colours; past 16 they repeat) and the total is drawn in black (white in dark mode). An account keeps its last recorded balance until a new one is recorded.
 
   A **legend of the lines** under each chart (one for all the small account charts, and one in the maximized chart) shows a sample of each kind of line drawn there, and only those: solid for the balance or total, dashed for what is not available yet or what was contributed, grey dashed for the start (first balance), dotted vertical for a milestone and grey dotted vertical for the day a locked balance becomes available.

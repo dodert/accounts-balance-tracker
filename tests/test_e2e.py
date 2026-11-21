@@ -162,6 +162,49 @@ def test_contributions_show_next_to_the_value(page):
     assert mini.locator("svg path.line.dashed").count() == 1
 
 
+def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(page):
+    """With contributions the background follows the gain (red here) by default, or the value (green) in ⚙."""
+    euro = 10000  # amounts in ten-thousandths
+    fund = page.request.post("/api/accounts", data={"name": "Fund", "type": "investment"}).json()
+    cash = page.request.post("/api/accounts", data={"name": "Cash", "type": "cash"}).json()
+    for account, day, amount in ((fund, "2026-01-01", 1000), (fund, "2026-02-01", 1500), (cash, "2026-01-01", 100)):
+        page.request.post(f"/api/accounts/{account['id']}/balances", data={"date": day, "amount": amount * euro})
+    # Up 500 in value, but 600 of it was put in: the gain went from 1,000 to 900
+    page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": "2026-01-15", "amount": 600 * euro})
+    open_app(page)
+    mini = page.locator("#multiples .mini", has_text="Fund")
+    mini.locator(".trend-bg").wait_for()
+    assert mini.locator(".trend-down.trend-gain").count() == 1
+    assert page.locator("#chart svg .trend-down.trend-gain").count() == 1  # the total too: 1,100 then 1,000 of gain
+    assert page.locator("#multiples .mini", has_text="Cash").locator(".trend-up:not(.trend-gain)").count() == 1
+    assert "Gain down" in mini.locator(".trend-bg title").text_content()
+
+    page.click("#settings-btn")
+    assert page.locator("#trend-select").input_value() == "gain"
+    page.select_option("#trend-select", "value")
+    page.click("#settings-form button[type=submit]")
+    mini.locator(".trend-up").wait_for()
+    assert mini.locator(".trend-gain").count() == 0 and page.locator("#chart svg .trend-up").count() == 1
+    page.reload()  # remembered in this browser
+    page.locator("#multiples .mini", has_text="Fund").locator(".trend-up").wait_for()
+
+    # In the converted chart, contributions in another currency count at the chart's rate, like the balances
+    src = page.evaluate("[...document.scripts].map((s) => s.src).find((s) => s.includes('/js/main.js'))")
+    result = page.evaluate("""async (src) => {
+        const { contributionsUpTo } = await import(src.replace('main.js', 'charts.js'));
+        const { state } = await import(src.replace('main.js', 'state.js'));
+        const saved = [state.accounts, state.contributions];
+        state.accounts = [{ id: 1, currency: "USD" }, { id: 2, currency: "EUR" }, { id: 3, currency: "GBP" }];
+        state.contributions = [{ account_id: 1, date: "2026-01-10", amount: 1000 }, { account_id: 2, date: "2026-02-10", amount: 50 },
+                               { account_id: 3, date: "2026-01-10", amount: 7 }];
+        const h = { currency: "EUR", dates: ["2026-01-01", "2026-02-01", "2026-03-01"], rates: { USD: 0.9 } };
+        const out = { converted: contributionsUpTo([1, 2, 3], h, "2026-01-31"), none: contributionsUpTo([3], h, null) };
+        [state.accounts, state.contributions] = saved;
+        return out;
+    }""", src)
+    assert result == {"converted": {"values": [0, 900, 950], "atStart": 900}, "none": None}
+
+
 def test_update_balances_of_every_account_at_once(page):
     """The 'Update balances' dialog saves a balance for each account on one date."""
     open_app(page)
