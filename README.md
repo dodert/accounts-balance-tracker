@@ -4,6 +4,8 @@
 
 Self-hosted app to keep track of the balance of your accounts over time: current accounts, savings, investments, pension plans, crypto, cash and loans. Record each account's balance whenever you want (for example once a month) and see the total and how it evolves. Your data stays on your server.
 
+**[Try the online demo](https://balancetracker.dodert.com/demo)**: made-up sample data, no account needed.
+
 > **Note:** this project has been almost entirely vibe-coded with an AI coding assistant ([Claude Code](https://claude.com/claude-code)).
 
 ## Contents
@@ -33,7 +35,7 @@ Self-hosted app to keep track of the balance of your accounts over time: current
   <img src="docs/screenshot-update.png" alt="Update balances, grouped by institution" width="20%">
 </p>
 
-<sub>Screenshots from the demo mode: made-up sample data.</sub>
+<sub>Screenshots from the demo mode: made-up sample data. Try it yourself in the [online demo](https://balancetracker.dodert.com/demo).</sub>
 
 ## Install on Unraid
 
