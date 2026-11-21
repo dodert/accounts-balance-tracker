@@ -33,9 +33,11 @@ header h1 { margin: 0; font-size: 1.4rem; }
 .columns-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 @media (min-width: 1600px) {
   .columns-btn { display: inline-block; }
-  body:not(.one-column) main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  /* The last row takes whatever height the chart needs beyond the accounts, so the mortgages follow right below them */
+  body:not(.one-column) main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr; align-items: start; }
   body:not(.one-column) main > #totals { grid-column: 1 / -1; }
-  body:not(.one-column) main > #chart-panel { grid-row: span 2; }
+  body:not(.one-column) main > #chart-panel { grid-row: 2 / span 2; }
 }
 @media (min-width: 1920px) { body:not(.one-column) main { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 @media (min-width: 1600px) and (max-width: 2199.98px) {

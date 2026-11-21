@@ -586,7 +586,10 @@ def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(p
         return page.evaluate("""() => {
             const c = document.querySelector("#chart-panel").getBoundingClientRect();
             const a = document.querySelector("#accounts-table").closest("section").getBoundingClientRect();
-            return a.left > c.right && Math.abs(a.top - c.top) < 2; }""")
+            const m = document.querySelector("#mortgages-panel").getBoundingClientRect();
+            // the mortgages right below the accounts, not down where the chart ends
+            return a.left > c.right && Math.abs(a.top - c.top) < 2 && Math.abs(m.left - a.left) < 2
+              && m.top - a.bottom < 40; }""")
 
     page.set_viewport_size({"width": 1280, "height": 1000})
     assert not button.is_visible() and not beside()
