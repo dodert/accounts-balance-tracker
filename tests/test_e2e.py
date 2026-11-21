@@ -505,3 +505,49 @@ def test_simulate_prepayments_without_saving_them(page):
     page.locator("#prepayments-table tbody tr").nth(real).wait_for()
     page.locator("#simulation").wait_for(state="hidden")
     assert page.locator("#mortgage-chart svg path.line.dashed").count() == 0
+
+
+def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
+    """A click outside a dialog closes it; with unsaved changes, the backdrop, Escape and Cancel ask first."""
+    open_app(page)
+    dlg = page.locator("#account-dlg")
+    is_open = lambda: dlg.evaluate("d => d.open")  # noqa: E731
+    page.click("#add-account-btn")
+    page.mouse.click(5, 5)  # the backdrop, no changes: it just closes
+    assert not is_open()
+
+    page.click("#add-account-btn")
+    # A drag from inside the box to the backdrop (e.g. selecting text) doesn't close it
+    box = page.locator("#account-dlg-title").bounding_box()
+    page.mouse.move(box["x"] + 5, box["y"] + 5)
+    page.mouse.down()
+    page.mouse.move(5, 5)
+    page.mouse.up()
+    assert is_open()
+
+    page.fill("#account-form input[name=name]", "Draft")
+    page.evaluate("window.asked = []; window.confirm = (q) => { window.asked.push(q); return false; }; null")  # keep them
+    page.mouse.click(5, 5)
+    page.keyboard.press("Escape")
+    page.click("#account-dlg .cancel")
+    assert is_open()
+    assert page.locator("#account-form input[name=name]").input_value() == "Draft"
+    asked = page.evaluate("window.asked")
+    assert len(asked) == 3 and all("unsaved changes" in q for q in asked)
+    page.evaluate("window.confirm = () => true; null")  # discard them
+    page.mouse.click(5, 5)
+    assert not is_open()
+    assert page.locator("#accounts-table tbody tr", has_text="Draft").count() == 0
+
+    # A balance added inside the dialog is saved: closing after it doesn't ask
+    page.click("#add-account-btn")
+    page.fill("#account-form input[name=name]", "Savings")
+    page.click("#account-form button[type=submit]")
+    page.locator("#accounts-table tbody tr", has_text="Savings").click()
+    page.fill("#nb-date", "2026-01-15")
+    page.fill("#nb-amount", "100")
+    page.click("#nb-add")
+    page.locator("#balances-table tbody td.num", has_text="100.00").first.wait_for()
+    page.evaluate("window.asked = []; window.confirm = (q) => { window.asked.push(q); return false; }; null")
+    page.keyboard.press("Escape")
+    assert not is_open() and page.evaluate("window.asked") == []

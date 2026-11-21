@@ -100,6 +100,7 @@
   "settings.time_zone_chosen": "Dates in the time zone chosen in the settings ({zone}).",
   "error.date": "Invalid date: {value}",
   "common.calendar": "Calendar",
+  "common.discard_changes": "You have unsaved changes. Close and discard them?",
   "column.since_first": "Since the start",
   "totals.since_first": "since the start ({date})",
   "chart.start": "Start: {amount}",

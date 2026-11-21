@@ -1,6 +1,7 @@
 // The charts: total, one small chart per account, percent view and the maximized dialog.
 import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
+import { openDialog } from "./modal.js";
 import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
@@ -543,7 +544,7 @@ export function openMaximized(accountId, currency) {
   state.maximized = { id: accountId, currency };
   const dlg = $("#chart-dlg");
   dlg.appendChild($("#tooltip"));
-  dlg.showModal();
+  openDialog(dlg);
   drawMaximized();
 }
 
@@ -574,11 +575,6 @@ export function initCharts() {
   });
   let resizeTimer;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
-  // A click outside the dialog box (on the backdrop) closes it too
-  $("#chart-dlg").addEventListener("click", (e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.currentTarget.close();
-  });
   $("#chart-dlg").addEventListener("close", () => {
     state.maximized = null;
     $("#tooltip").hidden = true;
