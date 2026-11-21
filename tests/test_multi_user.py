@@ -1149,3 +1149,49 @@ def test_many_parallel_requests_of_one_user_do_not_freeze_the_app(tmp_path, monk
     finally:
         server.should_exit = True
         thread.join(5)
+
+
+def test_many_parallel_requests_of_one_demo_do_not_freeze_the_app(tmp_path):
+    """More parallel requests (and resets) of one demo than worker threads are all answered; health keeps going."""
+    import socket
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import requests
+    import uvicorn
+
+    app = make_app(tmp_path)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    while not server.started:
+        assert time.time() < deadline, "the app did not start"
+        time.sleep(0.05)
+    url = f"http://127.0.0.1:{port}"
+    http = requests.Session()
+    http.trust_env = False  # straight to the local server, never through a proxy from the environment
+    try:
+        http.post(f"{url}/api/demo")
+        demo = dict(http.cookies)
+
+        def call(method, path):
+            return requests.request(method, f"{url}{path}", cookies=demo, timeout=60,
+                                    proxies={"http": None, "https": None}).status_code
+
+        with ThreadPoolExecutor(120) as pool:
+            flood = [pool.submit(call, "GET", "/api/accounts") for _ in range(100)]
+            flood += [pool.submit(call, "POST", "/api/demo/reset") for _ in range(20)]
+            time.sleep(0.5)  # the flood is queued now
+            started = time.time()
+            assert http.get(f"{url}/api/health", timeout=5).status_code == 200
+            assert time.time() - started < 2  # not behind the demo's queue
+            assert sorted({f.result() for f in flood}) == [200, 204]
+        assert app.state.turns == {}  # the demo's turn is forgotten once its requests are done
+    finally:
+        server.should_exit = True
+        thread.join(5)
+
