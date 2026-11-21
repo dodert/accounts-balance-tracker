@@ -14,7 +14,11 @@ STATIC = Path(__file__).parent.parent / "app" / "static"
 LOCALES = sorted((STATIC / "i18n").glob("*.json"))
 EN = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))
 # Keys built at run time: t(`type.${a.type}`)
-DYNAMIC = {"type": ["bank", "savings", "investment", "pension", "crypto", "cash", "loan", "other"]}
+DYNAMIC = {"type": ["bank", "savings", "investment", "pension", "crypto", "cash", "loan", "other"],
+           # the guided tour's steps (tour.js): t(`tour.${key}`) and t(`tour.${key}_title`)
+           "tour": [f"{step}{end}" for step in ("welcome", "totals", "chart", "accounts", "add_account", "update",
+                                                  "milestone", "mortgages", "data", "settings", "columns", "again")
+                    for end in ("", "_title")]}
 
 
 def test_languages_endpoint(tmp_path):

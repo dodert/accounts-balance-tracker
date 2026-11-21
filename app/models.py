@@ -174,3 +174,12 @@ class Prepayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     mortgage: Mapped[Mortgage] = relationship(back_populates="prepayments")
+
+
+class AppSetting(Base):
+    """A setting of this database's owner kept with their data (in multi-user, in their encrypted database), e.g.
+    `tour_seen`: the version of the guided tour already shown (#156)."""
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)

@@ -213,7 +213,44 @@ def test_upgrade_to_mortgages_keeps_the_data(tmp_path):
         conn.execute(text("DELETE FROM mortgages"))
         assert conn.scalar(text("SELECT count(*) FROM mortgage_prepayments")) == 0  # deleted with its mortgage
         assert conn.scalar(text("SELECT count(*) FROM balances")) == 1
-    assert len(list(tmp_path.glob("db.sqlite.backup-0007-to-0008-*"))) == 1
+    assert len(list(tmp_path.glob("db.sqlite.backup-0007-to-*"))) == 1
+
+
+def test_upgrade_to_app_settings_keeps_the_data(tmp_path):
+    """0009 adds the settings table (the guided tour seen); every account, balance, milestone, contribution and
+    mortgage of a 0008 database stays."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from app.db import make_engine
+    from app.migrate import MIGRATIONS_DIR
+    from app.models import AppSetting
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'db.sqlite'}")  # the app's engine: foreign keys on
+    with engine.begin() as conn:
+        config = Config()
+        config.set_main_option("script_location", str(MIGRATIONS_DIR))
+        config.attributes["connection"] = conn
+        command.upgrade(config, "0008")
+        conn.execute(text("INSERT INTO accounts (id, name, type, currency, archived) VALUES (1, 'A', 'investment', 'EUR', 0)"))
+        conn.execute(text("INSERT INTO balances (account_id, date, amount) VALUES (1, '2026-01-01', 1500.1234)"))
+        conn.execute(text("INSERT INTO milestones (account_id, date, amount, description) VALUES (1, '2026-01-10', 300, 'Car')"))
+        conn.execute(text("INSERT INTO contributions (account_id, date, amount) VALUES (1, '2026-01-01', 1000)"))
+        conn.execute(text("INSERT INTO mortgages (id, name, currency, principal, rate, discount, term_months, "
+                          "first_payment, payment_day) VALUES (1, 'Home', 'EUR', 150000, 3.1, 0.6, 300, '2026-01-05', 5)"))
+        conn.execute(text("INSERT INTO mortgage_prepayments (mortgage_id, date, amount, mode, fee) "
+                          "VALUES (1, '2026-06-01', 5000, 'reduce_term', 0)"))
+    upgrade_database(engine)
+    with Session(engine) as db:
+        db.add(AppSetting(key="tour_seen", value="1"))
+        db.commit()
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT amount FROM balances")) == 1500.1234
+        for table in ("accounts", "milestones", "contributions", "mortgages", "mortgage_prepayments", "app_settings"):
+            assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 1, table
+    assert len(list(tmp_path.glob("db.sqlite.backup-0008-to-*"))) == 1
 
 
 def _mode(path):

@@ -12,6 +12,7 @@ import { initMortgages, loadMortgages } from "./mortgages.js";
 import { initSettings, renderTimeZoneBadge } from "./settings.js";
 import { state } from "./state.js";
 import { initTotals, loadTotals } from "./totals.js";
+import { initTour, maybeStartTour } from "./tour.js";
 
 export async function refresh() {
   await Promise.all([loadAccounts(), loadTotals(), loadMilestones(), loadContributions(), loadMortgages()]);
@@ -29,6 +30,7 @@ initDialogs();
 initMortgages();
 initSettings();
 initDemo();
+initTour();
 
 (async () => {
   await initI18n();
@@ -43,4 +45,5 @@ initDemo();
   $("#account-link").textContent = state.about.user ? `👤 ${state.about.user}` : "";
   renderDemo();
   await refresh();
+  await maybeStartTour();
 })().catch(showError);

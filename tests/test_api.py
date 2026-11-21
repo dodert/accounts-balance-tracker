@@ -14,7 +14,7 @@ def test_health_and_about(client):
     """The health check, the app info and the main page answer."""
     assert client.get("/api/health").json()["status"] == "ok"
     about = client.get("/api/about").json()
-    assert about["schema"] == "0008" and about["default_currency"] == "EUR" and about["auth"] is False
+    assert about["schema"] == "0009" and about["default_currency"] == "EUR" and about["auth"] is False
     page = client.get("/")
     assert page.status_code == 200 and "{{ASSET_VERSION}}" not in page.text
 
