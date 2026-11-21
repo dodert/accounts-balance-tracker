@@ -215,6 +215,26 @@ def test_the_background_follows_the_gain_or_the_value_as_chosen_in_the_settings(
                       "none": None}
 
 
+def test_the_accounts_list_follows_the_gain_whatever_currency_the_chart_shows(page):
+    """The list's "since the start" follows each account's gain also with "All in EUR" or another currency chosen."""
+    euro = 10000
+    for name, currency in (("Fund EUR", "EUR"), ("Fund USD", "USD")):
+        account = page.request.post("/api/accounts", data={"name": name, "type": "investment", "currency": currency}).json()
+        for day, amount in (("2026-01-01", 1000), ("2026-02-01", 1500)):
+            page.request.post(f"/api/accounts/{account['id']}/balances", data={"date": day, "amount": amount * euro})
+        for day, amount in (("2026-01-01", 1000), ("2026-01-15", 600)):  # up 500, but 600 put in
+            page.request.post(f"/api/accounts/{account['id']}/contributions", data={"date": day, "amount": amount * euro})
+    open_app(page)
+    rows = page.locator("#accounts-table tbody tr")
+    page.locator("#accounts-table .trend-text-down").nth(1).wait_for()
+    for choice in ("=", "EUR", "USD"):
+        page.select_option("#chart-currency", choice)
+        page.wait_for_load_state("networkidle")
+        for name in ("Fund EUR", "Fund USD"):
+            cell = rows.filter(has_text=name).locator(".trend-text-down")
+            assert cell.count() == 1 and "100.00" in cell.text_content(), (choice, name)
+
+
 def test_a_balance_before_any_contribution_is_flagged_until_the_contribution_is_added(page):
     """An investment account worth something before its first contribution shows a warning everywhere until fixed."""
     euro = 10000
