@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..deps import Context
-from ..fx import DbStore, SharedStore, get_rate, own_rates
+from ..fx import DbStore, SharedStore, get_rate, own_rates, retry_now
 from ..history import available_totals, currency_totals, history, load
 from ..models import Account
 from ..schemas import CombinedTotal, CurrencyTotal, FxRateOut, HistoryOut
@@ -46,6 +46,8 @@ def router(ctx: Context) -> APIRouter:
         total = available = Decimal(0)
         rates, missing = [], []
         with rate_source(request, fallback) as (store, fetch):
+            if refresh:
+                retry_now(fetch)  # the button asks the service even if it failed a short while ago
             for c in totals:
                 try:
                     rate = get_rate(store, fetch, c["currency"], target, refresh=refresh)

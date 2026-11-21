@@ -80,8 +80,17 @@ export async function loadHistory() {
   const since = sinceDate();
   const own = (c) => api(`/api/history?currency=${encodeURIComponent(c)}${since ? `&since=${since}` : ""}`);
   if (state.currency === CONVERTED) {
-    // The accounts list needs each account in its own currency too (#154)
-    const [h, ...owns] = await Promise.all([api(`/api/history/converted${since ? `?since=${since}` : ""}`), ...state.currencies.map(own)]);
+    // The rates may take a few seconds (the service is slow or down): say so if it isn't quick
+    const loading = $("#chart-loading");
+    const timer = setTimeout(() => { loading.hidden = false; }, 300);
+    let h, owns;
+    try {
+      // The accounts list needs each account in its own currency too (#154)
+      [h, ...owns] = await Promise.all([api(`/api/history/converted${since ? `?since=${since}` : ""}`), ...state.currencies.map(own)]);
+    } finally {
+      clearTimeout(timer);
+      loading.hidden = true;
+    }
     state.histories = [{ ...h, isConverted: true }];
     state.ownHistories = owns;
     renderChart();

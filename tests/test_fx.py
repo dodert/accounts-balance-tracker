@@ -194,3 +194,79 @@ def test_converted_history_with_the_service_down(tmp_path):
     assert h.json()["rates"][0]["stale"] is True
     h = client.get("/api/history/converted").json()
     assert h["converted"] == ["USD"] and h["total"] == [450, 540]
+
+
+def test_frankfurter_is_not_asked_again_for_an_hour_after_it_failed(monkeypatch):
+    """After a network failure or a 5xx the service is skipped for an hour (no wait), unless retry() is called."""
+    import io
+    import urllib.error
+
+    from app.fx import Refused, ServiceDown
+
+    now, calls, answers = [0.0], [], []
+
+    def urlopen(request, timeout):
+        calls.append(timeout)
+        answer = answers.pop(0)
+        if isinstance(answer, int):
+            raise urllib.error.HTTPError(request.full_url, answer, "error", {}, io.BytesIO(b"{}"))
+        if isinstance(answer, Exception):
+            raise answer
+        return io.BytesIO(json.dumps(answer).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    fetch = frankfurter("https://api.frankfurter.app", clock=lambda: now[0])
+    ok = {"date": "2026-01-02", "rates": {"EUR": 0.9}}
+    answers[:] = [OSError("Network is unreachable"), ok, 503, ok, 404, ok]
+    with pytest.raises(OSError):
+        fetch("USD", "EUR", None)
+    now[0] += 3599
+    with pytest.raises(ServiceDown):
+        fetch("GBP", "EUR", None)  # any pair: not sent
+    assert calls == [5]
+    now[0] += 1
+    assert fetch("USD", "EUR", None)[0] == Decimal("0.9")  # an hour later it is asked again
+    with pytest.raises(urllib.error.HTTPError):
+        fetch("USD", "EUR", None)  # a server error also counts as down
+    with pytest.raises(ServiceDown):
+        fetch("USD", "EUR", None)
+    fetch.retry()  # the refresh button
+    assert fetch("USD", "EUR", None)[0] == Decimal("0.9")
+    with pytest.raises(Refused):
+        fetch("XXX", "EUR", None)  # a refusal: the service is up
+    assert fetch("USD", "EUR", None)[0] == Decimal("0.9") and len(calls) == 6
+
+
+def test_charts_do_not_wait_for_the_service_while_it_is_down(tmp_path, monkeypatch):
+    """With the service down, one request finds out; the next ones use the stored rates at once until refresh."""
+    import urllib.error
+
+    tried = []
+
+    def urlopen(request, timeout):
+        tried.append(request.full_url)
+        raise urllib.error.URLError(OSError("Network is unreachable"))
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    client = TestClient(create_app(Settings(data_dir=tmp_path, default_currency="EUR", fx_url="https://fx.test")))
+    for name, currency in (("Dollars", "USD"), ("Pounds", "GBP"), ("Euros", "EUR")):
+        a = client.post("/api/accounts", json={"name": name, "currency": currency}).json()
+        client.post(f"/api/accounts/{a['id']}/balances", json={"date": "2026-01-01", "amount": 500})
+    assert client.get("/api/history/converted").json()["missing"] == ["GBP", "USD"]
+    client.get("/api/summary/combined")
+    assert len(tried) == 1  # only the first request waited for the service
+    client.post("/api/fx/refresh")
+    assert len(tried) == 2  # the button asks again, once
+
+
+def test_shared_rates_do_not_count_a_request_that_was_not_sent(tmp_path):
+    """Multi-user: a skip while the service is down doesn't use up the daily limit."""
+    from app.fx import ServiceDown, SharedRates
+
+    def down(base, quote, day):
+        raise ServiceDown("down")
+
+    store = SharedRates(tmp_path / "rates.db", down, 5)
+    with pytest.raises(ServiceDown):
+        store.fetcher()("USD", "EUR", None)
+    assert store.requests_today() == 0

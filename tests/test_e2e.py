@@ -727,3 +727,25 @@ def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(p
     assert not beside() and button.get_attribute("aria-pressed") == "false"
     page.click("#columns-btn")
     assert beside()
+
+
+def test_a_slow_converted_chart_says_it_is_getting_the_rates(page):
+    """While "All in EUR" waits for the exchange rates, a notice says so; it goes when the chart is drawn."""
+    for name, currency in (("Euros", "EUR"), ("Dollars", "USD")):
+        a = page.request.post("/api/accounts", data={"name": name, "currency": currency}).json()
+        page.request.post(f"/api/accounts/{a['id']}/balances", data={"date": "2026-01-01", "amount": 5000000})
+    # The rates take a while: the converted chart's answer is held back
+    page.add_init_script("""
+      const fetch0 = window.fetch;
+      window.fetch = async (url, ...rest) => {
+        if (String(url).includes("/api/history/converted")) await new Promise((r) => setTimeout(r, 1500));
+        return fetch0(url, ...rest);
+      };""")
+    open_app(page)
+    page.locator("#chart-currency:not([hidden])").wait_for()
+    assert page.locator("#chart-loading").is_hidden()
+    page.select_option("#chart-currency", "=")  # All in EUR
+    page.locator("#chart-loading").wait_for()
+    assert "exchange rates" in page.locator("#chart-loading").text_content()
+    page.locator("#chart-loading").wait_for(state="hidden")
+    page.locator("#chart svg").first.wait_for()
