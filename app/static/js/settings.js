@@ -64,6 +64,22 @@ export async function renderBackups() {
 }
 
 export function initSettings() {
+  // Two columns on wide screens (#146): on unless turned off with the ▥ button, remembered in this browser
+  const columns = $("#columns-btn");
+  const setColumns = (on) => {
+    document.body.classList.toggle("one-column", !on);
+    columns.setAttribute("aria-pressed", String(on));
+  };
+  let saved = null;
+  try { saved = localStorage.getItem("abt-columns"); } catch {}
+  setColumns(saved !== "one");
+  columns.addEventListener("click", () => {
+    const on = columns.getAttribute("aria-pressed") !== "true";
+    setColumns(on);
+    try { localStorage.setItem("abt-columns", on ? "two" : "one"); } catch {}
+    renderChart(); // drawn for its new width
+  });
+
   $("#tz-badge").addEventListener("click", () => $("#settings-btn").click());
   $("#settings-btn").addEventListener("click", async () => {
     const languages = await api("/api/languages");

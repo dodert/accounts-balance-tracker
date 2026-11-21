@@ -574,18 +574,33 @@ def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
     assert not is_open() and page.evaluate("window.asked") == []
 
 
-def test_the_page_uses_the_whole_width_and_two_columns_on_very_wide_screens(page):
-    """The page fills wide screens: one column up to 2200px, the chart beside the accounts from there."""
+def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(page):
+    """Wide screens: the chart beside the accounts from 1600px, the whole table in view; the ▥ button keeps one column."""
     open_app(page)
     page.click("#demo-try")
     page.locator("#accounts-table tbody tr").first.wait_for()
-    chart, accounts = page.locator("#chart-panel"), page.locator("#accounts-table").locator("xpath=ancestor::section")
-    page.set_viewport_size({"width": 1920, "height": 1000})
-    assert page.locator("main").bounding_box()["width"] > 1800  # no longer capped at 1200px
-    assert accounts.bounding_box()["y"] > chart.bounding_box()["y"] + chart.bounding_box()["height"]  # below it
-    page.set_viewport_size({"width": 2560, "height": 1000})
-    c, a = chart.bounding_box(), accounts.bounding_box()
-    assert a["x"] > c["x"] + c["width"] and abs(a["y"] - c["y"]) < 2  # beside it
+    table, button = page.locator("#accounts-table").locator("xpath=.."), page.locator("#columns-btn")
+    type_column = page.locator("#accounts-table thead th").nth(1)
+
+    def beside():  # both measured at once: the totals above can change height meanwhile (exchange rate refresh)
+        return page.evaluate("""() => {
+            const c = document.querySelector("#chart-panel").getBoundingClientRect();
+            const a = document.querySelector("#accounts-table").closest("section").getBoundingClientRect();
+            return a.left > c.right && Math.abs(a.top - c.top) < 2; }""")
+
+    page.set_viewport_size({"width": 1280, "height": 1000})
+    assert not button.is_visible() and not beside()
+    for width in [1600, 1920, 2560]:
+        page.set_viewport_size({"width": width, "height": 1000})
+        assert button.is_visible() and beside(), width
+        assert table.evaluate("e => e.scrollWidth <= e.clientWidth"), width  # the whole table fits, nothing cut
+        assert type_column.is_visible() == (width >= 2200), width
     assert page.locator("main").bounding_box()["width"] <= 2400
-    table = page.locator("#accounts-table").locator("xpath=..")
-    assert table.evaluate("e => e.scrollWidth <= e.clientWidth")  # the whole table fits, nothing cut
+
+    button.click()  # one column, remembered after a reload
+    assert not beside() and button.get_attribute("aria-pressed") == "false" and type_column.is_visible()
+    page.reload()
+    page.locator("#accounts-table tbody tr").first.wait_for()
+    assert not beside() and button.get_attribute("aria-pressed") == "false"
+    page.click("#columns-btn")
+    assert beside()

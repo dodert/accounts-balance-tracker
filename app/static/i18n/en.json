@@ -8,6 +8,7 @@
   "header.import_json": "Import JSON",
   "header.add_account": "+ Account",
   "header.update": "Update balances",
+  "header.columns": "Two columns: the chart beside the accounts",
   "header.logout": "Log out",
   "common.cancel": "Cancel",
   "common.close": "Close",
