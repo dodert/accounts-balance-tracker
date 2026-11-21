@@ -20,3 +20,4 @@ def pytest_collection_modifyitems(items):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "settings(**kwargs): other Settings for the E2E server (tests/test_e2e.py)")
+    config.addinivalue_line("markers", "tour: the E2E page shows the guided tour on its own (tests/test_e2e.py)")

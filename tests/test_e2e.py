@@ -82,9 +82,13 @@ def browser():
 @pytest.fixture
 def page(browser, server, request):
     """A fresh browser page on the app, in English, failing the test on any JavaScript error. Its screenshot is
-    saved when the test ends, also when it failed."""
+    saved when the test ends, also when it failed. The guided tour is taken as seen unless the test is marked
+    `@pytest.mark.tour`."""
     context = browser.new_context(base_url=server, viewport={"width": 1280, "height": 900})
     context.add_init_script("localStorage.setItem('abt-lang', 'en')")
+    if not request.node.get_closest_marker("tour"):
+        context.route("**/api/tour", lambda route: route.fulfill(json={"seen": 1000})
+                      if route.request.method == "GET" else route.continue_())
     tab = context.new_page()
     errors = []
     tab.on("pageerror", lambda error: errors.append(str(error)))
@@ -749,3 +753,62 @@ def test_a_slow_converted_chart_says_it_is_getting_the_rates(page):
     assert "exchange rates" in page.locator("#chart-loading").text_content()
     page.locator("#chart-loading").wait_for(state="hidden")
     page.locator("#chart svg").first.wait_for()
+
+
+@pytest.mark.tour
+def test_guided_tour_on_first_visit_then_from_its_button(page):
+    """The tour starts on its own the first time, skips what is not shown; once closed it does not come back, and ?
+    starts it again."""
+    open_app(page)
+    popover = page.locator(".driver-popover")
+    popover.wait_for()
+    assert popover.locator(".driver-popover-title").text_content() == "Welcome"
+    page.click(".driver-popover-next-btn")
+    page.locator(".driver-popover-title", has_text="Chart").wait_for()  # no totals yet: that step is skipped
+    page.keyboard.press("Escape")
+    popover.wait_for(state="detached")
+    page.wait_for_function("fetch('/api/tour').then((r) => r.json()).then((d) => d.seen > 0)")
+    page.reload()
+    page.wait_for_selector("#version:not(:empty)")
+    page.locator("#empty").wait_for()
+    page.wait_for_timeout(300)
+    assert popover.count() == 0  # seen: not again on its own
+    page.click("#tour-btn")
+    popover.wait_for()
+    assert popover.locator(".driver-popover-title").text_content() == "Welcome"
+
+
+@pytest.mark.tour
+def test_guided_tour_follows_the_user_not_the_browser(page, browser, server):
+    """Seen in one browser, the tour does not start in another one (it is kept in the database)."""
+    open_app(page)
+    page.locator(".driver-popover").wait_for()
+    page.click(".driver-popover-close-btn")
+    page.wait_for_function("fetch('/api/tour').then((r) => r.json()).then((d) => d.seen > 0)")
+    other = browser.new_context(base_url=server)
+    tab = other.new_page()
+    tab.goto("/")
+    tab.wait_for_selector("#version:not(:empty)")
+    tab.locator("#empty").wait_for()
+    tab.wait_for_timeout(300)
+    assert tab.locator(".driver-popover").count() == 0
+    other.close()
+
+
+@pytest.mark.tour
+def test_guided_tour_in_spanish_and_in_the_demo(page):
+    """The demo starts the tour with its sample data, in the page's language, and goes through every step."""
+    page.context.add_init_script("localStorage.setItem('abt-lang', 'es')")
+    open_app(page)
+    page.locator(".driver-popover").wait_for()
+    page.keyboard.press("Escape")
+    page.click("#demo-try")
+    page.locator("#demo-banner").wait_for()
+    title = page.locator(".driver-popover-title")
+    title.wait_for()
+    assert title.text_content() == "Bienvenido"
+    while page.locator(".driver-popover-next-btn", has_text="Siguiente").count():
+        page.click(".driver-popover-next-btn")
+    assert title.text_content() == "¿La quieres otra vez?"
+    page.click(".driver-popover-next-btn")  # Hecho
+    page.locator(".driver-popover").wait_for(state="detached")
