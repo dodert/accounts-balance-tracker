@@ -4,6 +4,7 @@ import { $, $$, esc } from "./dom.js";
 import { amountText, changeCell, decimalMark, exactMoney, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
 import { gainText } from "./charts.js";
 import { refresh } from "./main.js";
+import { markClean, openDialog } from "./modal.js";
 import { ACCOUNT_TYPES, INVESTMENT_TYPES, state } from "./state.js";
 
 export function setError(el, err) {
@@ -42,7 +43,7 @@ export async function openAccount(id) {
     renderContributions();
     await loadBalances();
   }
-  $("#account-dlg").showModal();
+  openDialog($("#account-dlg"));
 }
 
 export async function loadBalances() {
@@ -108,8 +109,6 @@ export function duplicateLines(r) {
 }
 
 export function initDialogs() {
-  $$("dialog .cancel").forEach((btn) => btn.addEventListener("click", () => btn.closest("dialog").close()));
-
   // Update balances
   $("#update-btn").addEventListener("click", () => {
     const active = state.accounts.filter((a) => !a.archived);
@@ -126,7 +125,7 @@ export function initDialogs() {
         <span class="u-input"><input type="text" inputmode="decimal" data-id="${a.id}" value="${esc(amountText(a.balance))}" autocomplete="off"> <span class="cur">${esc(a.currency)}</span></span>
       </label>`).join("");
     setError($("#update-error"), null);
-    $("#update-dlg").showModal();
+    openDialog($("#update-dlg"));
   });
 
   // New milestone, from the header: the account is picked in the dialog (grouped by institution)
@@ -143,7 +142,7 @@ export function initDialogs() {
     form.reset();
     setDate(form.date, today());
     setError($("#milestone-error"), null);
-    $("#milestone-dlg").showModal();
+    openDialog($("#milestone-dlg"));
   });
 
   $("#milestone-form").addEventListener("submit", async (e) => {
@@ -185,6 +184,7 @@ export function initDialogs() {
       await api(`/api/accounts/${state.editing.id}/balances`, { json: { date: getDate($("#nb-date")), amount, note: $("#nb-note").value } });
       $("#nb-amount").value = "";
       $("#nb-note").value = "";
+      markClean($("#nb-add").parentElement);
       setError($("#account-error"), null);
       await Promise.all([loadBalances(), refresh()]);
       renderContributions();
@@ -200,6 +200,7 @@ export function initDialogs() {
       await api(`/api/accounts/${state.editing.id}/milestones`, { json: { date: getDate($("#nm-date")), amount, description: $("#nm-desc").value } });
       $("#nm-amount").value = "";
       $("#nm-desc").value = "";
+      markClean($("#nm-add").parentElement);
       setError($("#account-error"), null);
       await refresh();
       renderMilestones();
@@ -217,6 +218,7 @@ export function initDialogs() {
       await api(`/api/accounts/${state.editing.id}/contributions`, { json: { date: getDate($("#nc-date")), amount, note: $("#nc-note").value } });
       $("#nc-amount").value = "";
       $("#nc-note").value = "";
+      markClean($("#nc-add").parentElement);
       setError($("#account-error"), null);
       await refresh();
       renderContributions();
@@ -298,7 +300,7 @@ export function initDialogs() {
     // The decimal separator is stated, never guessed: the regional format's, which the user can change here
     $("#csv-decimal").value = decimalMark();
     $("#csv-decimal-hint").textContent = t("csv.decimal_hint", { locale: fmtLocale() });
-    $("#csv-dlg").showModal();
+    openDialog($("#csv-dlg"));
   });
 
   $("#csv-form").addEventListener("submit", async (e) => {
@@ -313,6 +315,7 @@ export function initDialogs() {
     } catch (err) {
       out.textContent = err.message;
     }
+    markClean(e.target); // the file was used, whatever the result
     out.hidden = false;
   });
   // A download sends no headers: the user's date goes in the link, for the file name
@@ -327,7 +330,7 @@ export function initDialogs() {
     $("#data-menu").open = false;
     $("#json-form").reset();
     $("#json-result").hidden = true;
-    $("#json-dlg").showModal();
+    openDialog($("#json-dlg"));
   });
 
   $("#json-form").addEventListener("submit", async (e) => {
@@ -343,6 +346,7 @@ export function initDialogs() {
     } catch (err) {
       out.textContent = err.message;
     }
+    markClean(e.target); // the file was used, whatever the result
     out.hidden = false;
   });
 }

@@ -100,6 +100,7 @@
   "settings.time_zone_chosen": "Fechas en la zona horaria elegida en los ajustes ({zone}).",
   "error.date": "Fecha no válida: {value}",
   "common.calendar": "Calendario",
+  "common.discard_changes": "Hay cambios sin guardar. ¿Cerrar y descartarlos?",
   "column.since_first": "Desde el inicio",
   "totals.since_first": "desde el inicio ({date})",
   "chart.start": "Inicio: {amount}",

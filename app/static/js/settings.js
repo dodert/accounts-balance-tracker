@@ -4,6 +4,7 @@ import { api, browserTimeZone, savedTimeZone, setTimeZone } from "./api.js";
 import { renderChart } from "./charts.js";
 import { renderDemo } from "./demo.js";
 import { $, esc } from "./dom.js";
+import { openDialog } from "./modal.js";
 import { REGIONAL_LOCALES } from "./format.js";
 import { loadTotals } from "./totals.js";
 
@@ -71,7 +72,7 @@ export function initSettings() {
     renderLocaleOptions();
     renderTimeZoneOptions();
     renderBackups();
-    $("#settings-dlg").showModal();
+    openDialog($("#settings-dlg"));
   });
 
   $("#settings-form").addEventListener("submit", async (e) => {
