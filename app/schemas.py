@@ -12,6 +12,7 @@ from pydantic import (
     StringConstraints,
     WithJsonSchema,
     field_validator,
+    model_validator,
 )
 
 from .models import AccountType, PrepaymentMode
@@ -418,8 +419,26 @@ class SimulatedPrepayment(BaseModel):
     _fee = field_validator("fee")(_not_negative)
 
 
+class SimulatedMonthly(BaseModel):
+    """An extra amount every month, from `start` until the end."""
+    start: Date
+    amount: Amount
+    mode: PrepaymentMode = PrepaymentMode.reduce_term
+    fee: Amount = Decimal(0)  # each month
+
+    _positive = field_validator("amount")(_more_than_zero)
+    _fee = field_validator("fee")(_not_negative)
+
+
 class SimulateIn(BaseModel):
-    prepayments: list[SimulatedPrepayment] = Field(min_length=1, max_length=100)
+    prepayments: list[SimulatedPrepayment] = Field([], max_length=100)
+    monthly: SimulatedMonthly | None = None
+
+    @model_validator(mode="after")
+    def something_to_simulate(self):
+        if not self.prepayments and self.monthly is None:
+            raise ValueError("add a prepayment or a monthly extra payment to simulate")
+        return self
 
 
 class Comparison(BaseModel):

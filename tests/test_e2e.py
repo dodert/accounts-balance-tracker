@@ -493,6 +493,14 @@ def test_simulate_prepayments_without_saving_them(page):
     assert page.locator("#mortgage-chart svg path.line.dashed").count() == 1
     assert "Outstanding (simulated)" in page.locator("#mortgage-legend").text_content()
     assert page.locator("#prepayments-table tbody tr").count() == real  # nothing saved
+    # Plus an extra payment every month: one row more, and it can't be saved as real
+    page.fill("#ns-amount", "200")
+    page.check("#ns-monthly")
+    page.click("#ns-add")
+    page.locator("#simulation-table tbody tr.monthly", has_text="Every month from").wait_for()
+    assert page.locator("#simulation-table tr.monthly [data-save]").count() == 0
+    page.click("#simulation-table [data-remove-monthly]")
+    page.locator("#simulation-table tbody tr.monthly").wait_for(state="detached")
     page.click("#simulation-table [data-save]")
     page.locator("#prepayments-table tbody tr").nth(real).wait_for()
     page.locator("#simulation").wait_for(state="hidden")

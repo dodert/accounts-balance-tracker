@@ -276,7 +276,7 @@
         <div class="table-wrap balances-wrap"><table class="data" id="prepayments-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="mortgages.mode">It reduces</th><th class="num" data-i18n="mortgages.fee">Fee</th><th data-i18n="account.note">Note</th><th></th></tr></thead><tbody></tbody></table></div>
 
         <h3 data-i18n="mortgages.simulator">Prepayment simulator</h3>
-        <p class="hint" data-i18n="mortgages.simulator_hint">Try prepayments you could make: nothing is saved. They are compared with the mortgage as it is, with both ways side by side, and drawn dashed on the chart.</p>
+        <p class="hint" data-i18n="mortgages.simulator_hint">Try prepayments you could make, once or every month: nothing is saved. They are compared with the mortgage as it is, with both ways side by side, and drawn dashed on the chart.</p>
         <div class="row add-balance">
           <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" id="ns-date"><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
           <label><span data-i18n="milestones.amount">Amount</span> <input type="text" inputmode="decimal" id="ns-amount" autocomplete="off"></label>
@@ -284,6 +284,7 @@
           <label><span data-i18n="mortgages.fee">Fee</span> <input type="text" inputmode="decimal" id="ns-fee" autocomplete="off"></label>
           <button type="button" id="ns-add" data-i18n="mortgages.simulate">Simulate</button>
         </div>
+        <label class="radio"><input type="checkbox" id="ns-monthly"> <span data-i18n="mortgages.monthly">Every month from that date until the end (an extra payment after each installment)</span></label>
         <div id="simulation" hidden>
           <div class="table-wrap"><table class="data" id="simulation-table"><thead><tr><th data-i18n="update.date">Date</th><th class="num" data-i18n="milestones.amount">Amount</th><th data-i18n="mortgages.mode">It reduces</th><th class="num" data-i18n="mortgages.fee">Fee</th><th></th></tr></thead><tbody></tbody></table></div>
           <div class="table-wrap"><table class="data" id="simulation-result"></table></div>

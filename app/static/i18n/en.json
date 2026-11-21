@@ -299,7 +299,7 @@
   "mortgages.confirm_delete": "Delete the mortgage \"{name}\" and its prepayments?",
   "mortgages.confirm_delete_prepayment": "Delete this prepayment?",
   "mortgages.simulator": "Prepayment simulator",
-  "mortgages.simulator_hint": "Try prepayments you could make: nothing is saved. They are compared with the mortgage as it is, with both ways side by side, and drawn dashed on the chart.",
+  "mortgages.simulator_hint": "Try prepayments you could make, once or every month: nothing is saved. They are compared with the mortgage as it is, with both ways side by side, and drawn dashed on the chart.",
   "mortgages.simulate": "Simulate",
   "mortgages.simulation_clear": "Clear the simulation",
   "mortgages.make_real": "Save as real",
@@ -315,5 +315,7 @@
   "mortgages.schedule": "Amortization schedule",
   "mortgages.interest": "Interest",
   "mortgages.principal_part": "Principal",
-  "mortgages.paid": "Paid"
+  "mortgages.paid": "Paid",
+  "mortgages.monthly": "Every month from that date until the end (an extra payment after each installment)",
+  "mortgages.monthly_from": "Every month from {date}"
 }
