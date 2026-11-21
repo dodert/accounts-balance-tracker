@@ -8,7 +8,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/dodert/accounts-balance-tracker/issues</Support>
   <Project>https://github.com/dodert/accounts-balance-tracker</Project>
-  <Overview>Self-hosted tracker of your accounts balances over time: bank, savings, investment, pension, crypto, cash and loans. Record each account's balance whenever you want and see the total and its evolution in charts. CSV import/export, optional login with one-time codes. Data in a SQLite file in /data.</Overview>
+  <Overview>Self-hosted tracker of your accounts balances over time: bank, savings, investment, pension, crypto, cash and loans. Record each account's balance whenever you want and see the total and its evolution in charts. CSV import/export, optional login with one-time codes. Data in a SQLite file in /data. Online demo: https://balancetracker.dodert.com/demo</Overview>
   <Category>Productivity: Tools:Utilities</Category>
   <Icon>https://raw.githubusercontent.com/dodert/unraid-templates/main/accounts-balance-tracker.png</Icon>
   <DonateLink>https://ko-fi.com/dodert</DonateLink>
