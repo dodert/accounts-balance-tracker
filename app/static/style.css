@@ -26,23 +26,25 @@ body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); col
 main { flex: 1; padding: 0 1rem 2rem; display: flex; flex-direction: column; gap: 1rem; max-width: 2400px; width: 100%; margin: 0 auto; }
 header { display: flex; align-items: center; gap: .5rem; padding: 1rem; flex-wrap: wrap; max-width: 2400px; width: 100%; margin: 0 auto; }
 header h1 { margin: 0; font-size: 1.4rem; }
-/* The page uses the whole width (#146), up to 2400px. From 1600px the chart can go on the left and the accounts and
-   mortgages on the right (the ▥ button turns it off: body.one-column), so the chart isn't stretched flat. Where the
-   accounts table is narrow (below 2200px) it hides its Type and Updated columns, as on phones. */
+/* The page uses the whole width (#146), up to 2400px. From 1600px the chart goes on the left and the accounts and
+   mortgages on the right (the ▥ button turns it off: body.one-column), so the chart isn't stretched flat. The right
+   column is 2/5 of the width but never narrower than the accounts table without its Type and Updated columns. */
 .columns-btn { display: none; }
 .columns-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 @media (min-width: 1600px) {
   .columns-btn { display: inline-block; }
   /* The last row takes whatever height the chart needs beyond the accounts, so the mortgages follow right below them */
-  body:not(.one-column) main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  body:not(.one-column) main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(min(740px, 50%), 2fr);
     grid-template-rows: auto auto 1fr; align-items: start; }
   body:not(.one-column) main > #totals { grid-column: 1 / -1; }
   body:not(.one-column) main > #chart-panel { grid-row: 2 / span 2; }
 }
-@media (min-width: 1920px) { body:not(.one-column) main { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-@media (min-width: 1600px) and (max-width: 2199.98px) {
-  body:not(.one-column) :is(#accounts-table th, #accounts-table td):is(:nth-child(2), :nth-child(6)) { display: none; }
+/* The accounts table fits its own panel, whatever the layout: when the panel is narrow it hides Type and Updated */
+#accounts-panel { container: accounts / inline-size; }
+@container accounts (max-width: 830px) {
+  #accounts-table :is(th, td):is(:nth-child(2), :nth-child(6)) { display: none; }
 }
+@container accounts (max-width: 680px) { #accounts-table :is(th, td) { padding: .45rem .3rem; } }
 .tz-badge { border: none; background: none; color: var(--muted); font-size: .8rem; padding: .1rem .3rem; }
 h2 { font-size: 1.1rem; margin: 0; }
 h3 { font-size: 1rem; margin: 1rem 0 .5rem; }
@@ -263,7 +265,6 @@ footer a { color: inherit; }
   header .spacer { display: none; }
   .tile-value { font-size: 1.6rem; }
   .update-row .u-input { width: 9rem; }
-  #accounts-table th:nth-child(2), #accounts-table td:nth-child(2), #accounts-table th:nth-child(6), #accounts-table td:nth-child(6) { display: none; }
   table.data .pct { display: block; }
   #accounts-table .arrow { display: none; }
   #accounts-table td.num { font-size: .8rem; }
