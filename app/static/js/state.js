@@ -26,9 +26,10 @@ export function setTrendMode(mode) {
 }
 
 // Whether a balance on `day` needs a contribution first (#153): an investment-like account can't be worth anything
-// before money was put in. `type`: the account's type (as chosen in its dialog, maybe not saved yet)
-export function contributionMissing(accountId, type, day) {
-  if (!INVESTMENT_TYPES.includes(type) || !day) return false;
+// before money was put in. `type`, `availableFrom`: the account's (as in its dialog, maybe not saved yet); an account
+// with an "available from" date holds granted shares (e.g. unvested stock options), not money put in
+export function contributionMissing(accountId, type, day, availableFrom = null) {
+  if (!INVESTMENT_TYPES.includes(type) || !day || availableFrom) return false;
   const first = state.contributions.find((c) => c.account_id === accountId); // oldest first, as the API sends them
   return !first || day < first.date;
 }

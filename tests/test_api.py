@@ -286,3 +286,7 @@ def test_an_investment_account_worth_something_before_its_first_contribution_is_
     client.post(f"/api/accounts/{fund['id']}/contributions", json={"date": "2026-02-01", "amount": 10000})
     assert flagged()["Fund"] is None
     assert client.get(f"/api/accounts/{fund['id']}").json()["uncovered_from"] is None
+    # Granted shares (an "available from" date, e.g. unvested stock options) need no contribution
+    options = client.post("/api/accounts", json={"name": "Options", "type": "investment", "available_from": "2027-01-01"}).json()
+    client.post(f"/api/accounts/{options['id']}/balances", json={"date": "2026-01-01", "amount": 1000000})
+    assert flagged()["Options"] is None

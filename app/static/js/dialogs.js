@@ -114,7 +114,8 @@ const safeDate = (input) => { try { return getDate(input); } catch { return null
 
 export function checkNewBalance() {
   if (!state.editing) return;
-  $("#nb-warning").hidden = !contributionMissing(state.editing.id, $("#account-type").value, safeDate($("#nb-date")));
+  const form = $("#account-form");
+  $("#nb-warning").hidden = !contributionMissing(state.editing.id, form.type.value, safeDate($("#nb-date")), form.available_from.value.trim());
 }
 
 // In "Update balances": a warning on the investment-like accounts with no contribution by the date chosen
@@ -122,7 +123,7 @@ export function checkUpdateRows() {
   const day = safeDate($("#update-form").date);
   $$("#update-rows .u-warn").forEach((el) => {
     const account = state.accounts.find((a) => a.id === Number(el.dataset.id));
-    el.hidden = !contributionMissing(account.id, account.type, day);
+    el.hidden = !contributionMissing(account.id, account.type, day, account.available_from);
   });
 }
 

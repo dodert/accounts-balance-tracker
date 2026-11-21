@@ -223,9 +223,11 @@ def account_out(account: Account, latest: dict[int, dict]) -> AccountOut:
         out.previous_balance = amount
         out.first_date, amount = found["first"]
         out.first_balance = amount
-    # An investment-like account worth something before its first contribution (#153)
+    # An investment-like account worth something before its first contribution (#153). Not one with an "available
+    # from" date: granted shares (e.g. unvested stock options), not money put in
     first_value, first_contribution = found.get("first_value"), found.get("first_contribution")
-    if account.type in INVESTMENT_TYPES and first_value and (not first_contribution or first_value < first_contribution):
+    if (account.type in INVESTMENT_TYPES and account.available_from is None and first_value
+            and (not first_contribution or first_value < first_contribution)):
         out.uncovered_from = first_value
     return out
 
