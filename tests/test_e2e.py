@@ -572,3 +572,20 @@ def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
     page.evaluate("window.asked = []; window.confirm = (q) => { window.asked.push(q); return false; }; null")
     page.keyboard.press("Escape")
     assert not is_open() and page.evaluate("window.asked") == []
+
+
+def test_the_page_uses_the_whole_width_and_two_columns_on_very_wide_screens(page):
+    """The page fills wide screens: one column up to 2200px, the chart beside the accounts from there."""
+    open_app(page)
+    page.click("#demo-try")
+    page.locator("#accounts-table tbody tr").first.wait_for()
+    chart, accounts = page.locator("#chart-panel"), page.locator("#accounts-table").locator("xpath=ancestor::section")
+    page.set_viewport_size({"width": 1920, "height": 1000})
+    assert page.locator("main").bounding_box()["width"] > 1800  # no longer capped at 1200px
+    assert accounts.bounding_box()["y"] > chart.bounding_box()["y"] + chart.bounding_box()["height"]  # below it
+    page.set_viewport_size({"width": 2560, "height": 1000})
+    c, a = chart.bounding_box(), accounts.bounding_box()
+    assert a["x"] > c["x"] + c["width"] and abs(a["y"] - c["y"]) < 2  # beside it
+    assert page.locator("main").bounding_box()["width"] <= 2400
+    table = page.locator("#accounts-table").locator("xpath=..")
+    assert table.evaluate("e => e.scrollWidth <= e.clientWidth")  # the whole table fits, nothing cut
