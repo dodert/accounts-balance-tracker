@@ -507,6 +507,27 @@ def test_simulate_prepayments_without_saving_them(page):
     assert page.locator("#mortgage-chart svg path.line.dashed").count() == 0
 
 
+def test_dialog_buttons_and_title_stay_in_view_while_its_content_scrolls(page):
+    """In a dialog taller than the screen only the content scrolls: the title and the Save button stay in view."""
+    page.set_viewport_size({"width": 390, "height": 700})
+    open_app(page)
+    page.click("#demo-try")
+    page.locator("#mortgages-table tbody tr").first.click()
+    page.locator("#mortgage-chart svg").wait_for()
+    page.click("#schedule-wrap summary")
+    dlg = page.locator("#mortgage-dlg")
+    for where in ["d.scrollHeight / 2", "d.scrollHeight"]:
+        dlg.evaluate(f"d => {{ d.scrollTop = {where}; }}")
+        assert dlg.evaluate("d => d.scrollTop") > 0
+        for el in [page.locator("#mortgage-dlg-title"), page.locator("#mortgage-form button[type=submit]")]:
+            box = el.bounding_box()
+            assert box["y"] >= 0 and box["y"] + box["height"] <= 700
+            # Nothing of the scrolled content is drawn on top of it
+            hit = el.evaluate("e => { const r = e.getBoundingClientRect(); "
+                              "return e.contains(document.elementFromPoint(r.x + 5, r.y + r.height / 2)); }")
+            assert hit
+
+
 def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
     """A click outside a dialog closes it; with unsaved changes, the backdrop, Escape and Cancel ask first."""
     open_app(page)

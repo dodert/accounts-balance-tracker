@@ -167,9 +167,16 @@ mark { background: color-mix(in srgb, var(--s4) 45%, transparent); color: inheri
 .date-field .date-btn { flex: 0 0 auto; padding: .3rem .5rem; }
 
 /* Dialogs and forms */
-dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); width: min(640px, 95vw); }
+dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); width: min(640px, 95vw);
+  padding: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
 dialog::backdrop { background: rgba(0,0,0,.5); }
 dialog h2 { margin-bottom: .75rem; }
+/* Only the content scrolls: the title stays at the top and the buttons at the bottom, always in view. They cover
+   the dialog's padding, with its background, so nothing shows through around them. */
+dialog > form > h2:first-child, #chart-dlg-head { position: sticky; top: -1rem; z-index: 3; background: var(--surface);
+  margin: -1rem -1rem .75rem; padding: 1rem 1rem .5rem; }
+dialog menu { position: sticky; bottom: -1rem; z-index: 3; background: var(--surface); border-top: 1px solid var(--border);
+  margin: 1rem -1rem -1rem; padding: .75rem 1rem 1rem; }
 form label { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .6rem; font-size: .85rem; color: var(--muted); flex: 1; }
 form .row { display: flex; gap: .6rem; flex-wrap: wrap; }
 form .row label { flex: 1 1 0; min-width: 120px; }
@@ -188,7 +195,7 @@ menu { display: flex; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 .update-row .cur { color: var(--muted); font-size: .8rem; }
 .update-group { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: .9rem 0 .1rem; }
 .update-group:first-child { margin-top: .25rem; }
-#update-rows { max-height: 55vh; overflow-y: auto; margin-bottom: .5rem; }
+#update-rows { margin-bottom: .5rem; }
 #csv-result, #json-result { white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 
 footer { padding: .6rem 1rem; text-align: center; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
