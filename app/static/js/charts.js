@@ -78,24 +78,29 @@ export function extent(values) {
 
 export async function loadHistory() {
   const since = sinceDate();
+  const own = (c) => api(`/api/history?currency=${encodeURIComponent(c)}${since ? `&since=${since}` : ""}`);
   if (state.currency === CONVERTED) {
     // The rates may take a few seconds (the service is slow or down): say so if it isn't quick
     const loading = $("#chart-loading");
     const timer = setTimeout(() => { loading.hidden = false; }, 300);
-    let h;
+    let h, owns;
     try {
-      h = await api(`/api/history/converted${since ? `?since=${since}` : ""}`);
+      // The accounts list needs each account in its own currency too (#154)
+      [h, ...owns] = await Promise.all([api(`/api/history/converted${since ? `?since=${since}` : ""}`), ...state.currencies.map(own)]);
     } finally {
       clearTimeout(timer);
       loading.hidden = true;
     }
     state.histories = [{ ...h, isConverted: true }];
+    state.ownHistories = owns;
     renderChart();
     return;
   }
   const currencies = state.currency === ALL_CURRENCIES ? state.currencies : state.currency ? [state.currency] : [];
-  state.histories = await Promise.all(currencies.map((c) =>
-    api(`/api/history?currency=${encodeURIComponent(c)}${since ? `&since=${since}` : ""}`)));
+  const others = state.currencies.filter((c) => !currencies.includes(c));
+  const [shown, rest] = await Promise.all([Promise.all(currencies.map(own)), Promise.all(others.map(own))]);
+  state.histories = shown;
+  state.ownHistories = [...shown, ...rest]; // every currency, for the accounts list (#154)
   renderChart();
 }
 
@@ -599,10 +604,10 @@ function headSince(a, h, last, label = true) {
 }
 
 // An account's "since the start" in the accounts list, the same as on its chart (#148): from the history of its own
-// currency (not the converted one); null until that history is loaded
+// currency, loaded whatever the charts show (#154); null until it is loaded
 export function accountSinceCell(account) {
   if (account.first_balance === null || account.first_balance === undefined) return null; // one balance: nothing to compare
-  const h = state.histories.find((x) => !x.isConverted && x.currency === account.currency && x.accounts.some((s) => s.account_id === account.id));
+  const h = (state.ownHistories ?? []).find((x) => x.currency === account.currency && x.accounts.some((s) => s.account_id === account.id));
   const a = h && accountSeries(h).find((s) => s.account_id === account.id);
   if (!a) return null;
   return headSince(a, h, [...a.values].reverse().find((v) => v !== null) ?? null, false);
