@@ -33,6 +33,10 @@ class AccountType(str, enum.Enum):
     other = "other"
 
 
+# The types whose accounts record contributions (money put in): their balance is what the money is worth
+INVESTMENT_TYPES = (AccountType.investment, AccountType.pension, AccountType.crypto)
+
+
 class Account(Base):
     __tablename__ = "accounts"
     # The name is unique per institution (no institution counts as one more): same index as migration 0002

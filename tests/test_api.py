@@ -267,3 +267,26 @@ def test_amounts_travel_as_exact_integer_ten_thousandths(client):
     schemas = client.app.openapi()["components"]["schemas"]  # the API docs say so
     assert schemas["BalanceIn"]["properties"]["amount"]["type"] == "integer"
     assert schemas["BalanceOut"]["properties"]["amount"]["type"] == "integer"
+
+
+def test_an_investment_account_worth_something_before_its_first_contribution_is_flagged(client):
+    """uncovered_from: an investment-like account's first balance (not 0) dated before its first contribution."""
+    fund = client.post("/api/accounts", json={"name": "Fund", "type": "investment"}).json()
+    bank = client.post("/api/accounts", json={"name": "Bank", "type": "bank"}).json()
+    for account in (fund, bank):
+        client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-01-01", "amount": 0})
+        client.post(f"/api/accounts/{account['id']}/balances", json={"date": "2026-02-01", "amount": 1000000})
+
+    def flagged():
+        return {a["name"]: a["uncovered_from"] for a in client.get("/api/accounts").json()}
+
+    assert flagged() == {"Fund": "2026-02-01", "Bank": None}  # a 0 balance needs nothing; a bank account never
+    client.post(f"/api/accounts/{fund['id']}/contributions", json={"date": "2026-02-05", "amount": 1000000})
+    assert flagged()["Fund"] == "2026-02-01"
+    client.post(f"/api/accounts/{fund['id']}/contributions", json={"date": "2026-02-01", "amount": 10000})
+    assert flagged()["Fund"] is None
+    assert client.get(f"/api/accounts/{fund['id']}").json()["uncovered_from"] is None
+    # Granted shares (an "available from" date, e.g. unvested stock options) need no contribution
+    options = client.post("/api/accounts", json={"name": "Options", "type": "investment", "available_from": "2027-01-01"}).json()
+    client.post(f"/api/accounts/{options['id']}/balances", json={"date": "2026-01-01", "amount": 1000000})
+    assert flagged()["Options"] is None

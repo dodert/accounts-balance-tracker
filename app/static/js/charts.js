@@ -2,7 +2,7 @@
 import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
 import { openDialog } from "./modal.js";
-import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money } from "./format.js";
+import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money, uncoveredBadge } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
 
 export const SERIES_SLOTS = 16; // categorical colours; past these they repeat (never grey)
@@ -174,7 +174,66 @@ export function trendOf(dates, values, start = null) {
   const change = sxx ? (sxy / sxx) * (pts[pts.length - 1][0] - pts[0][0]) : 0;
   return change < -0.005 ? "falling" : "up";
 }
-const trendText = (trend) => ({ up: t("chart.trend_up"), falling: t("chart.trend_falling"), down: t("chart.trend_down") })[trend];
+
+// The contributions to these accounts, in the chart's currency (an account in another currency at the converted
+// chart's rate, as its balances), summed up to each of the chart's dates, and up to `startDay` (the day of the
+// series' start). Accounts without contributions add nothing; null when none of them has any.
+export function contributionsUpTo(ids, h, startDay) {
+  const rateOf = (id) => {
+    const currency = state.accounts.find((x) => x.id === id)?.currency;
+    return currency === h.currency ? 1 : h.rates?.[currency] ?? null;
+  };
+  const list = state.contributions.filter((c) => ids.includes(c.account_id) && rateOf(c.account_id) !== null)
+    .map((c) => ({ date: c.date, amount: Math.round(c.amount * rateOf(c.account_id)) }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (!list.length) return null;
+  let i = 0, sum = 0;
+  const values = h.dates.map((day) => {
+    while (i < list.length && list[i].date <= day) sum += list[i++].amount;
+    return sum;
+  });
+  const upTo = (day) => list.filter((c) => c.date <= day).reduce((total, c) => total + c.amount, 0);
+  return { values, atStart: startDay ? upTo(startDay) : null, firstDate: list[0].date, atFirst: upTo(list[0].date) };
+}
+
+// The trend for a chart's background (#148). With the "gain" setting (the default), for accounts with
+// contributions it is the trend of the gain (the value minus what was contributed up to each date, its start the
+// start minus what was contributed by then), so money put in doesn't make it look green; else of the values.
+// Returns { trend, gain } (gain: whether it was computed from the gain), or null like trendOf.
+export function backgroundTrend(h, ids, values, start) {
+  const known = ids.map((id) => state.accounts.find((x) => x.id === id)).filter(Boolean);
+  // The day of the start: the first balance ever of these accounts (as the start, #110), else the first shown
+  const startDay = known.map((a) => a.first_date).filter(Boolean).sort()[0] ?? h.dates[values.findIndex((v) => v !== null)];
+  const contributed = state.trendMode === "value" ? null : contributionsUpTo(ids, h, startDay);
+  if (!contributed) {
+    const trend = trendOf(h.dates, values, start);
+    return trend && { trend, gain: false };
+  }
+  const gain = values.map((v, n) => (v === null || v === undefined ? null : v - contributed.values[n]));
+  let gainStart = start === null || start === undefined ? null : start - contributed.atStart;
+  let valueStart = start ?? null, putInStart = contributed.atStart;
+  // Nothing can be gained before money was put in: with a balance older than the first contribution (a contribution
+  // missing, #153), the gain starts at the first contribution, with the balance of that day
+  if (startDay && contributed.firstDate > startDay) {
+    let at = h.dates.findLastIndex((day, n) => day <= contributed.firstDate && values[n] !== null && values[n] !== undefined);
+    if (at < 0) at = values.findIndex((v) => v !== null && v !== undefined);
+    if (at >= 0) {
+      valueStart = values[at];
+      putInStart = h.dates[at] <= contributed.firstDate ? contributed.atFirst : contributed.values[at];
+      gainStart = valueStart - putInStart;
+      for (let n = 0; n < at; n++) gain[n] = null;
+      gain[at] = gainStart;
+    }
+  }
+  const trend = trendOf(h.dates, gain, gainStart);
+  const lastAt = gain.findLastIndex((v) => v !== null);
+  // What the change of the gain is a % of: the value at the start plus what was put in since then
+  const base = valueStart === null || lastAt < 0 ? null : valueStart + contributed.values[lastAt] - putInStart;
+  return trend && { trend, gain: true, start: gainStart, last: lastAt < 0 ? null : gain[lastAt], base };
+}
+const trendText = ({ trend, gain }) => (gain
+  ? { up: t("chart.gain_trend_up"), falling: t("chart.gain_trend_falling"), down: t("chart.gain_trend_down") }
+  : { up: t("chart.trend_up"), falling: t("chart.trend_falling"), down: t("chart.trend_down") })[trend];
 
 export function niceTicks(min, max, count = 5) {
   if (min === max) { min -= Math.abs(min) * 0.1 || 1; max += Math.abs(max) * 0.1 || 1; }
@@ -237,7 +296,7 @@ export function drawChart(box, opts) {
   // Background: green when the balance went up or stayed the same, orange when it ends above its first
   // value but trends down, red when it went down
   if (opts.trend) {
-    const bg = svg("rect", { x: pad.left, y: pad.top, width: width - pad.left - pad.right, height: height - pad.top - pad.bottom, class: `trend-bg trend-${opts.trend}` }, root);
+    const bg = svg("rect", { x: pad.left, y: pad.top, width: width - pad.left - pad.right, height: height - pad.top - pad.bottom, class: `trend-bg trend-${opts.trend.trend}${opts.trend.gain ? " trend-gain" : ""}` }, root);
     svg("title", {}, bg).textContent = trendText(opts.trend);
   }
   ticks.forEach((tick, i) => {
@@ -407,6 +466,7 @@ export function renderChart() {
     renderBlock(h, { box: $(".chart", block), legend: $(".legend", block), grid: $(".multiples", block), table: $("table", block), tableWrap: $("details", block) });
   }
   if ($("#chart-dlg").open) drawMaximized();
+  document.dispatchEvent(new Event("abt-history")); // the accounts list's "since the start" follows the charts
 }
 
 export function renderBlock(h, el) {
@@ -432,7 +492,7 @@ export function renderBlock(h, el) {
     grid.hidden = true;
     const series = [...accounts, total].map(pctSeries).filter((s) => s.values.some((v) => v !== null));
     const drawn = drawChart(box, {
-      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: trendOf(h.dates, total.values, total.start),
+      dates: h.dates, series, height: big, ref: { value: 0, label: t("chart.start_pct") }, trend: backgroundTrend(h, h.accounts.map((a) => a.account_id), total.values, total.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       axis: (ticks) => ticks.map((v) => fmtPct(v, 0)),
       tooltip: (idx, rows) => rows.map((s) => ttRow(s, fmtPct(s.values[idx]), esc(money(s.amounts[idx], cur)))).join(""),
@@ -449,7 +509,7 @@ export function renderBlock(h, el) {
     const main = locked ? { name: t("chart.available"), values: h.available, color: "var(--total)", total: true, start: h.first_available ?? summary?.first_available ?? firstValue(h.available) } : total;
     const withLocked = { ...total, name: t("chart.with_locked"), color: "var(--muted)", total: false, dashed: true };
     const drawn = drawChart(box, {
-      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: trendOf(h.dates, main.values, main.start),
+      dates: h.dates, series: locked ? [main, withLocked] : [total], height: big, area: true, trend: backgroundTrend(h, h.accounts.map((a) => a.account_id), main.values, main.start),
       milestones: milestonesFor(h.accounts.map((a) => a.account_id)),
       ref: main.start !== null ? { value: main.start, label: t("chart.start", { amount: money(main.start, cur) }) } : null,
       axis: (ticks) => axisLabels(ticks, cur),
@@ -506,10 +566,37 @@ export function accountHead(a, h, extra = "", small = false) {
   return `
     <div class="mini-head">
       <span class="swatch" style="background: ${a.color}"></span>
-      <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}</span>
+      <span class="mini-name">${seriesName(a)}${a.archived ? ` <span class="badge">${esc(t("accounts.archived"))}</span>` : ""}${(a.ids ?? []).map((id) => uncoveredBadge(state.accounts.find((x) => x.id === id))).join("")}</span>
       <span class="mini-value">${esc(money(last, cur))}</span>${extra}
     </div>
-    <div class="mini-sub">${sinceText(a, last, cur)}${lockBadge(a)}</div>${gain}`;
+    <div class="mini-sub">${headSince(a, h, last)}${lockBadge(a)}</div>${gain}`;
+}
+
+// "Since the start" of an account's head, tied to its background (#148): the same trend and colour (green, orange
+// or red) and the same setting. With the gain, it is how much the gain changed: the value's change minus what was
+// contributed since the start
+function headSince(a, h, last, label = true) {
+  const tail = label ? ` ${esc(t("chart.since_start"))}` : "";
+  const plain = a.start !== null && a.start !== undefined ? `${changeCell(last, a.start, h.currency, true)}${tail}` : "";
+  const bg = backgroundTrend(h, a.ids ?? [], a.values, a.start);
+  if (!bg) return plain;
+  let text = plain;
+  if (bg.gain) {
+    // The % of what was at stake: the value at the start plus what was put in since (not of the gain at the start)
+    const pct = bg.base > 0 && bg.last !== null ? ` <span class="pct">(${esc(fmtPct(((bg.last - bg.start) / bg.base) * 100))})</span>` : "";
+    text = `${changeCell(bg.last, bg.start, h.currency).replace(/<\/span>$/, `${pct}</span>`)}${tail}`;
+  }
+  return `<span class="trend-text trend-text-${bg.trend}">${text}</span>`;
+}
+
+// An account's "since the start" in the accounts list, the same as on its chart (#148): from the history of its own
+// currency (not the converted one); null until that history is loaded
+export function accountSinceCell(account) {
+  if (account.first_balance === null || account.first_balance === undefined) return null; // one balance: nothing to compare
+  const h = state.histories.find((x) => !x.isConverted && x.currency === account.currency && x.accounts.some((s) => s.account_id === account.id));
+  const a = h && accountSeries(h).find((s) => s.account_id === account.id);
+  if (!a) return null;
+  return headSince(a, h, [...a.values].reverse().find((v) => v !== null) ?? null, false);
 }
 
 // The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from
@@ -528,7 +615,7 @@ export function drawAccountChart(box, a, h, small) {
   const series = contributed ? [a, { name: t("chart.contributed"), values: contributed, color: a.color, dashed: true, noDots: true, contributed: true }] : [a];
   const drawn = drawChart(box, {
     dates: h.dates, series, height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
-    trend: trendOf(h.dates, a.values, a.start),
+    trend: backgroundTrend(h, a.ids ?? [], a.values, a.start),
     milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,

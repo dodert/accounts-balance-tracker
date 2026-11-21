@@ -116,6 +116,14 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
   invitation token appears in the access log; `FORWARDED_ALLOW_IPS` trusts the LAN and Docker ranges by default.
 - **Contributions** (#127): investment-like accounts record contributions by hand; the balance is the value. No price
   API (decided): the chart draws the cumulative contributions and the gain, computed in the browser.
+- **Chart background** (#104, #110, #148): green/orange/red from the start (first balance ever) to the last value.
+  With contributions it follows the gain (value − contributions up to each date) by default, also in totals and
+  groups, contributions in other currencies at the converted chart's rate (`rates` in `/api/history/converted`);
+  ⚙ can switch it to the value alone (`localStorage` `abt-trend`).
+  An account's "since the start" follows the same trend, colour and setting (with the gain: the gain's change).
+- **Contribution missing** (#153): an investment-like account with a balance (not 0) before its first contribution
+  gets `uncovered_from` in `/api/accounts` and a ⚠ in the list, charts, its window and when adding such a balance;
+  until fixed, its gain starts at the first contribution. Not for accounts with `available_from` (granted shares).
 - **Mortgages** (#128, #130-#132): fixed rate only, French system; the schedule is computed by `app/mortgage.py`
   (never stored), installments paid automatically by date, no per-installment edits; the simulator is the stateless
   `POST /api/mortgages/{id}/simulate`. Not linked to a `loan` account and outside the totals (decided for now).

@@ -180,7 +180,7 @@ def router(ctx: Context) -> APIRouter:
             ],
             first_total=money(all_total[0]) if len(all_dates) > 1 else None,
             first_available=money(all_available[0]) if len(all_dates) > 1 else None,
-            converted=converted, missing=missing, stale=stale,
+            converted=converted, missing=missing, stale=stale, rates={c: float(r) for c, r in rates.items()},
         )
 
     return router

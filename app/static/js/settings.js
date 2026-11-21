@@ -1,4 +1,4 @@
-// Settings: language, regional format and time zone; and the list of daily backups made by the server.
+// Settings: language, regional format, time zone and what the chart's background compares; and the list of daily backups made by the server.
 import { renderAccounts } from "./accounts.js";
 import { api, browserTimeZone, savedTimeZone, setTimeZone } from "./api.js";
 import { renderChart } from "./charts.js";
@@ -6,6 +6,7 @@ import { renderDemo } from "./demo.js";
 import { $, esc } from "./dom.js";
 import { openDialog } from "./modal.js";
 import { REGIONAL_LOCALES } from "./format.js";
+import { setTrendMode, state } from "./state.js";
 import { loadTotals } from "./totals.js";
 
 export function renderLocaleOptions() {
@@ -87,6 +88,7 @@ export function initSettings() {
     $("#lang-select").value = i18n.lang;
     renderLocaleOptions();
     renderTimeZoneOptions();
+    $("#trend-select").value = state.trendMode;
     renderBackups();
     openDialog($("#settings-dlg"));
   });
@@ -96,6 +98,7 @@ export function initSettings() {
     setLang($("#lang-select").value);
     setLocale($("#locale-select").value);
     setTimeZone($("#tz-select").value);
+    setTrendMode($("#trend-select").value);
     $("#settings-dlg").close();
     await initI18n();
     renderTimeZoneBadge();

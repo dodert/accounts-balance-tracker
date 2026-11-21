@@ -87,6 +87,10 @@ export const getDate = (input) => textToIso(input.value);
 export const notAvailableYet = (a) => !!a?.available_from && a.available_from > today();
 export const lockBadge = (a) => (notAvailableYet(a) ? ` <span class="badge lock" title="${esc(t("account.available_hint"))}">🔒 ${esc(t("accounts.available_on", { date: fmtDate(a.available_from) }))}</span>` : "");
 
+// ⚠ on an investment-like account worth something before its first contribution (#153): its gain is wrong
+export const uncoveredBadge = (a) => (a?.uncovered_from
+  ? ` <span class="badge warn uncovered" title="${esc(t("accounts.uncovered", { date: fmtDate(a.uncovered_from) }))}">⚠</span>` : "");
+
 // The decimal separator of the user's regional format: "," (es-ES, de-DE...) or "." (en-GB, en-US...)
 export function decimalMark(locale = fmtLocale()) {
   const mark = new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === "decimal")?.value;
@@ -134,6 +138,10 @@ export function initFormat() {
       try { native.value = textToIso(text.value); } catch { native.value = today(); }
       try { native.showPicker(); } catch { native.focus(); native.click(); }
     });
-    native.addEventListener("change", () => { if (native.value) setDate(text, native.value); });
+    native.addEventListener("change", () => {
+      if (!native.value) return;
+      setDate(text, native.value);
+      text.dispatchEvent(new Event("input", { bubbles: true })); // as if typed: whoever follows the date sees it
+    });
   });
 }

@@ -163,6 +163,8 @@ def test_converted_history_uses_todays_rate(tmp_path):
     h = client.get("/api/history/converted").json()
     assert h["currency"] == "EUR" and h["dates"] == ["2026-01-01", "2026-02-01"]
     assert h["converted"] == ["USD"] and h["missing"] == [] and h["stale"] is False
+    # The rate used, so the browser converts the contributions the same way (#148)
+    assert h["rates"] == {"USD": 0.9}
     # 500 USD at today's 0.9 on both dates
     assert h["total"] == [1450, 1550] and h["available"] == [1450, 1550]
     dollars = next(a for a in h["accounts"] if a["name"] == "Dollars")

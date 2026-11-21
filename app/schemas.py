@@ -110,6 +110,8 @@ class AccountOut(BaseModel):
     # The first balance recorded, to show the change since then
     first_balance: Units | None = None
     first_date: Date | None = None
+    # Investment-like accounts: the first balance (not 0) dated before any contribution, a contribution missing (#153)
+    uncovered_from: Date | None = None
 
 
 class BalanceIn(BaseModel):
@@ -255,6 +257,7 @@ class HistoryOut(BaseModel):
     converted: list[str] = []              # currencies converted
     missing: list[str] = []                # currencies left out: no rate stored and the service down
     stale: bool = False                    # today's rate could not be updated: the last stored one is used
+    rates: dict[str, float] = {}           # today's rate of each converted currency (for the contributions, #148)
 
 
 class CsvImportOut(BaseModel):
