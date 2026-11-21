@@ -3,7 +3,8 @@
 import { api } from "./api.js";
 import { drawChart, lineLegend, ttRow } from "./charts.js";
 import { setError } from "./dialogs.js";
-import { $, esc } from "./dom.js";
+import { $, $$, esc } from "./dom.js";
+import { markClean, openDialog } from "./modal.js";
 import { amountText, axisLabels, exactMoney, fmtDate, getDate, money, parseAmount, setDate, today } from "./format.js";
 import { state } from "./state.js";
 
@@ -76,7 +77,7 @@ export async function openMortgage(id) {
   rateHint();
   const dlg = $("#mortgage-dlg");
   dlg.appendChild($("#tooltip")); // so the chart's tooltip shows above the dialog
-  dlg.showModal();
+  openDialog(dlg);
   if (m) {
     resetPrepaymentForm();
     setDate($("#ns-date"), today());
@@ -212,6 +213,7 @@ function resetPrepaymentForm() {
   $("#np-mode").value = "reduce_term";
   $("#np-add").textContent = t("account.add_balance");
   $("#np-cancel").hidden = true;
+  markClean($("#np-add").parentElement);
 }
 
 function readPrepayment(prefix) {
@@ -304,6 +306,7 @@ export function initMortgages() {
       await loadMortgages();
       if (view.mortgage) {
         $("#mortgage-dlg-title").textContent = saved.name;
+        markClean(...$$("#mortgage-form > :not(#mortgage-details)"));
         setError($("#mortgage-error"), null);
         view.mortgage = state.mortgages.find((x) => x.id === saved.id);
         await afterChange();
@@ -361,6 +364,7 @@ export function initMortgages() {
       $("#np-note").value = p.note ?? "";
       $("#np-add").textContent = t("common.save");
       $("#np-cancel").hidden = false;
+      markClean($("#np-add").parentElement); // only what is typed next is unsaved
       $("#np-amount").focus();
       return;
     }
