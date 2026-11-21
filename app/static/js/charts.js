@@ -79,7 +79,16 @@ export function extent(values) {
 export async function loadHistory() {
   const since = sinceDate();
   if (state.currency === CONVERTED) {
-    const h = await api(`/api/history/converted${since ? `?since=${since}` : ""}`);
+    // The rates may take a few seconds (the service is slow or down): say so if it isn't quick
+    const loading = $("#chart-loading");
+    const timer = setTimeout(() => { loading.hidden = false; }, 300);
+    let h;
+    try {
+      h = await api(`/api/history/converted${since ? `?since=${since}` : ""}`);
+    } finally {
+      clearTimeout(timer);
+      loading.hidden = true;
+    }
     state.histories = [{ ...h, isConverted: true }];
     renderChart();
     return;

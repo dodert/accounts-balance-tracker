@@ -158,6 +158,7 @@
   "chart.converted_note": "{currencies} converted into {currency} at today's ECB rate, on every date.",
   "chart.converted_missing": "No exchange rate for {currencies}: left out.",
   "chart.converted_stale": "Today's rate could not be updated: the last stored one is used.",
+  "chart.loading_rates": "Getting today's exchange rates…",
   "milestones.title": "Milestones",
   "milestones.hint": "Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.",
   "milestones.amount": "Amount",

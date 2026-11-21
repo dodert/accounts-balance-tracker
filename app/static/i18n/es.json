@@ -158,6 +158,7 @@
   "chart.converted_note": "{currencies} convertido a {currency} con el tipo del BCE de hoy, en todas las fechas.",
   "chart.converted_missing": "Sin tipo de cambio para {currencies}: no se incluye.",
   "chart.converted_stale": "No se pudo actualizar el tipo de hoy: se usa el último guardado.",
+  "chart.loading_rates": "Obteniendo los tipos de cambio de hoy…",
   "milestones.title": "Hitos",
   "milestones.hint": "Gastos dignos de mención (un coche, un viaje…). Salen en las gráficas como una línea vertical punteada en su fecha.",
   "milestones.amount": "Importe",

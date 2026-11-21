@@ -79,7 +79,9 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
   rate, so it shows what the balances are worth now. Today's rate is fetched again when the stored one is more than
   3 hours old, until the ECB's own rate of the day (~16:00 CET) is stored. `FX_DAILY_LIMIT` defaults to 30. Rates are
   fetched without holding the user's database lock; in multi-user they are stored only in the shared `rates.db`.
-  Every rate logs at INFO where it came from (service, stored rates, shared store).
+  Every rate logs at INFO where it came from (service, stored rates, shared store). When the service can't be
+  reached (5 s timeout, network error or 5xx) it isn't asked again for an hour (`RETRY_AFTER`), except by the
+  refresh button; a skipped request doesn't count towards `FX_DAILY_LIMIT` (#157).
 - **Import / export** (#67): "Export everything (JSON)" is the full, versioned copy (accounts with all fields,
   balances, milestones, contributions); the CSV is only a table of balances and stays that way (no milestones, by choice). Import
   JSON has two modes: *merge* never overwrites: it skips what already exists (same account and date, same milestone)

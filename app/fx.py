@@ -8,7 +8,8 @@ pair and day: the `fx_rates` table of the database (single user), or the shared 
 - today's rate is fetched the first time it is needed each day, again when it is more than 3 hours old (until the
   ECB has published the day's own rate), and when asked (refresh).
 Every conversion of the app (the combined total and the chart of every currency in the default one) uses
-today's rate. If the service cannot be reached, the last stored rate is used, marked as stale.
+today's rate. If the service cannot be reached, the last stored rate is used, marked as stale, and the service is
+not asked again for RETRY_AFTER (unless the refresh button is pressed), so pages don't wait for it on every request.
 Only currencies and dates are ever sent, never amounts.
 """
 import json
@@ -35,6 +36,10 @@ log = logging.getLogger(__name__)
 
 # Today's rate is asked again when the stored one is older than this (until the ECB publishes the day's own rate)
 REFRESH = timedelta(hours=3)
+# After the service could not be reached, it is not asked again for this long (the stored rates are used meanwhile)
+RETRY_AFTER = timedelta(hours=1)
+# How long to wait for the service's answer
+TIMEOUT = 5
 
 # (base, quote, day or None for the latest) -> (rate, the day the rate is from)
 Fetcher = Callable[[str, str, date | None], tuple[Decimal, date]]
@@ -45,25 +50,56 @@ class Refused(Exception):
     does not count towards the daily limit."""
 
 
-def frankfurter(url: str) -> Fetcher:
+class ServiceDown(Exception):
+    """The service failed a short while ago (RETRY_AFTER): it is not asked again yet. Nothing was sent, so in
+    multi-user mode it does not count towards the daily limit."""
+
+
+def frankfurter(url: str, clock=time.monotonic) -> Fetcher:
+    """A Fetcher that asks the Frankfurter API. When the service can't be reached (network error, timeout or a 5xx
+    answer) it is not asked again for RETRY_AFTER: ServiceDown is raised at once instead. fetch.retry() lifts that
+    (the refresh button)."""
+    down_until = None
+
     def fetch(base: str, quote: str, day: date | None) -> tuple[Decimal, date]:
+        nonlocal down_until
+        if down_until is not None and clock() < down_until:
+            raise ServiceDown(f"the rate service failed less than {RETRY_AFTER} ago: not asked again yet")
         query = urllib.parse.urlencode({"from": base, "to": quote})
         request = urllib.request.Request(f"{url.rstrip('/')}/{day.isoformat() if day else 'latest'}?{query}",
                                          headers={"User-Agent": "accounts-balance-tracker"})
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                 data = json.load(response)
         except urllib.error.HTTPError as error:
             if 400 <= error.code < 500:
                 raise Refused(f"the rate service refused {base}/{quote}: HTTP {error.code}") from None
+            down_until = clock() + RETRY_AFTER.total_seconds()
             raise
+        except OSError:  # unreachable, refused, timed out (URLError and TimeoutError are OSErrors)
+            down_until = clock() + RETRY_AFTER.total_seconds()
+            raise
+        down_until = None
         if quote not in data.get("rates", {}):
             raise Refused(f"the rate service has no {base}/{quote} rate")
         rate, rate_date = Decimal(str(data["rates"][quote])), date.fromisoformat(data["date"])
         log.info("Exchange rate %s/%s for %s: %s, asked to the service (ECB %s)", base, quote, day or "today",
                  rate, rate_date)
         return rate, rate_date
+
+    def retry() -> None:
+        nonlocal down_until
+        down_until = None
+
+    fetch.retry = retry
     return fetch
+
+
+def retry_now(fetch: Fetcher) -> None:
+    """Ask the service on the next request even if it failed a short while ago (when the user presses refresh)."""
+    retry = getattr(fetch, "retry", None)
+    if retry is not None:
+        retry()
 
 
 @dataclass
@@ -259,13 +295,14 @@ class SharedRates:
                     raise RuntimeError(f"daily limit of {self.daily_limit} requests to the rate service reached")
             try:
                 rate, rate_date = self._fetch(base, quote, day)
-            except Refused:
+            except (Refused, ServiceDown):
                 with self._lock:
-                    self._give_back_request()  # an unknown currency doesn't use up everybody's limit
+                    self._give_back_request()  # an unknown currency, or a request not sent, doesn't use up the limit
                 raise
             with self._lock:
                 self._store(base, quote, day, rate, rate_date)
                 self._db.commit()
             return rate, rate_date
 
+        fetch.retry = lambda: retry_now(self._fetch)
         return fetch
