@@ -726,8 +726,10 @@ def test_ipv6_addresses_of_one_64_count_as_one(setup):
 
 def test_the_demo_has_a_size_limit(setup, monkeypatch):
     """The demo refuses files and changes over its size limit and keeps working."""
+    import app.csv_io as csv_io
     import app.demo as demo
     monkeypatch.setattr(demo, "MAX_BYTES", 300 * 1024)
+    monkeypatch.setattr(csv_io, "MAX_NEW_ACCOUNTS", 10_000)  # many new accounts fill it quickly
     app, _ = setup
     visitor = TestClient(app)
     visitor.post("/api/demo")
