@@ -40,7 +40,7 @@ export function renderTimeZoneOptions() {
 // The daily backups the server made (app/backups.py), newest first: when (in the user's time zone) and size
 export async function renderBackups() {
   const list = $("#backups-list"), hint = $("#backups-hint");
-  list.innerHTML = "";
+  list.replaceChildren();
   let data;
   try {
     data = await api("/api/backups");
