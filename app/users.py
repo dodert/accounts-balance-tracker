@@ -444,6 +444,10 @@ class Users:
             raise SignupError("email")
         if len(password) < MIN_PASSWORD:
             raise SignupError("password")
+        # Everything that needs no password first: a sign-up that fails costs no key derivation (Argon2id), and
+        # its invitation stays usable (#178)
+        with self.Session() as db:
+            self._check_new_user(db, username, email)
         account_key, key = crypto.new_key(), crypto.new_key()
         salt, recovery_salt = crypto.new_salt(), crypto.new_salt()
         recovery = crypto.new_recovery_key()
@@ -457,12 +461,7 @@ class Users:
                                  .values(used_at=now()))
             if claimed.rowcount != 1:
                 raise SignupError("invitation")
-            if db.get(BlockedEmail, email) is not None:
-                raise SignupError("blocked")
-            if db.scalar(select(User).where((User.username == username) | (User.email == email))) is not None:
-                raise SignupError("taken")
-            if self.max_users and db.scalar(select(func.count()).select_from(User)) >= self.max_users:
-                raise SignupError("full")
+            self._check_new_user(db, username, email)  # again: another sign-up may have finished meanwhile
             invitation = db.get(Invitation, invitation.id)
             user = User(username=username, email=email, created_at=now(), kdf_salt=salt, kdf_params=params,
                         key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"",
@@ -527,6 +526,15 @@ class Users:
             user.last_login_at, user.last_ip, user.last_country = now(), ip, country
             db.commit()
             return self._logged_in(user, key)
+
+    def _check_new_user(self, db, username: str, email: str) -> None:
+        """Raises SignupError if this email is blocked, the username or email is taken, or there is no room left."""
+        if db.get(BlockedEmail, email) is not None:
+            raise SignupError("blocked")
+        if db.scalar(select(User).where((User.username == username) | (User.email == email))) is not None:
+            raise SignupError("taken")
+        if self.max_users and db.scalar(select(func.count()).select_from(User)) >= self.max_users:
+            raise SignupError("full")
 
     def change_password(self, user_id: int, current: str, new: str) -> LoggedIn | None:
         """Set the new password, re-encrypt the database with a new data key and log out the other sessions; None if
@@ -692,6 +700,8 @@ class Users:
         with self.Session() as db:
             user = db.get(User, user_id)
             if user is not None:
+                if blocked and not user.blocked:
+                    user.session_epoch += 1  # for good: unblocking doesn't bring the old sessions back (#173)
                 user.blocked = blocked
                 db.commit()
 
@@ -724,6 +734,7 @@ class Users:
                 user.expires_at = start + timedelta(days=days)
             if was_expired:
                 user.blocked = False
+                user.session_epoch += 1  # sessions from before the expiry stay logged out (#173)
             db.commit()
 
     def purge_expired(self) -> int:
@@ -737,6 +748,7 @@ class Users:
                 with self.databases._lock(user.id):
                     self.databases.delete(user.id)
                 user.blocked = True
+                user.session_epoch += 1  # extending the account later doesn't bring the old sessions back (#173)
                 purged += 1
                 log.warning("Account %s expired: its database was deleted and the user blocked", user.username)
             db.commit()

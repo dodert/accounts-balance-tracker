@@ -422,6 +422,39 @@ def test_block_and_unblock_a_user(setup, tmp_path):
     assert [a["name"] for a in again.get("/api/accounts").json()] == ["Kept"]  # the data was kept
 
 
+def test_unblocking_a_user_does_not_bring_back_old_sessions(setup, tmp_path):
+    """A session cookie from before a block stays logged out after the unblock (#173)."""
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    copied = TestClient(app)
+    copied.cookies.set(USER_COOKIE, ana.cookies.get(USER_COOKIE))
+    assert copied.get("/api/accounts").status_code == 200
+    uid = user_id(tmp_path, "ana")
+    admin.post(f"/admin/users/{uid}/block")
+    admin.post(f"/admin/users/{uid}/unblock")
+    assert copied.get("/api/accounts").status_code == 401
+    assert ana.get("/api/accounts").status_code == 401
+    again = TestClient(app)
+    again.post("/login", data={"username": "ana", "password": "ana-password"})
+    assert again.get("/api/accounts").status_code == 200  # a new login works
+
+
+@pytest.mark.parametrize("purged", [False, True])
+def test_extending_an_expired_account_does_not_bring_back_old_sessions(setup, tmp_path, purged):
+    """A session cookie from before an expiry stays logged out after the admin extends the account (#173)."""
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    uid = user_id(tmp_path, "ana")
+    set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
+    if purged:
+        app.state.users.purge_expired()
+    admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
+    assert ana.get("/api/accounts").status_code == 401
+    again = TestClient(app)
+    again.post("/login", data={"username": "ana", "password": "ana-password"})
+    assert again.get("/api/accounts").status_code == 200
+
+
 def test_delete_a_user_and_block_the_email(setup, tmp_path):
     """Deleting a user removes their data; it can also block their email."""
     app, admin = setup
@@ -558,9 +591,9 @@ def test_the_recovery_key_of_an_expired_account_says_it_expired(setup, tmp_path)
     assert old.headers["location"] == "/"  # the password was not changed
 
 
-@pytest.mark.parametrize("how", ["old session", "recovery key"])
-def test_an_extended_account_gets_an_empty_database_with_an_old_session_or_the_recovery_key(setup, tmp_path, how):
-    """After expiry and extension, an old session or the recovery key gets a new empty database, not an error."""
+@pytest.mark.parametrize("how", ["login", "recovery key"])
+def test_an_extended_account_gets_an_empty_database_with_a_new_login_or_the_recovery_key(setup, tmp_path, how):
+    """After expiry and extension, the old session is logged out; a new login or the recovery key gets an empty database."""
     app, admin = setup
     ana, res = sign_up(app, invite(admin))
     key = recovery_key(res)
@@ -569,7 +602,12 @@ def test_an_extended_account_gets_an_empty_database_with_an_old_session_or_the_r
     set_expiry(tmp_path, "ana", now() - timedelta(minutes=1))
     assert app.state.users.purge_expired() == 1
     admin.post(f"/admin/users/{uid}/extend", data={"days": "10"})
-    if how == "recovery key":
+    assert ana.get("/api/accounts").status_code == 401  # sessions from before the expiry stay logged out (#173)
+    if how == "login":
+        ana = TestClient(app)
+        assert ana.post("/login", data={"username": "ana", "password": "ana-password"},
+                        follow_redirects=False).headers["location"] == "/"
+    else:
         ana = TestClient(app)
         ok = ana.post("/recover", data={"username": "ana", "recovery_key": key, "password": "new-password-1",
                                         "password2": "new-password-1"}, follow_redirects=False)
@@ -721,6 +759,60 @@ def test_wrong_passwords_for_one_user_are_limited_whatever_the_ip(setup):
     ok = TestClient(app, client=("198.51.100.9", 50000)).post(
         "/login", data={"username": "bea", "password": "bea-password"}, follow_redirects=False)
     assert ok.headers["location"] == "/"
+
+
+@pytest.mark.parametrize("path", ["/account/password", "/account/totp/off", "/account/totp"])
+def test_wrong_current_passwords_on_the_account_page_are_limited_per_user(setup, path):
+    """Wrong current passwords on the account page are limited per user, whatever IP they come from (#174)."""
+    import app.routes.login as main
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    cookie = ana.cookies.get(USER_COOKIE)
+    form = {"password": "new-password-1", "password2": "new-password-1", "secret": "A" * 32, "code": "000000"}
+    for i in range(main.WRONG_PASSWORDS_PER_USER):
+        guesser = TestClient(app, client=(f"203.0.{i // 250}.{i % 250 + 1}", 50000))
+        guesser.cookies.set(USER_COOKIE, cookie)
+        res = guesser.post(path, data={**form, "current": f"guess-{i:04d}"}, follow_redirects=False)
+        assert res.status_code == 200 and "account.error" in res.text
+    last = TestClient(app, client=("198.51.100.9", 50000))
+    last.cookies.set(USER_COOKIE, cookie)
+    assert last.post(path, data={**form, "current": "ana-password"}, follow_redirects=False).status_code == 429
+
+
+def test_failed_sign_ups_are_limited_and_cost_no_key_derivation(setup, monkeypatch):
+    """A failing sign-up (taken name) derives no key, keeps its invitation, and is limited per IP (#178)."""
+    import app.routes.login as main
+    app, admin = setup
+    sign_up(app, invite(admin))
+    token = invite(admin)
+    derived = []
+    real = crypto.password_key
+    monkeypatch.setattr(crypto, "password_key", lambda *args: derived.append(1) or real(*args))
+    for _ in range(main.WRONG_PASSWORDS_PER_IP):
+        _, res = sign_up(app, token, "ana", "other@example.com", "other-password")
+        assert res.status_code == 200 and "register.error.taken" in res.text
+    assert derived == []
+    _, res = sign_up(app, token, "ana", "other@example.com", "other-password")
+    assert res.status_code == 429
+    # Another IP, with a free name, still signs up with the same invitation
+    client = TestClient(app, client=("198.51.100.20", 50000))
+    res = client.post(f"/invite/{token}", data={"username": "bea", "email": "bea@example.com",
+                                                "password": "bea-password", "password2": "bea-password"})
+    assert res.status_code == 200 and USER_COOKIE in client.cookies
+
+
+def test_failed_sign_ups_with_one_invitation_are_limited_whatever_the_ip(setup):
+    """Failed sign-ups with one invitation are limited across IPs (#178)."""
+    import app.routes.login as main
+    app, admin = setup
+    sign_up(app, invite(admin))
+    token = invite(admin)
+    form = {"username": "ana", "email": "x@example.com", "password": "x-password-1", "password2": "x-password-1"}
+    for i in range(main.WRONG_SIGNUPS_PER_INVITATION):
+        res = TestClient(app, client=(f"203.0.113.{i + 1}", 50000)).post(f"/invite/{token}", data=form)
+        assert "register.error.taken" in res.text
+    assert TestClient(app, client=("198.51.100.30", 50000)).post(f"/invite/{token}", data=form).status_code == 429
+    assert TestClient(app).get(f"/invite/{token}").status_code == 200  # the invitation itself is still valid
 
 
 def test_ipv6_addresses_of_one_64_count_as_one(setup):
