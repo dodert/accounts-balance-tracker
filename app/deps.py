@@ -49,7 +49,8 @@ class Context:
     version: str
     new_demos: TryLimit = field(default_factory=lambda: TryLimit(DEMOS_PER_IP, 3600))
     pages: "Pages" = None
-    turns: dict[int, asyncio.Lock] = field(default_factory=dict)  # multi-user: one per user, see user_turn
+    # One lock per user and per demo, with how many requests hold it or wait for it: see user_turn
+    turns: dict[int | str, list] = field(default_factory=dict)
 
     @property
     def multi(self) -> bool:
@@ -82,15 +83,28 @@ class Context:
 
     @asynccontextmanager
     async def user_turn(self, request: Request):
-        """Multi-user: wait until no other request of this user has its database open. The wait is in the event
-        loop, holding no worker thread: waiting on the database's own lock in the thread pool could take every
-        thread, so the request holding it never got one to finish and the app froze for everybody (#112)."""
-        user = getattr(request.state, "user", None)
-        if not self.multi or user is None or self.in_demo(request):
-            yield
-            return
-        async with self.turns.setdefault(user.user_id, asyncio.Lock()):
-            yield
+        """Wait until no other request of this user (multi-user) or of this demo has its database open. The wait is
+        in the event loop, holding no worker thread: waiting on the database's own lock in the thread pool could take
+        every thread, so the request holding it never got one to finish and the app froze for everybody (#112). A
+        demo too: anyone can start one, and its parallel requests ran out of database connections while holding
+        every thread (#162)."""
+        if self.in_demo(request):
+            key = "demo:" + request.cookies[DEMO_COOKIE]
+        else:
+            user = getattr(request.state, "user", None)
+            if not self.multi or user is None:
+                yield
+                return
+            key = user.user_id
+        turn = self.turns.setdefault(key, [asyncio.Lock(), 0])
+        turn[1] += 1
+        try:
+            async with turn[0]:
+                yield
+        finally:
+            turn[1] -= 1
+            if not turn[1]:  # nobody else holds or waits for it: forgotten, so ended demos leave nothing behind
+                del self.turns[key]
 
     async def get_db(self, request: Request):
         """Dependency: a session on the database of this request (the user's, the demo's or the only one), open
@@ -109,8 +123,11 @@ class Context:
 
     def set_demo(self, response: Response, request: Request, on: bool, lang: str = "en") -> Response:
         if on:
-            visitor = request.cookies.get(DEMO_COOKIE)
-            if self.visitor_demos.get(visitor) is None:
+            # The sample data's languages: anything else (also a changed cookie) is English, and the cookies get only
+            # values made here
+            lang = "es" if lang == "es" else "en"
+            cookies = {DEMO_COOKIE + "_lang": lang}
+            if self.visitor_demos.get(request.cookies.get(DEMO_COOKIE)) is None:
                 # A limit per client, so one can't push out everybody else's demos (in multi-user mode anyone
                 # can start one)
                 try:
@@ -119,8 +136,8 @@ class Context:
                 except TooManyTries as error:
                     raise HTTPException(429, "Too many demos started from your address, try again later",
                                         headers={"Retry-After": str(error.retry_after)}) from None
-                visitor = self.visitor_demos.start(lang)
-            for name, value in ((DEMO_COOKIE, visitor), (DEMO_COOKIE + "_lang", lang)):
+                cookies[DEMO_COOKIE] = self.visitor_demos.start(lang)  # an existing demo keeps its cookie
+            for name, value in cookies.items():
                 response.set_cookie(name, value, httponly=True, samesite="lax", secure=is_https(request))
         else:
             response.delete_cookie(DEMO_COOKIE)
