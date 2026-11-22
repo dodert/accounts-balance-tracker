@@ -66,6 +66,8 @@ permissions problem, "Re-run failed jobs" fixes it.
   and that every key used exists). Admin page is a Jinja template (`app/templates/admin.html`).
 - **Docker**: `Dockerfile` (base image pinned by digest), `docker/entrypoint.sh` (PUID/PGID 99:100 + setpriv),
   healthcheck on `/api/health`.
+  The image gets its version as the build-arg `VERSION` (`APP_VERSION`); run from the repository, the app reads
+  `.release-please-manifest.json`.
 - **Unraid**: `unraid/` is synced to the public repo `dodert/unraid-templates` by the `Sync Unraid template`
   workflow (secret `TEMPLATES_TOKEN`); that repo builds its own README. All variables visible (`Display="always"`);
   only `API_DOCS`, `PUID`, `PGID`, `FORWARDED_ALLOW_IPS` go under advanced.
@@ -141,8 +143,10 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
   references it with `Closes #N`.
 - **Branches**: short descriptive English names (`feat/demo-mode`, `fix/login-rate-limit`, `docs/...`), never a
   session/thread id.
-- **Version**: bump `__version__` in `app/__init__.py` in every PR that changes the app (SemVer: `Z` fixes, `Y`
-  features). When several PRs are open at once, give each a different number.
+- **Version** (#196): never bump it by hand. release-please (`.github/workflows/release.yml`) keeps a release PR
+  with the next version (only in `.release-please-manifest.json`) and `CHANGELOG.md`; merging it tags `vX.Y.Z`,
+  which publishes the image `X.Y.Z`/`X.Y`/`latest`. So commit messages (and PR titles) follow Conventional Commits:
+  `feat:` (new `Y`), `fix:` (new `Z`), `docs:`/`ci:`/`test:`/`refactor:`/`chore:` (no release), `!` for breaking.
 - **Migrations never lose data**: `upgrade_database` makes a backup before migrating and refuses to migrate
   without it; foreign keys are off during the migration and checked with `PRAGMA foreign_key_check` after (a batch
   rebuild with `ON DELETE CASCADE` once wiped all balances). Non backward-compatible changes must migrate the existing

@@ -1,0 +1,39 @@
+name: Release
+
+# release-please (#196): on every push to main it keeps one release PR open with the next version
+# (from the Conventional Commits since the last release) and the CHANGELOG. Merging that PR creates the
+# tag vX.Y.Z and its GitHub Release; the tag runs the CI, which publishes the image X.Y.Z, X.Y and latest.
+# The version lives only in .release-please-manifest.json, changed only by the release PR.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, so two quick merges don't race on the release PR
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # A token of a user, not GITHUB_TOKEN: tags and PRs made with GITHUB_TOKEN don't run any workflow,
+      # so the tag would publish no image and the release PR would have no checks.
+      # Fine-grained PAT on this repository with Contents and Pull requests: read and write.
+      - name: Check the token
+        env:
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Add the repository secret RELEASE_PLEASE_TOKEN (see the README, Releases)"
+            exit 1
+          fi
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
