@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.50.0](https://github.com/dodert/accounts-balance-tracker/compare/v0.49.11...v0.50.0) (2026-11-22)
+
+
+### Features
+
+* guided tour starts by saying what the app is and is not ([3130e18](https://github.com/dodert/accounts-balance-tracker/commit/3130e18bcf8fb073fa78fbf355d1f8c3ec6d0631))
+* guided tour starts by saying what the app is and is not ([#202](https://github.com/dodert/accounts-balance-tracker/issues/202)) ([9371573](https://github.com/dodert/accounts-balance-tracker/commit/93715732a83ec7d74faf66a1c983eb0b920ec18f))
+
 ## [0.49.11](https://github.com/dodert/accounts-balance-tracker/compare/v0.49.10...v0.49.11) (2026-11-22)
 
 
