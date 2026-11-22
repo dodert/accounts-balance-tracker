@@ -117,9 +117,9 @@ def install(app: FastAPI, ctx: Context) -> None:
 
     @app.middleware("http")
     async def ended_demo(request: Request, call_next):
-        # Runs after the login check (an anonymous visitor gets its usual answer). A browser whose demo the server has forgotten (idle, or pushed out by newer
-        # ones) still sends its demo cookie: its requests must never fall through to the real data (#175), so the
-        # API refuses them and the page reloads out of demo mode
+        # Runs after the login check (an anonymous visitor gets its usual answer). A browser whose demo the server
+        # has forgotten (idle, or pushed out by newer ones) still sends its demo cookie: its requests must never fall
+        # through to the real data (#175), so the API refuses them and the page reloads out of demo mode
         visitor = request.cookies.get(DEMO_COOKIE)
         if not visitor or request.url.path in DEMO_ENTRY or ctx.visitor_demos.get(visitor) is not None:
             return await call_next(request)
