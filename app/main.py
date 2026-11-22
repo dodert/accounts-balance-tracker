@@ -127,6 +127,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
                   engine=engine, SessionLocal=SessionLocal, visitor_demos=visitor_demos,
                   fetch_rate=fetch_rate, shared_rates=shared_rates, version=version)
     # Version the asset URLs so browsers fetch the new JS/CSS after an image update
+    app.state.turns = ctx.turns  # for the tests
     ctx.pages = Pages(f"{version}-{settings.git_sha[:7]}" if settings.git_sha else version, multi)
 
     @app.exception_handler(DatabaseTooBig)

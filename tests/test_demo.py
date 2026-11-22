@@ -159,3 +159,17 @@ def test_demo_combined_total_offline(tmp_path):
         c.post("/api/demo")
         combined = c.get("/api/summary/combined").json()
     assert combined["missing"] == [] and combined["rates"][0]["stale"] is True
+
+
+def test_demo_cookies_only_carry_values_made_by_the_app(client):
+    """The demo's language cookie is only en or es, and an existing demo keeps its id."""
+    client.post("/api/demo?lang=es")
+    visitor = client.cookies["abt_demo"]
+    assert client.cookies["abt_demo_lang"] == "es"
+    client.cookies.clear()
+    client.cookies.set("abt_demo", visitor)
+    client.cookies.set("abt_demo_lang", "zz<script>")
+    res = client.post("/api/demo/reset")
+    assert res.status_code == 204 and res.cookies["abt_demo_lang"] == "en"
+    res = client.get("/demo?lang=es", follow_redirects=False)
+    assert "abt_demo" not in res.cookies and res.cookies["abt_demo_lang"] == "es"  # the same demo, no new id

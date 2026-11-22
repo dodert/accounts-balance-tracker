@@ -1,6 +1,7 @@
 """Demo mode: made-up sample data in a database apart from the real one."""
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from ..demo import COOKIE as DEMO_COOKIE
 from ..deps import Context
@@ -25,12 +26,14 @@ def router(ctx: Context) -> APIRouter:
         return set_demo(Response(status_code=204), request, False)
 
     @router.post("/api/demo/reset", status_code=204)
-    def reset_demo(request: Request, lang: str = Query(None, pattern=r"^[a-z]{2}$")):
+    async def reset_demo(request: Request, lang: str = Query(None, pattern=r"^[a-z]{2}$")):
         """Build the sample data again (undoes the changes made in demo mode)."""
         if not in_demo(request):
             raise HTTPException(409, "Not in demo mode")
         lang = lang or demo_lang(request)
-        visitor_demo(request).reset(lang)
+        # In the demo's turn, like its other requests: resets sent at once wait in the event loop, not in threads
+        async with ctx.user_turn(request):
+            await run_in_threadpool(visitor_demo(request).reset, lang)
         return set_demo(Response(status_code=204), request, True, lang)
 
     @router.get("/demo", include_in_schema=False)
