@@ -106,7 +106,8 @@ export async function loadHistory() {
 
 // The series to draw. Each account keeps its colour in every view and whatever the range (colour by
 // account id; past 16 accounts the colours repeat). The total is drawn in ink.
-// `start` is the first balance ever recorded, also when a shorter range is shown.
+// `start` is the first balance ever recorded, also when a shorter range is shown; for an account with
+// contributions, its first contribution (#179): nothing was at stake before money was put in. `startDay` is its date.
 export const firstValue = (values) => values.find((v) => v !== null) ?? null;
 
 export function totalSeries(h) {
@@ -119,19 +120,21 @@ export function accountSeries(h) {
   return h.accounts.filter((a) => a.values.some((v) => v !== null)).map((a) => {
     const account = state.accounts.find((x) => x.id === a.account_id);
     const slot = ids.indexOf(a.account_id) + 1;
+    const contributed = contributionsUpTo([a.account_id], h, null);
     return {
       // In the converted chart, an account in another currency says which one
       account_id: a.account_id, ids: [a.account_id], name: a.name, values: a.values, slot, archived: a.archived,
       detail: [account?.institution, a.currency && a.currency !== h.currency ? a.currency : ""].filter(Boolean).join(" · "),
       available_from: account?.available_from ?? null,
       color: slotColor(slot),
-      start: a.start ?? account?.first_balance ?? firstValue(a.values),
+      start: contributed ? contributed.atFirst : a.start ?? account?.first_balance ?? firstValue(a.values),
+      startDay: contributed ? contributed.firstDate : account?.first_date ?? h.dates[a.values.findIndex((v) => v !== null)],
     };
   }).sort((a, b) => a.slot - b.slot);
 }
 
 // One series per institution: the sum of its accounts (accounts without one are grouped together).
-// Its start is its total on the first date any of its accounts had a balance.
+// Its start is the sum of its accounts' starts on the earliest of their start days (a first balance or contribution).
 export function institutionSeries(h) {
   const groups = new Map();
   for (const a of accountSeries(h)) {
@@ -146,12 +149,12 @@ export function institutionSeries(h) {
       const present = members.map((a) => a.values[n]).filter((v) => v !== null);
       return present.length ? present.reduce((sum, v) => sum + v, 0) : null;
     });
-    const firsts = members.map((a) => state.accounts.find((x) => x.id === a.account_id)).filter((a) => a?.first_date);
-    const day = firsts.map((a) => a.first_date).sort()[0];
-    const start = h.isConverted ? firstValue(values) : day ? firsts.filter((a) => a.first_date === day).reduce((sum, a) => sum + a.first_balance, 0) : firstValue(values);
+    const firsts = members.filter((a) => a.startDay && a.start !== null && a.start !== undefined);
+    const day = firsts.map((a) => a.startDay).sort()[0];
+    const start = day ? firsts.filter((a) => a.startDay === day).reduce((sum, a) => sum + a.start, 0) : firstValue(values);
     const slot = i + 1;
     return {
-      account_id: `i:${key}`, ids: members.map((a) => a.account_id), name: key || t("chart.no_institution"), values, slot, start,
+      account_id: `i:${key}`, ids: members.map((a) => a.account_id), name: key || t("chart.no_institution"), values, slot, start, startDay: day ?? null,
       detail: t(members.length === 1 ? "chart.one_account" : "chart.n_accounts", { n: members.length }),
       archived: members.every((a) => a.archived),
       color: slotColor(slot),
@@ -214,16 +217,18 @@ export function contributionsUpTo(ids, h, startDay) {
 // contributions it is the trend of the gain (the value minus what was contributed up to each date, its start the
 // start minus what was contributed by then), so money put in doesn't make it look green; else of the values.
 // Returns { trend, gain } (gain: whether it was computed from the gain), or null like trendOf.
-export function backgroundTrend(h, ids, values, start) {
+export function backgroundTrend(h, ids, values, start, startDay = null) {
   const known = ids.map((id) => state.accounts.find((x) => x.id === id)).filter(Boolean);
-  // The day of the start: the first balance ever of these accounts (as the start, #110), else the first shown
-  const startDay = known.map((a) => a.first_date).filter(Boolean).sort()[0] ?? h.dates[values.findIndex((v) => v !== null)];
+  // The day of the start: the series' own (an account's first contribution, #179), else the first balance ever of
+  // these accounts (as the start, #110), else the first shown
+  startDay ??= known.map((a) => a.first_date).filter(Boolean).sort()[0] ?? h.dates[values.findIndex((v) => v !== null)];
   const contributed = state.trendMode === "value" ? null : contributionsUpTo(ids, h, startDay);
   if (!contributed) {
     const trend = trendOf(h.dates, values, start);
     return trend && { trend, gain: false };
   }
-  const gain = values.map((v, n) => (v === null || v === undefined ? null : v - contributed.values[n]));
+  // Nothing before the start counts (a balance older than the first contribution, #153)
+  const gain = values.map((v, n) => (v === null || v === undefined || h.dates[n] < startDay ? null : v - contributed.values[n]));
   let gainStart = start === null || start === undefined ? null : start - contributed.atStart;
   let valueStart = start ?? null, putInStart = contributed.atStart;
   // Nothing can be gained before money was put in: with a balance older than the first contribution (a contribution
@@ -592,7 +597,7 @@ export function accountHead(a, h, extra = "", small = false) {
 function headSince(a, h, last, label = true) {
   const tail = label ? ` ${esc(t("chart.since_start"))}` : "";
   const plain = a.start !== null && a.start !== undefined ? `${changeCell(last, a.start, h.currency, true)}${tail}` : "";
-  const bg = backgroundTrend(h, a.ids ?? [], a.values, a.start);
+  const bg = backgroundTrend(h, a.ids ?? [], a.values, a.start, a.startDay);
   if (!bg) return plain;
   let text = plain;
   if (bg.gain) {
@@ -629,7 +634,7 @@ export function drawAccountChart(box, a, h, small) {
   const series = contributed ? [a, { name: t("chart.contributed"), values: contributed, color: a.color, dashed: true, noDots: true, contributed: true }] : [a];
   const drawn = drawChart(box, {
     dates: h.dates, series, height: small ? 130 : Math.max(240, Math.min(420, window.innerHeight - 260)), small, label: a.name,
-    trend: backgroundTrend(h, a.ids ?? [], a.values, a.start),
+    trend: backgroundTrend(h, a.ids ?? [], a.values, a.start, a.startDay),
     milestones: milestonesFor(a.ids ?? []),
     area: !small, ref: a.start !== null ? { value: a.start, label: t("chart.start", { amount }) } : null,
     marker: a.available_from ? { date: a.available_from, label: `🔓 ${small ? "" : t("chart.available") + " "}${fmtDate(a.available_from, { day: "numeric", month: "short", year: "2-digit" })}` } : null,

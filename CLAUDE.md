@@ -123,6 +123,8 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
   groups, contributions in other currencies at the converted chart's rate (`rates` in `/api/history/converted`);
   ⚙ can switch it to the value alone (`localStorage` `abt-trend`).
   An account's "since the start" follows the same trend, colour and setting (with the gain: the gain's change).
+  An account with contributions starts at its first contribution (amount and date), in both settings (#179);
+  groups sum their accounts' starts on the earliest start day; the total keeps its first balance.
 - **Contribution missing** (#153): an investment-like account with a balance (not 0) before its first contribution
   gets `uncovered_from` in `/api/accounts` and a ⚠ in the list, charts, its window and when adding such a balance;
   until fixed, its gain starts at the first contribution. Not for accounts with `available_from` (granted shares).
