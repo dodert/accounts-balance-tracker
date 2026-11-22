@@ -729,6 +729,27 @@ def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
     assert not is_open() and page.evaluate("window.asked") == []
 
 
+def test_dialogs_have_names_and_mark_a_wrong_field_only_after_it_was_touched(page):
+    """Every dialog is announced by its title; a required field turns red only once the user has left it empty."""
+    open_app(page)
+    names = page.evaluate("""[...document.querySelectorAll('dialog')].map((d) => [d.id,
+        document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.id ?? null])""")
+    assert names and all(title for _, title in names), names
+    page.click("#add-account-btn")
+    assert page.get_by_role("dialog", name="New account").is_visible()
+    name = page.locator("#account-form input[name=name]")
+    border = lambda: name.evaluate("e => getComputedStyle(e).borderColor")  # noqa: E731
+    danger = page.evaluate("""(() => { const d = document.createElement('div'); d.style.color = 'var(--danger)';
+        document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()""")
+    assert border() != danger  # empty but not touched yet
+    name.fill("x")
+    name.fill("")
+    name.blur()
+    assert border() == danger
+    name.fill("Savings")
+    assert border() != danger
+
+
 def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(page):
     """Wide screens: the chart beside the accounts from 1600px; the table fits its panel; ▥ keeps one column."""
     open_app(page)
