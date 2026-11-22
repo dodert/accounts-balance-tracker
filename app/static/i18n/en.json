@@ -110,6 +110,7 @@
   "chart.percent": "% since the start",
   "chart.start_pct": "Start",
   "chart.maximize": "Maximize",
+  "chart.add_balance": "Add a balance",
   "chart.group": "Group by",
   "chart.by_account": "By account",
   "chart.by_institution": "By institution",
