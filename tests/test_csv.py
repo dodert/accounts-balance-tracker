@@ -148,3 +148,28 @@ def test_export_neutralizes_formulas_and_import_reads_them_back(client, tmp_path
     # A name that only starts with a quote keeps it
     from app.csv_io import unsafe_text
     assert unsafe_text("'quoted") == "'quoted"
+
+
+
+def test_import_finds_accounts_it_created_and_existing_ones_by_name(client):
+    """Rows naming an account created earlier in the file, or an existing one, in any case, use that account (#172)."""
+    client.post("/api/accounts", json={"name": "Savings", "currency": "EUR"})
+    csv = (b"account,institution,date,amount\nNew,,2026-01-31,1\nNEW,,2026-02-28,2\nsavings,,2026-01-31,3\n"
+           b"Fund,Bank A,2026-01-31,4\nFund,Bank B,2026-01-31,5\nfund,bank a,2026-02-28,6\n")
+    res = client.post("/api/import/csv", files={"file": ("a.csv", csv, "text/csv")}).json()
+    assert res["errors"] == [] and res["accounts_created"] == 3 and res["balances_created"] == 6
+    accounts = {(a["name"], a["institution"]): a["id"] for a in client.get("/api/accounts").json()}
+    assert len(accounts) == 4
+    count = lambda key: len(client.get(f"/api/accounts/{accounts[key]}/balances").json())  # noqa: E731
+    assert count(("New", None)) == 2 and count(("Savings", None)) == 1
+    assert count(("Fund", "Bank A")) == 2 and count(("Fund", "Bank B")) == 1
+
+
+def test_import_refuses_a_file_with_too_many_new_accounts(client, monkeypatch):
+    """A CSV file that would create more than MAX_NEW_ACCOUNTS accounts is refused whole (#172)."""
+    import app.csv_io as csv_io
+    monkeypatch.setattr(csv_io, "MAX_NEW_ACCOUNTS", 3)
+    csv = b"account,date,amount\nA,2026-01-31,1\nB,2026-01-31,1\nC,2026-01-31,1\nA,2026-02-28,1\nD,2026-01-31,1\n"
+    res = client.post("/api/import/csv", files={"file": ("a.csv", csv, "text/csv")})
+    assert res.status_code == 422 and "more than 3 accounts" in res.json()["detail"]
+    assert client.get("/api/accounts").json() == []  # nothing stored

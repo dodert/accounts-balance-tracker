@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from .. import clock
-from ..csv_io import export_csv, import_csv
+from ..csv_io import TooManyAccounts, export_csv, import_csv
 from ..deps import Context
 from ..json_io import export_json, import_json, parse_backup
 from ..migrate import backup_sqlite_before_import
@@ -47,7 +47,7 @@ def router(ctx: Context) -> APIRouter:
             # In a worker thread: a big file takes a while, and the app must keep answering meanwhile
             async with import_slots:
                 return await run_in_threadpool(import_csv, db, data, settings.default_currency, decimal)
-        except ValueError as exc:
+        except (ValueError, TooManyAccounts) as exc:
             raise HTTPException(422, str(exc)) from None
 
     # --- JSON: everything (accounts with all their fields, balances, milestones) ---
