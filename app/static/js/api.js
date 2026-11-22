@@ -31,6 +31,11 @@ export const api = async (path, opts = {}) => {
   }
   const res = await fetch(path, { ...opts, headers });
   if (res.status === 401) location.href = "/login"; // session expired
+  // The server forgot this browser's demo (unused for an hour): reload, out of demo mode (#175)
+  if (res.status === 409 && res.headers.get("X-Demo-Ended")) {
+    location.reload();
+    return new Promise(() => {}); // nothing else to do on this page
+  }
   if (!res.ok) {
     let detail = await res.text();
     try {
