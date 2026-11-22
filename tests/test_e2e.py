@@ -833,15 +833,14 @@ def test_the_accounts_table_adapts_to_its_own_width_not_the_screen(page):
     page.goto("/")
     page.click("#demo-try")
     page.wait_for_selector("#demo-banner:not([hidden])")
-    page.locator("#accounts-table tbody tr .arrow").first.wait_for(state="attached")
-    arrow = page.locator("#accounts-table tbody tr .arrow").first
-    pct = page.locator("#accounts-table tbody tr .pct").first
-    style = lambda loc: loc.evaluate("e => getComputedStyle(e).display")  # noqa: E731
-    assert style(arrow) != "none" and style(pct) == "inline"  # 1280px wide: the full table
+    # The list may be drawn again while the rates arrive: each check reads the current table, and waits for it
+    looks = """([arrow, pct, type]) => { const d = (sel) => {
+        const e = document.querySelector(sel); return e && e.isConnected ? getComputedStyle(e).display : null; };
+        return d('#accounts-table tbody .arrow') === arrow && d('#accounts-table tbody .pct') === pct
+            && d('#accounts-table th:nth-child(2)') === type; }"""
+    page.wait_for_function(looks, arg=["inline", "inline", "table-cell"])  # 1280px wide: the full table
     page.evaluate("document.querySelector('#accounts-panel').style.width = '420px'")
-    page.wait_for_function("getComputedStyle(document.querySelector('#accounts-table .arrow')).display === 'none'")
-    assert style(pct) == "block"
-    assert page.locator("#accounts-table th").nth(1).evaluate("e => getComputedStyle(e).display") == "none"  # Type
+    page.wait_for_function(looks, arg=["none", "block", "none"])  # narrow panel: compact, without Type
 
 
 def test_a_slow_converted_chart_says_it_is_getting_the_rates(page):
