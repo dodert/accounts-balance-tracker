@@ -135,6 +135,9 @@ The review (issues #66-#73, then #92-#105; PRs #74-#106) settled these. Don't un
 - **Mortgages** (#128, #130-#132): fixed rate only, French system; the schedule is computed by `app/mortgage.py`
   (never stored), installments paid automatically by date, no per-installment edits; the simulator is the stateless
   `POST /api/mortgages/{id}/simulate`. Not linked to a `loan` account and outside the totals (decided for now).
+- **What's new** (#205): `CHANGELOG.md` (release-please) is copied into the image and parsed by `app/changelog.py`;
+  the last version seen and "show it on its own" live in the user's `app_settings` (like the tour). The first visit
+  only marks the current version as seen.
 - **Mobile app**: parked. A sync would need UUIDs, `updated_at` with soft deletes and `/api/sync` in every database.
 
 ## Project rules

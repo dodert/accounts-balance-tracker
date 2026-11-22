@@ -371,5 +371,18 @@
   "tour.columns_title": "Dos columnas",
   "tour.columns": "En pantallas anchas, la gráfica al lado de las cuentas. Desactívalo para una sola columna.",
   "tour.again_title": "¿La quieres otra vez?",
-  "tour.again": "Este botón vuelve a empezar la visita cuando quieras."
+  "tour.again": "Este botón vuelve a empezar la visita cuando quieras.",
+  "changelog.title": "Novedades",
+  "changelog.new_title": "Novedades de la versión {version}",
+  "changelog.all": "Todas las versiones",
+  "changelog.auto": "Mostrar los cambios cuando llegue una versión nueva",
+  "changelog.auto_hint": "Se guarda con tus datos. El botón 📰 de arriba muestra los cambios de todas las versiones cuando quieras.",
+  "changelog.empty": "Aún no hay cambios registrados.",
+  "changelog.no_changes": "Solo cambios internos.",
+  "changelog.section_features": "Novedades",
+  "changelog.section_fixes": "Correcciones",
+  "changelog.section_performance": "Más rápido",
+  "changelog.section_reverts": "Deshecho",
+  "tour.changelog_title": "Novedades",
+  "tour.changelog": "Qué cambió en cada versión. Cuando se actualiza la app, los cambios nuevos se muestran solos (puedes desactivarlo)."
 }

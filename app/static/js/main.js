@@ -2,6 +2,7 @@
 // per part of the page; i18n.js (t, initI18n...) is a classic script loaded before, shared with the other pages.
 import { initAccounts, loadAccounts, loadContributions, loadMilestones } from "./accounts.js";
 import { api } from "./api.js";
+import { initChangelog, maybeShowChangelog } from "./changelog.js";
 import { initCharts, loadHistory } from "./charts.js";
 import { initDemo, renderDemo } from "./demo.js";
 import { initDialogs } from "./dialogs.js";
@@ -33,6 +34,7 @@ initMortgages();
 initSettings();
 initDemo();
 initTour();
+initChangelog();
 
 (async () => {
   await initI18n();
@@ -47,5 +49,5 @@ initTour();
   $("#account-link").textContent = state.about.user ? `👤 ${state.about.user}` : "";
   renderDemo();
   await refresh();
-  await maybeStartTour();
+  await maybeShowChangelog(await maybeStartTour());
 })().catch(showError);

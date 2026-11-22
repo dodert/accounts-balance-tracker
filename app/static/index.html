@@ -32,6 +32,7 @@
     </div>
     <button type="button" id="columns-btn" class="columns-btn" aria-pressed="true" data-i18n-title="header.columns" data-i18n-aria-label="header.columns" title="Two columns" aria-label="Two columns">▥</button>
     <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
+    <button type="button" id="changelog-btn" data-i18n-title="changelog.title" data-i18n-aria-label="changelog.title" title="What's new" aria-label="What's new">📰</button>
     <button type="button" id="tour-btn" data-i18n-title="tour.start" data-i18n-aria-label="tour.start" title="Guided tour" aria-label="Guided tour">?</button>
     <button id="add-account-btn" data-i18n="header.add_account">+ Account</button>
     <button id="milestone-btn" data-i18n="header.add_milestone">+ Milestone</button>
@@ -376,6 +377,8 @@
       </select></label>
       <p class="hint" data-i18n="settings.trend_hint">For accounts with contributions, green, orange or red can follow the gain (so money put in doesn't count as growth) or just the value.</p>
       <p class="hint" data-i18n="settings.language_hint">Saved in this browser.</p>
+      <label class="radio"><input type="checkbox" id="changelog-auto-setting"> <span data-i18n="changelog.auto">Show what changed when a new version arrives</span></label>
+      <p class="hint" data-i18n="changelog.auto_hint">Saved with your data. The 📰 button at the top shows every version's changes at any time.</p>
       <fieldset class="demo-setting">
         <legend data-i18n="demo.title">Demo mode</legend>
         <p class="hint" data-i18n="demo.hint">Shows the app with made-up sample data, to show it to other people or to see how it works. Your real data stays hidden and is not changed.</p>
@@ -390,6 +393,19 @@
         <span class="spacer"></span>
         <button type="button" class="cancel" data-i18n="common.cancel">Cancel</button>
         <button type="submit" class="primary" data-i18n="common.save">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="changelog-dlg" class="changelog-dlg" aria-labelledby="changelog-dlg-title">
+    <form method="dialog">
+      <h2 id="changelog-dlg-title" data-i18n="changelog.title">What's new</h2>
+      <div id="changelog-list" class="changelog"></div>
+      <menu data-unsaved-ignore>
+        <label class="radio"><input type="checkbox" id="changelog-auto"> <span data-i18n="changelog.auto">Show what changed when a new version arrives</span></label>
+        <span class="spacer"></span>
+        <button type="button" id="changelog-all" data-i18n="changelog.all" hidden>All versions</button>
+        <button type="button" class="cancel primary" data-i18n="common.close" autofocus>Close</button>
       </menu>
     </form>
   </dialog>

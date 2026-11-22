@@ -20,6 +20,8 @@ COPY requirements.txt .
 RUN pip install --require-hashes --no-deps -r requirements.txt
 
 COPY app ./app
+# Read by the app to show what changed in each version (#205)
+COPY CHANGELOG.md ./CHANGELOG.md
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
