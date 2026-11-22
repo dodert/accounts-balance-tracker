@@ -154,7 +154,8 @@ dialog.chart-dlg { width: min(1000px, 95vw); }
 .chart-dlg .mini-sub { font-size: .85rem; margin-bottom: .6rem; }
 .mini-chart svg { display: block; max-width: 100%; height: auto; touch-action: pan-y; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.tooltip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); padding: .5rem .65rem; font-size: .82rem; min-width: 10rem; }
+/* A manual popover (#182): in the top layer, so it shows above any open dialog; charts.js places it */
+.tooltip { position: fixed; inset: auto; margin: 0; overflow: visible; color: var(--text); z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); padding: .5rem .65rem; font-size: .82rem; min-width: 10rem; }
 .tt-date { color: var(--muted); margin-bottom: .3rem; }
 .tt-row { display: flex; align-items: center; gap: .4rem; padding: .1rem 0; }
 .tt-name { flex: 1; }
@@ -231,13 +232,15 @@ menu { display: flex; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 footer { padding: .6rem 1rem; text-align: center; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
 footer a { color: inherit; }
 
-/* Header drop-down menu (import / export) */
-.menu { position: relative; }
-.menu summary { list-style: none; cursor: pointer; user-select: none; }
-.menu summary::-webkit-details-marker { display: none; }
-.menu summary::after { content: " ▾"; }
-.menu[open] summary { border-color: var(--accent); }
-.menu-items { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 12rem; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); }
+/* Header drop-down menu (import / export, #182): a popover, so Esc and a click outside close it. It opens under its
+   button, aligned to its right edge: with anchor positioning where the browser has it, else placed by menu.js. */
+.menu-btn::after { content: " ▾"; }
+.menu:has(:popover-open) .menu-btn { border-color: var(--accent); }
+.menu-items { position: fixed; inset: auto; margin: 0; z-index: 20; min-width: 12rem; flex-direction: column; gap: 2px; padding: 4px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); }
+.menu-items:popover-open { display: flex; }
+@supports (position-area: bottom) {
+  .menu-items { position-area: bottom span-left; margin-top: 4px; position-try-fallbacks: flip-block; }
+}
 .menu-items button, .menu-items .button { border: none; text-align: left; white-space: nowrap; border-radius: 4px; }
 .menu-items button:hover, .menu-items .button:hover { background: var(--bg); }
 

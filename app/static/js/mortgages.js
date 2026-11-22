@@ -1,7 +1,7 @@
 // Mortgages: the list, the mortgage dialog (details, summary, chart, prepayments, simulator, schedule).
 // The schedule is computed by the server (app/mortgage.py); the simulator asks it too, and nothing is saved.
 import { api } from "./api.js";
-import { drawChart, lineLegend, ttRow } from "./charts.js";
+import { drawChart, hideTooltip, lineLegend, ttRow } from "./charts.js";
 import { setError } from "./dialogs.js";
 import { $, $$, esc } from "./dom.js";
 import { markClean, openDialog } from "./modal.js";
@@ -76,7 +76,7 @@ export async function openMortgage(id) {
   setError($("#mortgage-error"), null);
   rateHint();
   const dlg = $("#mortgage-dlg");
-  dlg.appendChild($("#tooltip")); // so the chart's tooltip shows above the dialog
+  hideTooltip(); // shown again later, it goes above the dialog
   openDialog(dlg);
   if (m) {
     resetPrepaymentForm();
@@ -335,8 +335,7 @@ export function initMortgages() {
     // The event comes after a task: a new mortgage's dialog may be open again by then, showing it
     if ($("#mortgage-dlg").open) return;
     view.mortgage = null;
-    $("#tooltip").hidden = true;
-    document.body.appendChild($("#tooltip"));
+    hideTooltip();
   });
 
   $("#np-add").addEventListener("click", async () => {

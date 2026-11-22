@@ -300,10 +300,51 @@ def test_update_balances_of_every_account_at_once(page):
     page.locator("#totals .tile-value", has_text="150.25").wait_for()
 
 
+def test_the_data_menu_closes_with_escape_a_click_outside_or_an_item(page):
+    """The Import / export menu opens under its button and closes with Esc, a click outside or one of its items."""
+    open_app(page)
+    items = page.locator("#data-menu-items")
+    button = page.locator("#data-menu .menu-btn")
+    for close in (lambda: page.keyboard.press("Escape"), lambda: page.mouse.click(5, 300)):
+        button.click()
+        items.wait_for(state="visible")
+        menu, btn = items.bounding_box(), button.bounding_box()
+        assert menu["y"] >= btn["y"] + btn["height"] and abs(menu["x"] + menu["width"] - (btn["x"] + btn["width"])) < 2
+        close()
+        items.wait_for(state="hidden")
+    button.click()
+    page.click("#json-import-btn")
+    assert page.locator("#json-dlg").evaluate("d => d.open")
+    assert not items.is_visible()
+
+
+def test_the_chart_tooltip_shows_above_the_maximized_chart(page):
+    """Hovering an account's maximized chart shows the tooltip in front of its window, and closing it hides it."""
+    open_app(page)
+    page.click("#demo-try")
+    page.wait_for_selector("#demo-banner:not([hidden])")
+    page.locator("#multiples .mini-max").first.click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
+    box = page.locator("#chart-dlg-chart svg rect[fill=transparent]").bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    tooltip = page.locator("#tooltip")
+    tooltip.wait_for(state="visible")
+    assert tooltip.evaluate("t => t.matches(':popover-open') && t.parentElement === document.body")
+    # It is drawn in front of the dialog: its area looks different with the tooltip made invisible
+    clip = tooltip.bounding_box()
+    shown = page.screenshot(clip=clip)
+    tooltip.evaluate("t => { t.style.visibility = 'hidden'; }")
+    assert page.screenshot(clip=clip) != shown
+    tooltip.evaluate("t => { t.style.visibility = ''; }")
+    page.keyboard.press("Escape")
+    tooltip.wait_for(state="hidden")
+
+
 def test_import_a_csv(page):
     """A CSV imported from its dialog says what it added and the accounts appear."""
     open_app(page)
-    page.click("#data-menu summary")
+    page.click("#data-menu .menu-btn")
     page.click("#csv-import-btn")
     csv = b"account,institution,date,amount\nCurrent,Bank,2026-01-31,100\nCurrent,Bank,2026-02-28,120\n"
     page.set_input_files("#csv-form input[name=file]", files=[{"name": "b.csv", "mimeType": "text/csv", "buffer": csv}])
@@ -443,7 +484,7 @@ def test_csv_import_states_the_decimal_separator(page):
     open_app(page)
     csv = b"account,date,amount\nComma,2026-01-31,1.234\n"
     for decimal, name, shown in ((",", "Comma", "1234,00"), (".", "Point", "1,23")):
-        page.click("#data-menu summary")
+        page.click("#data-menu .menu-btn")
         page.click("#csv-import-btn")
         assert page.locator("#csv-decimal").input_value() == ","  # es-ES: a comma, whatever was chosen before
         assert "es-ES" in page.locator("#csv-decimal-hint").text_content()
