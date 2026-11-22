@@ -1,12 +1,14 @@
 """What runs around every request: blocking cross-site writes, the login, and the security headers."""
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .auth import COOKIE
 from .deps import Context, is_https
+from .routes.transfer import MAX_CSV_BYTES, MAX_DEMO_CSV_BYTES
 from .users import USER_COOKIE
 
 # Multi-user mode: reachable without logging in (with /invite/<token>)
@@ -25,6 +27,13 @@ DOCS_PATHS = {"/docs", "/docs/oauth2-redirect", "/redoc"}
 # The API docs and their schema (only with API_DOCS=true): multi-user mode shows them only to logged-in users,
 # not to demo visitors
 API_DOCS = DOCS_PATHS | {"/openapi.json"}
+# Most bytes of a request's body (#163). Starlette stores a whole upload (on disk) and FastAPI a whole JSON body (in
+# memory) before the route can check its size, so the limit is applied while it arrives. The imports take a file (and
+# the multipart form around it); everything else is small (the largest: 1000 balances at once, or 5000 characters of
+# notes)
+MAX_BODY = 1024 * 1024
+FORM_OVERHEAD = 64 * 1024
+IMPORTS = "/api/import/"
 
 
 def foreign_request(request: Request) -> bool:
@@ -44,8 +53,53 @@ def login_required(request: Request) -> Response:
     return RedirectResponse("/login", status_code=303)
 
 
+class BodyLimit:
+    """Refuses (413) a request whose body is over its limit, before the app stores it: at once when Content-Length
+    says so, otherwise as soon as more bytes than the limit have arrived (a body sent in chunks)."""
+
+    def __init__(self, app: ASGIApp, ctx: Context):
+        self.app, self.ctx = app, ctx
+
+    def limit(self, scope: Scope) -> int:
+        if not scope["path"].startswith(IMPORTS):
+            return MAX_BODY
+        file_limit = MAX_DEMO_CSV_BYTES if self.ctx.in_demo(Request(scope)) else MAX_CSV_BYTES
+        return file_limit + FORM_OVERHEAD
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = self.limit(scope)
+        length = dict(scope["headers"]).get(b"content-length", b"")
+        if length.isdigit() and int(length) > limit:
+            response = JSONResponse({"detail": too_big(limit)}, status_code=413, headers={"Connection": "close"})
+            return await response(scope, receive, send)
+        received = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    # Raised while the route reads its body: FastAPI passes an HTTPException on as the answer
+                    raise HTTPException(413, too_big(limit), headers={"Connection": "close"})
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+def too_big(limit: int) -> str:
+    size = f"{limit // 1024 // 1024} MB" if limit >= 1024 * 1024 else f"{limit // 1024} KB"
+    return f"The request is too large (most {size})"
+
+
 def install(app: FastAPI, ctx: Context) -> None:
     auth, users, multi = ctx.auth, ctx.users, ctx.multi
+
+    # Added first, so it runs last: after the login check (a request without a session is refused before its body
+    # is read) and inside the security headers
+    app.add_middleware(BodyLimit, ctx=ctx)
 
     def is_admin(request: Request) -> bool:
         return auth.valid_session(request.cookies.get(COOKIE))
