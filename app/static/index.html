@@ -21,15 +21,15 @@
     <h1 data-i18n="header.title">💰 My balances</h1>
     <button type="button" id="tz-badge" class="tz-badge"></button>
     <span class="spacer"></span>
-    <details class="menu" id="data-menu">
-      <summary class="button" data-i18n="header.data_menu">Import / export</summary>
-      <div class="menu-items">
+    <div class="menu" id="data-menu">
+      <button type="button" class="menu-btn" popovertarget="data-menu-items" data-i18n="header.data_menu">Import / export</button>
+      <div class="menu-items" id="data-menu-items" popover>
         <a id="json-export-btn" class="button" href="/api/export/json" download data-i18n="header.export_json">Export everything (JSON)</a>
         <button id="json-import-btn" data-i18n="header.import_json">Import JSON</button>
         <button id="csv-import-btn" data-i18n="header.import_csv">Import CSV</button>
         <a id="csv-export-btn" class="button" href="/api/export/csv" download data-i18n="header.export_csv">Export CSV</a>
       </div>
-    </details>
+    </div>
     <button type="button" id="columns-btn" class="columns-btn" aria-pressed="true" data-i18n-title="header.columns" data-i18n-aria-label="header.columns" title="Two columns" aria-label="Two columns">▥</button>
     <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
     <button type="button" id="tour-btn" data-i18n-title="tour.start" data-i18n-aria-label="tour.start" title="Guided tour" aria-label="Guided tour">?</button>
@@ -139,7 +139,7 @@
 
   <footer><span id="version"></span> · <a href="https://github.com/dodert/accounts-balance-tracker" target="_blank" rel="noopener">GitHub</a></footer>
 
-  <div id="tooltip" class="tooltip" role="status" hidden></div>
+  <div id="tooltip" class="tooltip" role="status" popover="manual" hidden></div>
 
   <!-- Update balances: every active account on one date -->
   <dialog id="update-dlg" aria-labelledby="update-dlg-title">

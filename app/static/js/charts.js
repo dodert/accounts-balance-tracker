@@ -276,9 +276,20 @@ export function svg(tag, attrs = {}, parent) {
   return el;
 }
 
+// The tooltip is a manual popover (#182): shown in the top layer, above any open dialog. Browsers without popovers
+// show it as a plain fixed box (under a dialog's backdrop).
+const tooltipIsPopover = Object.hasOwn(HTMLElement.prototype, "popover");
+
+export function hideTooltip() {
+  const tooltip = $("#tooltip");
+  if (tooltipIsPopover) tooltip.hidePopover();
+  else tooltip.hidden = true;
+}
+
 export function placeTooltip(e) {
   const tooltip = $("#tooltip");
-  tooltip.hidden = false;
+  if (!tooltipIsPopover) tooltip.hidden = false;
+  else if (!tooltip.matches(":popover-open")) tooltip.showPopover();
   const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
   let left = e.clientX + 14, top = e.clientY - th - 10;
   if (left + tw > window.innerWidth - 8) left = e.clientX - tw - 14;
@@ -395,7 +406,7 @@ export function drawChart(box, opts) {
     cross.setAttribute("visibility", "hidden");
     marks.forEach((m) => m.setAttribute("visibility", "hidden"));
     milestones.forEach((m) => m.line.classList.remove("hover"));
-    $("#tooltip").hidden = true;
+    hideTooltip();
   });
   hit.addEventListener("pointermove", (e) => {
     const rect = root.getBoundingClientRect();
@@ -675,11 +686,12 @@ export function drawAccountChart(box, account, history, small) {
   return drawn && { ...drawn, contributed: !!contributed };
 }
 
-// One account's chart, big, in a dialog (the tooltip moves into the dialog so it shows above it)
+// One account's chart, big, in a dialog. A tooltip still open from the page is closed first: shown again later it goes
+// above the dialog.
 export function openMaximized(accountId, currency) {
   state.maximized = { id: accountId, currency };
   const dlg = $("#chart-dlg");
-  dlg.appendChild($("#tooltip"));
+  hideTooltip();
   openDialog(dlg);
   drawMaximized();
 }
@@ -697,6 +709,7 @@ export function drawMaximized() {
 }
 
 export function initCharts() {
+  if (tooltipIsPopover) $("#tooltip").hidden = false; // hidden by the popover itself until shown
   $$("#chart-panel .views button").forEach((btn) => btn.addEventListener("click", () => {
     state.mode = btn.dataset.mode;
     $$("#chart-panel .views button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
@@ -716,7 +729,6 @@ export function initCharts() {
   $("#chart-dlg-add").addEventListener("click", () => addBalanceFrom(state.maximized.id).catch(showError));
   $("#chart-dlg").addEventListener("close", () => {
     state.maximized = null;
-    $("#tooltip").hidden = true;
-    document.body.appendChild($("#tooltip"));
+    hideTooltip();
   });
 }
