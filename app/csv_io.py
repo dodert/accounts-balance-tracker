@@ -104,10 +104,16 @@ def detect_delimiter(header: str) -> str:
 
 
 MAX_LISTED = 200  # duplicates listed in the answer; the count is always the full one
+# New accounts one CSV file can create: far more than anyone has, and it keeps one import short (#172)
+MAX_NEW_ACCOUNTS = 1000
 
 
 def _label(account: Account) -> str:
     return f"{account.name} ({account.institution})" if account.institution else account.name
+
+
+class TooManyAccounts(Exception):
+    """The whole file is refused, not just a line."""
 
 
 def import_csv(db: Session, data: bytes, default_currency: str, decimal: str = ".") -> dict:
@@ -122,10 +128,14 @@ def import_csv(db: Session, data: bytes, default_currency: str, decimal: str = "
     if missing:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
 
-    accounts = list(db.scalars(select(Account)))
+    # By lower-case name, so each row's lookup takes the same time however many accounts the file creates (a scan of
+    # every account made a file with many new names quadratic: #172)
+    accounts: dict[str, list[Account]] = {}
+    for existing in db.scalars(select(Account)):
+        accounts.setdefault(existing.name.lower(), []).append(existing)
 
     def find(name: str, institution: str) -> Account | None:
-        same = [a for a in accounts if a.name.lower() == name.lower()]
+        same = accounts.get(name.lower(), [])
         if institution:
             return next((a for a in same if (a.institution or "").lower() == institution.lower()), None)
         if len(same) > 1:
@@ -149,6 +159,8 @@ def import_csv(db: Session, data: bytes, default_currency: str, decimal: str = "
             institution = unsafe_text(cell("institution"))[:100]
             account = find(name, institution)
             if account is None:
+                if result["accounts_created"] >= MAX_NEW_ACCOUNTS:
+                    raise TooManyAccounts(f"The file creates more than {MAX_NEW_ACCOUNTS} accounts")
                 kind = cell("type").lower() or "bank"
                 currency = (cell("currency") or default_currency).upper()
                 if kind not in AccountType.__members__:
@@ -160,7 +172,8 @@ def import_csv(db: Session, data: bytes, default_currency: str, decimal: str = "
                                   available_from=parse_date(cell("available_from")) if cell("available_from") else None)
                 db.add(account)
                 db.flush()
-                accounts.append(account)
+                accounts.setdefault(name.lower(), []).append(account)
+                known[account.id] = set()  # new: no balances yet
                 result["accounts_created"] += 1
             note = unsafe_text(cell("note"))[:300] or None
             if account.id not in known:
