@@ -981,16 +981,17 @@ def test_requests_to_the_rate_service_have_a_daily_limit(tmp_path):
     app = rates_app(tmp_path, rates, fx_daily_limit=3)
     admin = admin_client(app, tmp_path)
     ana, _ = sign_up(app, invite(admin))
-    usd_account(ana)
-    start = date(2020, 1, 1)
-    for n in range(5):
-        ana.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=n)}")
+    for currency in ("USD", "GBP", "JPY", "CHF", "SEK", "NOK"):
+        ana.post("/api/accounts", json={"name": currency, "currency": currency})
+    for currency in ("USD", "GBP", "JPY", "CHF", "SEK"):
+        ana.get(f"/api/fx?from={currency}&to=EUR")
     assert len(rates.calls) == 3
     # The count is kept across restarts
     again = rates_app(tmp_path, rates, fx_daily_limit=3)
     client = TestClient(again)
     client.post("/login", data={"username": "ana", "password": "ana-password"})
-    assert client.get(f"/api/fx?from=USD&to=EUR&date={start + timedelta(days=10)}").status_code == 200
+    assert client.get("/api/fx?from=USD&to=EUR").status_code == 200  # stored
+    assert client.get("/api/fx?from=NOK&to=EUR").status_code == 503  # not stored, and the limit is reached
     assert len(rates.calls) == 3
 
 
@@ -1014,7 +1015,9 @@ def test_one_user_cannot_use_up_the_shared_limit_of_rate_requests(tmp_path):
     for currency in ("GBP", "JPY", "CHF", "SEK"):  # pairs of no account of hers: refused before any request
         res = ana.get(f"/api/fx?from={currency}&to=EUR&date=2020-01-01")
         assert res.status_code == 422 and currency in res.json()["detail"]
-    for n in range(5):  # a currency of hers the service doesn't know: asked, refused, not counted
+    for _ in range(5):  # a currency of hers the service doesn't know: asked, refused, not counted
+        assert ana.get("/api/fx?from=XXX&to=EUR").status_code == 503
+    for n in range(5):  # past days: only from the stored rates, never asked (#165)
         assert ana.get(f"/api/fx?from=XXX&to=EUR&date=2020-01-0{n + 1}").status_code == 503
     assert len(rates.calls) == 5
     with sqlite3.connect(tmp_path / "rates.db") as db:
@@ -1025,6 +1028,26 @@ def test_one_user_cannot_use_up_the_shared_limit_of_rate_requests(tmp_path):
     combined = bea.get("/api/summary/combined").json()
     assert combined["missing"] == [] and combined["rates"][0]["stale"] is False
     assert rates.calls[-1] == ("USD", "EUR", None)
+
+
+def test_past_days_never_use_up_the_shared_limit(tmp_path):
+    """/api/fx answers a past day from the stored rates only, so many days don't use up the shared limit (#165)."""
+    from tests.test_fx import FakeRates
+    rates = FakeRates()
+    app = rates_app(tmp_path, rates, fx_daily_limit=3)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    usd_account(ana)
+    for n in range(10):
+        assert ana.get(f"/api/fx?from=USD&to=EUR&date={date(2020, 1, 1) + timedelta(days=n)}").status_code == 503
+    assert rates.calls == []
+    bea, _ = sign_up(app, invite(admin), username="bea", email="bea@example.com")
+    usd_account(bea)
+    combined = bea.get("/api/summary/combined").json()
+    assert combined["missing"] == [] and combined["rates"][0]["stale"] is False
+    # With today's rate stored, a past day falls back to it, marked stale
+    res = ana.get("/api/fx?from=USD&to=EUR&date=2020-01-01").json()
+    assert res["stale"] is True and len(rates.calls) == 1
 
 
 def test_demos_never_ask_the_rate_service(tmp_path):
