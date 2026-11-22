@@ -51,13 +51,23 @@ export async function loadBalances() {
   const balances = await api(`/api/accounts/${account.id}/balances`);
   // Newest first: the next row is the previous balance, the last row the first one
   const first = balances[balances.length - 1];
+  // "Since the start", as on its chart (#179): with contributions, from the first one (with the gain setting, the
+  // gain: the balance minus what was put in by then); without, from the first balance
+  const mine = state.contributions.filter((c) => c.account_id === account.id); // oldest first
+  const putIn = (day) => mine.filter((c) => c.date <= day).reduce((sum, c) => sum + c.amount, 0);
+  const since = (b, i) => {
+    if (!mine.length) return balances[i + 1] ? changeCell(b.amount, first.amount, account.currency, true) : "";
+    const startDay = mine[0].date;
+    if (b.date < startDay) return "";
+    return state.trendMode === "value" ? changeCell(b.amount, putIn(startDay), account.currency, true) : changeCell(b.amount, putIn(b.date), account.currency, true);
+  };
   $("#balances-table thead").hidden = !balances.length;
   $("#balances-table tbody").innerHTML = balances.length ? balances.map((b, i) => `
     <tr>
       <td>${esc(fmtDate(b.date))}</td>
       <td class="num">${esc(exactMoney(b.amount, account.currency))}</td>
       <td class="num">${balances[i + 1] ? changeCell(b.amount, balances[i + 1].amount, account.currency) : ""}</td>
-      <td class="num">${balances[i + 1] ? changeCell(b.amount, first.amount, account.currency, true) : ""}</td>
+      <td class="num">${since(b, i)}</td>
       <td class="note">${esc(b.note ?? "")}</td>
       <td class="actions"><button type="button" class="icon danger" data-delete="${b.id}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("") : `<tr><td class="hint">${esc(t("account.no_balances"))}</td></tr>`;

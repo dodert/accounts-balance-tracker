@@ -263,6 +263,8 @@
   "chart.gain": "Gain",
   "legend.balance": "Balance",
   "legend.start": "Start: first balance",
+  "legend.start_contribution": "Start: first contribution",
+  "legend.start_either": "Start: first contribution, or first balance",
   "legend.milestone": "Milestone (notable expense)",
   "legend.available_from": "Date it becomes available",
   "mortgages.title": "Mortgages",

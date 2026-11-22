@@ -255,8 +255,8 @@ def test_a_balance_before_any_contribution_is_flagged_until_the_contribution_is_
     assert page.locator("#accounts-table tbody tr", has_text="Bank").locator(".uncovered").count() == 0
     mini = page.locator("#multiples .mini", has_text="Shares")
     mini.locator(".uncovered").wait_for()
-    # Until then the gain starts at the first contribution: 556.67 - 500 = 56.67, now 855.42 - 1,002.07 = -146.65
-    assert "-€203.32" in mini.locator(".trend-text-down").text_content()
+    # The start is the first contribution (a gain of 0): now 855.42 - 1,002.07 = -146.65, -14.6% of what was put in
+    assert "-€146.65 (-14.6%)" in mini.locator(".trend-text-down").text_content()
 
     row.click()
     warning = page.locator("#uncovered-warning")
@@ -812,3 +812,40 @@ def test_guided_tour_in_spanish_and_in_the_demo(page):
     assert title.text_content() == "¿La quieres otra vez?"
     page.click(".driver-popover-next-btn")  # Hecho
     page.locator(".driver-popover").wait_for(state="detached")
+
+
+def test_an_account_with_contributions_starts_at_its_first_contribution(page):
+    """The start of an account with contributions is its first one, also when its first balance is later."""
+    euro = 10000
+    fund = page.request.post("/api/accounts", data={"name": "Fund", "type": "investment"}).json()
+    bank = page.request.post("/api/accounts", data={"name": "Bank", "type": "bank"}).json()
+    page.request.post(f"/api/accounts/{bank['id']}/balances", data={"date": "2025-06-01", "amount": 50 * euro})
+    page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": "2026-01-01", "amount": 1000 * euro})
+    for day, amount in (("2026-03-01", 1300), ("2026-04-01", 1200)):
+        page.request.post(f"/api/accounts/{fund['id']}/balances", data={"date": day, "amount": amount * euro})
+    open_app(page)
+    mini = page.locator("#multiples .mini", has_text="Fund")
+    mini.locator(".trend-bg").wait_for()
+    # The whole gain (1,200 - 1,000), not only the change since the first balance (-100)
+    assert "+€200.00 (+20%)" in mini.locator(".trend-text").text_content(), mini.locator(".trend-text").text_content()
+    row = page.locator("#accounts-table tbody tr", has_text="Fund")
+    assert "+€200.00" in row.locator(".trend-text").text_content()
+    # Its chart starts on its first contribution, not on the bank account's first balance
+    assert mini.locator("svg text.axis:not([dominant-baseline])").first.text_content() == "Jan 26"
+    mini.locator(".mini-max").click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
+    assert page.locator("#chart-dlg-chart svg text.axis:not([dominant-baseline])").first.text_content() == "Jan 26"
+    assert "first contribution" in page.locator("#chart-dlg-legend").text_content()
+    page.keyboard.press("Escape")
+    # Its window's balances count from the first contribution too
+    row.click()
+    page.locator("#balances-table tbody tr").first.wait_for()
+    assert "+€200.00" in page.locator("#balances-table tbody tr").first.text_content()
+    assert "+€300.00" in page.locator("#balances-table tbody tr").nth(1).text_content()
+    page.keyboard.press("Escape")
+    page.click("#settings-btn")
+    page.select_option("#trend-select", "value")
+    page.click("#settings-form button[type=submit]")
+    mini.locator(".trend-bg:not(.trend-gain)").wait_for()
+    assert "+€200.00" in mini.locator(".trend-text").text_content()  # the value from the same start
+    assert mini.locator(".start-label").text_content() == "Start: €1k"  # the first contribution
