@@ -663,6 +663,21 @@ def test_a_user_in_the_demo_does_not_touch_their_data(setup):
     assert [a["name"] for a in ana.get("/api/accounts").json()] == ["Real"]
 
 
+def test_a_user_whose_demo_ended_does_not_touch_their_data(setup):
+    """A logged-in user's requests from a demo the server forgot are refused, not sent to their data (#175)."""
+    from app.demo import COOKIE as DEMO_COOKIE
+    app, admin = setup
+    ana, _ = sign_up(app, invite(admin))
+    real = ana.post("/api/accounts", json={"name": "Real", "type": "bank"}).json()
+    ana.post("/api/demo?lang=en")
+    visitor = ana.cookies.get(DEMO_COOKIE)
+    app.state.visitor_demos.stop(visitor)
+    ana.cookies.set(DEMO_COOKIE, visitor)
+    assert ana.delete(f"/api/accounts/{real['id']}").status_code == 409
+    ana.cookies.delete(DEMO_COOKIE)  # the reloaded page, without the cleared cookie
+    assert [a["name"] for a in ana.get("/api/accounts").json()] == ["Real"]
+
+
 # --- Abuse: invitation race, guessing from many addresses, demo size, imports ---
 
 def test_one_invitation_makes_one_account_even_when_sent_at_the_same_time(setup):

@@ -315,6 +315,18 @@ def test_import_a_csv(page):
     page.locator("#accounts-table tbody tr", has_text="Current").wait_for()
 
 
+def test_a_demo_the_server_forgot_reloads_out_of_demo_mode(page, request):
+    """When the server has forgotten this browser's demo, the next request reloads the page out of demo mode (#175)."""
+    open_app(page)
+    page.click("#demo-try")
+    page.wait_for_selector("#demo-banner:not([hidden])")
+    page.wait_for_selector("#chart svg")
+    request.node.app.state.visitor_demos.close()  # as after an hour unused
+    page.select_option("#chart-range", "3")  # loads the history again
+    page.wait_for_selector("#empty:not([hidden])")  # the real data: none yet
+    assert page.locator("#demo-banner").is_hidden()
+
+
 def test_demo_mode_with_charts(page):
     """The demo shows its sample accounts and charts (amounts, percent, maximized), and leaving it ends it."""
     open_app(page)
