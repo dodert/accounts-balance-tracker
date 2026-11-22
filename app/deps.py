@@ -123,8 +123,11 @@ class Context:
 
     def set_demo(self, response: Response, request: Request, on: bool, lang: str = "en") -> Response:
         if on:
-            visitor = request.cookies.get(DEMO_COOKIE)
-            if self.visitor_demos.get(visitor) is None:
+            # The sample data's languages: anything else (also a changed cookie) is English, and the cookies get only
+            # values made here
+            lang = "es" if lang == "es" else "en"
+            cookies = {DEMO_COOKIE + "_lang": lang}
+            if self.visitor_demos.get(request.cookies.get(DEMO_COOKIE)) is None:
                 # A limit per client, so one can't push out everybody else's demos (in multi-user mode anyone
                 # can start one)
                 try:
@@ -133,8 +136,8 @@ class Context:
                 except TooManyTries as error:
                     raise HTTPException(429, "Too many demos started from your address, try again later",
                                         headers={"Retry-After": str(error.retry_after)}) from None
-                visitor = self.visitor_demos.start(lang)
-            for name, value in ((DEMO_COOKIE, visitor), (DEMO_COOKIE + "_lang", lang)):
+                cookies[DEMO_COOKIE] = self.visitor_demos.start(lang)  # an existing demo keeps its cookie
+            for name, value in cookies.items():
                 response.set_cookie(name, value, httponly=True, samesite="lax", secure=is_https(request))
         else:
             response.delete_cookie(DEMO_COOKIE)
