@@ -349,7 +349,6 @@ export function initDialogs() {
 
   // CSV import
   $("#csv-import-btn").addEventListener("click", () => {
-    $("#data-menu").open = false;
     $("#csv-form").reset();
     $("#csv-result").hidden = true;
     // The decimal separator is stated, never guessed: the regional format's, which the user can change here
@@ -377,12 +376,10 @@ export function initDialogs() {
   for (const link of [$("#csv-export-btn"), $("#json-export-btn")]) {
     link.addEventListener("click", () => {
       link.href = `${link.pathname}?local_date=${localDate()}`;
-      $("#data-menu").open = false;
     });
   }
   // JSON import (everything)
   $("#json-import-btn").addEventListener("click", () => {
-    $("#data-menu").open = false;
     $("#json-form").reset();
     $("#json-result").hidden = true;
     openDialog($("#json-dlg"));

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <meta name="asset-version" content="{{ASSET_VERSION}}">
   <title>Accounts Balance Tracker</title>
   <link rel="icon" href="/favicon.ico" sizes="48x48">
@@ -20,15 +21,15 @@
     <h1 data-i18n="header.title">💰 My balances</h1>
     <button type="button" id="tz-badge" class="tz-badge"></button>
     <span class="spacer"></span>
-    <details class="menu" id="data-menu">
-      <summary class="button" data-i18n="header.data_menu">Import / export</summary>
-      <div class="menu-items">
+    <div class="menu" id="data-menu">
+      <button type="button" class="menu-btn" popovertarget="data-menu-items" data-i18n="header.data_menu">Import / export</button>
+      <div class="menu-items" id="data-menu-items" popover>
         <a id="json-export-btn" class="button" href="/api/export/json" download data-i18n="header.export_json">Export everything (JSON)</a>
         <button id="json-import-btn" data-i18n="header.import_json">Import JSON</button>
         <button id="csv-import-btn" data-i18n="header.import_csv">Import CSV</button>
         <a id="csv-export-btn" class="button" href="/api/export/csv" download data-i18n="header.export_csv">Export CSV</a>
       </div>
-    </details>
+    </div>
     <button type="button" id="columns-btn" class="columns-btn" aria-pressed="true" data-i18n-title="header.columns" data-i18n-aria-label="header.columns" title="Two columns" aria-label="Two columns">▥</button>
     <button id="settings-btn" data-i18n-title="settings.title" data-i18n-aria-label="settings.title" title="Settings" aria-label="Settings">⚙</button>
     <button type="button" id="tour-btn" data-i18n-title="tour.start" data-i18n-aria-label="tour.start" title="Guided tour" aria-label="Guided tour">?</button>
@@ -138,12 +139,12 @@
 
   <footer><span id="version"></span> · <a href="https://github.com/dodert/accounts-balance-tracker" target="_blank" rel="noopener">GitHub</a></footer>
 
-  <div id="tooltip" class="tooltip" role="status" hidden></div>
+  <div id="tooltip" class="tooltip" role="status" popover="manual" hidden></div>
 
   <!-- Update balances: every active account on one date -->
-  <dialog id="update-dlg">
+  <dialog id="update-dlg" aria-labelledby="update-dlg-title">
     <form method="dialog" id="update-form">
-      <h2 data-i18n="update.title">Update balances</h2>
+      <h2 id="update-dlg-title" data-i18n="update.title">Update balances</h2>
       <label><span data-i18n="update.date">Date</span> <span class="date-field"><input type="text" class="date-text" inputmode="numeric" autocomplete="off" name="date" required><input type="date" class="date-native" tabindex="-1" aria-hidden="true"><button type="button" class="date-btn" data-i18n-title="common.calendar" data-i18n-aria-label="common.calendar" title="Calendar" aria-label="Calendar">📅</button></span></label>
       <p class="hint" data-i18n="update.hint">Fill in the balance of each account on that date. Leave one empty to skip it.</p>
       <div id="update-rows"></div>
@@ -157,9 +158,9 @@
   </dialog>
 
   <!-- A new milestone, for any account -->
-  <dialog id="milestone-dlg">
+  <dialog id="milestone-dlg" aria-labelledby="milestone-dlg-title">
     <form method="dialog" id="milestone-form">
-      <h2 data-i18n="milestones.new">New milestone</h2>
+      <h2 id="milestone-dlg-title" data-i18n="milestones.new">New milestone</h2>
       <p class="hint" data-i18n="milestones.hint">Notable expenses (a car, a trip…). They show on the charts as a dotted vertical line on their date.</p>
       <label><span data-i18n="column.name">Account</span> <select name="account" id="milestone-account" required></select></label>
       <div class="row">
@@ -177,7 +178,7 @@
   </dialog>
 
   <!-- Account: details and balance history -->
-  <dialog id="account-dlg">
+  <dialog id="account-dlg" aria-labelledby="account-dlg-title">
     <form method="dialog" id="account-form">
       <h2 id="account-dlg-title" data-i18n="account.new">New account</h2>
       <div class="row">
@@ -239,7 +240,7 @@
   </dialog>
 
   <!-- A mortgage: its details, summary, chart, prepayments, simulator and amortization schedule -->
-  <dialog id="mortgage-dlg" class="mortgage-dlg">
+  <dialog id="mortgage-dlg" aria-labelledby="mortgage-dlg-title" class="mortgage-dlg">
     <form method="dialog" id="mortgage-form">
       <h2 id="mortgage-dlg-title" data-i18n="mortgages.new">New mortgage</h2>
       <div class="row">
@@ -313,7 +314,7 @@
   </dialog>
 
   <!-- One account's chart, maximized -->
-  <dialog id="chart-dlg" class="chart-dlg">
+  <dialog id="chart-dlg" class="chart-dlg" aria-labelledby="chart-dlg-head">
     <div id="chart-dlg-head"></div>
     <div id="chart-dlg-chart" class="chart"></div>
     <div id="chart-dlg-legend" class="legend"></div>
@@ -324,9 +325,9 @@
     </menu>
   </dialog>
 
-  <dialog id="csv-dlg">
+  <dialog id="csv-dlg" aria-labelledby="csv-dlg-title">
     <form method="dialog" id="csv-form">
-      <h2 data-i18n="csv.title">Import CSV</h2>
+      <h2 id="csv-dlg-title" data-i18n="csv.title">Import CSV</h2>
       <p class="hint" data-i18n="csv.hint">One row per account and date. Columns: account, date, amount (required); type, currency, institution, note (optional). Spanish names also work: cuenta, fecha, saldo... Missing accounts are created; a balance already recorded on that date is not changed (the row is skipped and listed).</p>
       <input type="file" name="file" accept=".csv,text/csv" required>
       <label><span data-i18n="csv.decimal">Decimal separator of the amounts</span>
@@ -345,9 +346,9 @@
     </form>
   </dialog>
 
-  <dialog id="json-dlg">
+  <dialog id="json-dlg" aria-labelledby="json-dlg-title">
     <form method="dialog" id="json-form">
-      <h2 data-i18n="json.title">Import JSON</h2>
+      <h2 id="json-dlg-title" data-i18n="json.title">Import JSON</h2>
       <p class="hint" data-i18n="json.hint">A file from "Export everything (JSON)": accounts with all their details, balances, milestones and contributions, and mortgages with their prepayments.</p>
       <input type="file" name="file" accept=".json,application/json" required>
       <fieldset>
@@ -363,9 +364,9 @@
     </form>
   </dialog>
 
-  <dialog id="settings-dlg">
+  <dialog id="settings-dlg" aria-labelledby="settings-dlg-title">
     <form method="dialog" id="settings-form">
-      <h2 data-i18n="settings.title">Settings</h2>
+      <h2 id="settings-dlg-title" data-i18n="settings.title">Settings</h2>
       <label><span data-i18n="settings.language">Language</span> <select name="lang" id="lang-select"></select></label>
       <label><span data-i18n="settings.locale">Date and number format</span> <select name="locale" id="locale-select"></select></label>
       <label><span data-i18n="settings.time_zone">Time zone</span> <select name="time_zone" id="tz-select"></select></label>

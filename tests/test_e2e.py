@@ -300,10 +300,51 @@ def test_update_balances_of_every_account_at_once(page):
     page.locator("#totals .tile-value", has_text="150.25").wait_for()
 
 
+def test_the_data_menu_closes_with_escape_a_click_outside_or_an_item(page):
+    """The Import / export menu opens under its button and closes with Esc, a click outside or one of its items."""
+    open_app(page)
+    items = page.locator("#data-menu-items")
+    button = page.locator("#data-menu .menu-btn")
+    for close in (lambda: page.keyboard.press("Escape"), lambda: page.mouse.click(5, 300)):
+        button.click()
+        items.wait_for(state="visible")
+        menu, btn = items.bounding_box(), button.bounding_box()
+        assert menu["y"] >= btn["y"] + btn["height"] and abs(menu["x"] + menu["width"] - (btn["x"] + btn["width"])) < 2
+        close()
+        items.wait_for(state="hidden")
+    button.click()
+    page.click("#json-import-btn")
+    assert page.locator("#json-dlg").evaluate("d => d.open")
+    assert not items.is_visible()
+
+
+def test_the_chart_tooltip_shows_above_the_maximized_chart(page):
+    """Hovering an account's maximized chart shows the tooltip in front of its window, and closing it hides it."""
+    open_app(page)
+    page.click("#demo-try")
+    page.wait_for_selector("#demo-banner:not([hidden])")
+    page.locator("#multiples .mini-max").first.click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
+    box = page.locator("#chart-dlg-chart svg rect[fill=transparent]").bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(x, y)
+    tooltip = page.locator("#tooltip")
+    tooltip.wait_for(state="visible")
+    assert tooltip.evaluate("t => t.matches(':popover-open') && t.parentElement === document.body")
+    # It is drawn in front of the dialog: its area looks different with the tooltip made invisible
+    clip = tooltip.bounding_box()
+    shown = page.screenshot(clip=clip)
+    tooltip.evaluate("t => { t.style.visibility = 'hidden'; }")
+    assert page.screenshot(clip=clip) != shown
+    tooltip.evaluate("t => { t.style.visibility = ''; }")
+    page.keyboard.press("Escape")
+    tooltip.wait_for(state="hidden")
+
+
 def test_import_a_csv(page):
     """A CSV imported from its dialog says what it added and the accounts appear."""
     open_app(page)
-    page.click("#data-menu summary")
+    page.click("#data-menu .menu-btn")
     page.click("#csv-import-btn")
     csv = b"account,institution,date,amount\nCurrent,Bank,2026-01-31,100\nCurrent,Bank,2026-02-28,120\n"
     page.set_input_files("#csv-form input[name=file]", files=[{"name": "b.csv", "mimeType": "text/csv", "buffer": csv}])
@@ -455,7 +496,7 @@ def test_csv_import_states_the_decimal_separator(page):
     open_app(page)
     csv = b"account,date,amount\nComma,2026-01-31,1.234\n"
     for decimal, name, shown in ((",", "Comma", "1234,00"), (".", "Point", "1,23")):
-        page.click("#data-menu summary")
+        page.click("#data-menu .menu-btn")
         page.click("#csv-import-btn")
         assert page.locator("#csv-decimal").input_value() == ","  # es-ES: a comma, whatever was chosen before
         assert "es-ES" in page.locator("#csv-decimal-hint").text_content()
@@ -741,6 +782,27 @@ def test_dialogs_close_outside_and_ask_before_discarding_changes(page):
     assert not is_open() and page.evaluate("window.asked") == []
 
 
+def test_dialogs_have_names_and_mark_a_wrong_field_only_after_it_was_touched(page):
+    """Every dialog is announced by its title; a required field turns red only once the user has left it empty."""
+    open_app(page)
+    names = page.evaluate("""[...document.querySelectorAll('dialog')].map((d) => [d.id,
+        document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.id ?? null])""")
+    assert names and all(title for _, title in names), names
+    page.click("#add-account-btn")
+    assert page.get_by_role("dialog", name="New account").is_visible()
+    name = page.locator("#account-form input[name=name]")
+    border = lambda: name.evaluate("e => getComputedStyle(e).borderColor")  # noqa: E731
+    danger = page.evaluate("""(() => { const d = document.createElement('div'); d.style.color = 'var(--danger)';
+        document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; })()""")
+    assert border() != danger  # empty but not touched yet
+    name.fill("x")
+    name.fill("")
+    name.blur()
+    assert border() == danger
+    name.fill("Savings")
+    assert border() != danger
+
+
 def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(page):
     """Wide screens: the chart beside the accounts from 1600px; the table fits its panel; ▥ keeps one column."""
     open_app(page)
@@ -776,6 +838,21 @@ def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(p
     assert not beside() and button.get_attribute("aria-pressed") == "false"
     page.click("#columns-btn")
     assert beside()
+
+
+def test_the_accounts_table_adapts_to_its_own_width_not_the_screen(page):
+    """In a narrow panel on a wide screen the accounts table goes compact, as it does on a phone (container queries)."""
+    page.goto("/")
+    page.click("#demo-try")
+    page.wait_for_selector("#demo-banner:not([hidden])")
+    # The list may be drawn again while the rates arrive: each check reads the current table, and waits for it
+    looks = """([arrow, pct, type]) => { const d = (sel) => {
+        const e = document.querySelector(sel); return e && e.isConnected ? getComputedStyle(e).display : null; };
+        return d('#accounts-table tbody .arrow') === arrow && d('#accounts-table tbody .pct') === pct
+            && d('#accounts-table th:nth-child(2)') === type; }"""
+    page.wait_for_function(looks, arg=["inline", "inline", "table-cell"])  # 1280px wide: the full table
+    page.evaluate("document.querySelector('#accounts-panel').style.width = '420px'")
+    page.wait_for_function(looks, arg=["none", "block", "none"])  # narrow panel: compact, without Type
 
 
 def test_a_slow_converted_chart_says_it_is_getting_the_rates(page):

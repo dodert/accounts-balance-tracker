@@ -276,9 +276,20 @@ export function svg(tag, attrs = {}, parent) {
   return el;
 }
 
+// The tooltip is a manual popover (#182): shown in the top layer, above any open dialog. Browsers without popovers
+// show it as a plain fixed box (under a dialog's backdrop).
+const tooltipIsPopover = Object.hasOwn(HTMLElement.prototype, "popover");
+
+export function hideTooltip() {
+  const tooltip = $("#tooltip");
+  if (tooltipIsPopover) tooltip.hidePopover();
+  else tooltip.hidden = true;
+}
+
 export function placeTooltip(e) {
   const tooltip = $("#tooltip");
-  tooltip.hidden = false;
+  if (!tooltipIsPopover) tooltip.hidden = false;
+  else if (!tooltip.matches(":popover-open")) tooltip.showPopover();
   const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
   let left = e.clientX + 14, top = e.clientY - th - 10;
   if (left + tw > window.innerWidth - 8) left = e.clientX - tw - 14;
@@ -367,7 +378,7 @@ export function drawChart(box, opts) {
     svg("path", { d: `M${xm - 4},${pad.top - 7}L${xm + 4},${pad.top - 7}L${xm},${pad.top - 1}Z`, style: `fill: ${m.color}` }, root);
   }
   // Total last, so it is drawn over the accounts
-  const order = [...series].sort((a, b) => Number(!!a.total) - Number(!!b.total));
+  const order = series.toSorted((a, b) => Number(!!a.total) - Number(!!b.total));
   order.forEach((s, n) => {
     const pts = s.values.map((v, i) => (v === null ? null : [x(times[i]), y(v)]));
     let d = "", pen = false;
@@ -378,7 +389,7 @@ export function drawChart(box, opts) {
     }
     if (!d) return;
     if (opts.area && s === series[0]) {
-      const first = pts.find(Boolean), last = [...pts].reverse().find(Boolean);
+      const first = pts.find(Boolean), last = pts.findLast(Boolean);
       const base = y(Math.max(y0, Math.min(ref ? ref.value : 0, y1)));
       svg("path", { d: `${d}L${last[0]},${base}L${first[0]},${base}Z`, class: "area", style: `fill: ${s.color}` }, root);
     }
@@ -395,7 +406,7 @@ export function drawChart(box, opts) {
     cross.setAttribute("visibility", "hidden");
     marks.forEach((m) => m.setAttribute("visibility", "hidden"));
     milestones.forEach((m) => m.line.classList.remove("hover"));
-    $("#tooltip").hidden = true;
+    hideTooltip();
   });
   hit.addEventListener("pointermove", (e) => {
     const rect = root.getBoundingClientRect();
@@ -466,7 +477,7 @@ export function renderChart() {
   head.hidden = !multi;
   head.textContent = multi ? hs[0].currency : "";
   const more = $("#chart-more");
-  more.innerHTML = "";
+  more.replaceChildren();
   // The converted chart says which currencies were converted, and which could not be
   const note = $("#chart-note");
   const conv = hs[0]?.isConverted ? hs[0] : null;
@@ -491,10 +502,10 @@ export function renderChart() {
 
 export function renderBlock(h, el) {
   const { box, grid } = el;
-  box.innerHTML = "";
-  grid.innerHTML = "";
-  el.legend.innerHTML = "";
-  el.table.innerHTML = "";
+  box.replaceChildren();
+  grid.replaceChildren();
+  el.legend.replaceChildren();
+  el.table.replaceChildren();
   if (!h || h.dates.length === 0) {
     box.innerHTML = `<p class="hint chart-empty">${esc(t("chart.empty"))}</p>`;
     el.tableWrap.hidden = true;
@@ -577,11 +588,11 @@ export function renderBlock(h, el) {
 // Name, last balance and change since the start of an account (small card and maximized chart)
 export function accountHead(a, h, extra = "", small = false) {
   const cur = h.currency;
-  const values = [...a.values].reverse();
+  const values = a.values.toReversed();
   const at = values.findIndex((v) => v !== null);
   const last = at < 0 ? null : values[at];
   // With contributions: what was put in by the last balance, and the gain
-  const contributed = at < 0 ? null : [...(contributedValues(a, h) ?? [])].reverse()[at] ?? null;
+  const contributed = at < 0 ? null : (contributedValues(a, h) ?? []).toReversed()[at] ?? null;
   // On a small card, short: "Contributed 38.2K € · Gain +14.6%"
   const pct = contributed ? ((last - contributed) / Math.abs(contributed)) * 100 : null;
   const shortGain = pct === null ? "" : ` · ${esc(t("chart.gain"))} <span class="${pct > 0 ? "up" : pct < 0 ? "down" : ""}">${esc(fmtPct(pct))}</span>`;
@@ -620,7 +631,7 @@ export function accountSinceCell(account) {
   const h = (state.ownHistories ?? []).find((x) => x.currency === account.currency && x.accounts.some((s) => s.account_id === account.id));
   const a = h && accountSeries(h).find((s) => s.account_id === account.id);
   if (!a) return null;
-  return headSince(a, h, [...a.values].reverse().find((v) => v !== null) ?? null, false);
+  return headSince(a, h, a.values.findLast((v) => v !== null) ?? null, false);
 }
 
 // The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from.
@@ -675,11 +686,12 @@ export function drawAccountChart(box, account, history, small) {
   return drawn && { ...drawn, contributed: !!contributed };
 }
 
-// One account's chart, big, in a dialog (the tooltip moves into the dialog so it shows above it)
+// One account's chart, big, in a dialog. A tooltip still open from the page is closed first: shown again later it goes
+// above the dialog.
 export function openMaximized(accountId, currency) {
   state.maximized = { id: accountId, currency };
   const dlg = $("#chart-dlg");
-  dlg.appendChild($("#tooltip"));
+  hideTooltip();
   openDialog(dlg);
   drawMaximized();
 }
@@ -691,12 +703,13 @@ export function drawMaximized() {
   $("#chart-dlg-head").innerHTML = accountHead(a, h);
   $("#chart-dlg-add").hidden = typeof a.account_id !== "number";
   const box = $("#chart-dlg-chart");
-  box.innerHTML = "";
+  box.replaceChildren();
   const drawn = drawAccountChart(box, a, h, false);
   $("#chart-dlg-legend").innerHTML = drawn ? accountLineLegend(drawn, a.color, true) : "";
 }
 
 export function initCharts() {
+  if (tooltipIsPopover) $("#tooltip").hidden = false; // hidden by the popover itself until shown
   $$("#chart-panel .views button").forEach((btn) => btn.addEventListener("click", () => {
     state.mode = btn.dataset.mode;
     $$("#chart-panel .views button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
@@ -716,7 +729,6 @@ export function initCharts() {
   $("#chart-dlg-add").addEventListener("click", () => addBalanceFrom(state.maximized.id).catch(showError));
   $("#chart-dlg").addEventListener("close", () => {
     state.maximized = null;
-    $("#tooltip").hidden = true;
-    document.body.appendChild($("#tooltip"));
+    hideTooltip();
   });
 }
