@@ -618,15 +618,29 @@ export function accountSinceCell(account) {
   return headSince(a, h, [...a.values].reverse().find((v) => v !== null) ?? null, false);
 }
 
-// The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from
-export const accountLineLegend = (drawn, color = "var(--muted)") => lineLegend([
+// The legend of an account's chart (small ones share one): balance, contributed, start, milestone, available from.
+// The start is the first contribution of an account with contributions (#179): `single` says it of one account.
+export const accountLineLegend = (drawn, color = "var(--muted)", single = false) => lineLegend([
   { kind: "solid", label: t("legend.balance"), color },
   drawn.contributed && { kind: "dashed", label: t("chart.contributed"), color },
-  ...extraLines(drawn),
+  ...extraLines(drawn).map((line) => (line.kind === "start" && drawn.contributed
+    ? { ...line, label: t(single ? "legend.start_contribution" : "legend.start_either") } : line)),
 ].filter(Boolean));
 
+// An account's chart starts on its own start day (its first contribution or balance, #179), not on the first date of
+// every account of the currency; a balance older than that (a contribution missing, #153) is still shown
+function fromStart(a, h) {
+  const firstValue = h.dates[a.values.findIndex((v) => v !== null)];
+  const day = [a.startDay, firstValue].filter(Boolean).sort()[0];
+  const from = day ? h.dates.findIndex((d) => d >= day) : 0;
+  if (from <= 0) return [a, h];
+  const cut = (list) => list?.slice(from);
+  return [{ ...a, values: cut(a.values) }, { ...h, dates: cut(h.dates), total: cut(h.total), available: cut(h.available) }];
+}
+
 // Returns which kinds of line it drew (drawChart's, plus `contributed`)
-export function drawAccountChart(box, a, h, small) {
+export function drawAccountChart(box, account, history, small) {
+  const [a, h] = fromStart(account, history);
   const cur = h.currency;
   const amount = small ? compactMoney(a.start, cur) : money(a.start, cur);
   // With contributions: what was put in so far, dashed in the account's colour, and the gain in the tooltip
@@ -662,7 +676,7 @@ export function drawMaximized() {
   const box = $("#chart-dlg-chart");
   box.innerHTML = "";
   const drawn = drawAccountChart(box, a, h, false);
-  $("#chart-dlg-legend").innerHTML = drawn ? accountLineLegend(drawn, a.color) : "";
+  $("#chart-dlg-legend").innerHTML = drawn ? accountLineLegend(drawn, a.color, true) : "";
 }
 
 export function initCharts() {

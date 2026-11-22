@@ -818,6 +818,8 @@ def test_an_account_with_contributions_starts_at_its_first_contribution(page):
     """The start of an account with contributions is its first one, also when its first balance is later."""
     euro = 10000
     fund = page.request.post("/api/accounts", data={"name": "Fund", "type": "investment"}).json()
+    bank = page.request.post("/api/accounts", data={"name": "Bank", "type": "bank"}).json()
+    page.request.post(f"/api/accounts/{bank['id']}/balances", data={"date": "2025-06-01", "amount": 50 * euro})
     page.request.post(f"/api/accounts/{fund['id']}/contributions", data={"date": "2026-01-01", "amount": 1000 * euro})
     for day, amount in (("2026-03-01", 1300), ("2026-04-01", 1200)):
         page.request.post(f"/api/accounts/{fund['id']}/balances", data={"date": day, "amount": amount * euro})
@@ -828,6 +830,13 @@ def test_an_account_with_contributions_starts_at_its_first_contribution(page):
     assert "+€200.00 (+20%)" in mini.locator(".trend-text").text_content(), mini.locator(".trend-text").text_content()
     row = page.locator("#accounts-table tbody tr", has_text="Fund")
     assert "+€200.00" in row.locator(".trend-text").text_content()
+    # Its chart starts on its own start, not on the bank account's first balance
+    assert mini.locator("svg text.axis:not([dominant-baseline])").first.text_content() == "Mar 26"
+    mini.locator(".mini-max").click()
+    page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
+    assert page.locator("#chart-dlg-chart svg text.axis:not([dominant-baseline])").first.text_content() == "Mar 26"
+    assert "first contribution" in page.locator("#chart-dlg-legend").text_content()
+    page.keyboard.press("Escape")
     page.click("#settings-btn")
     page.select_option("#trend-select", "value")
     page.click("#settings-form button[type=submit]")
