@@ -371,5 +371,18 @@
   "tour.columns_title": "Two columns",
   "tour.columns": "On wide screens, the chart beside the accounts. Turn it off for one column.",
   "tour.again_title": "Need it again?",
-  "tour.again": "This button starts the tour again at any time."
+  "tour.again": "This button starts the tour again at any time.",
+  "changelog.title": "What's new",
+  "changelog.new_title": "What's new in version {version}",
+  "changelog.all": "All versions",
+  "changelog.auto": "Show what changed when a new version arrives",
+  "changelog.auto_hint": "Saved with your data. The 📰 button at the top shows every version's changes at any time.",
+  "changelog.empty": "No changes recorded yet.",
+  "changelog.no_changes": "Only internal changes.",
+  "changelog.section_features": "New",
+  "changelog.section_fixes": "Fixes",
+  "changelog.section_performance": "Faster",
+  "changelog.section_reverts": "Undone",
+  "tour.changelog_title": "What's new",
+  "tour.changelog": "What changed in each version. When the app is updated, the new changes show on their own (you can turn that off)."
 }

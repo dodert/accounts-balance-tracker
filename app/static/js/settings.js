@@ -1,4 +1,5 @@
-// Settings: language, regional format, time zone and what the chart's background compares; and the list of daily backups made by the server.
+// Settings: language, regional format, time zone, what the chart's background compares and whether a new version's
+// changes show on their own; and the list of daily backups made by the server.
 import { renderAccounts } from "./accounts.js";
 import { api, browserTimeZone, savedTimeZone, setTimeZone } from "./api.js";
 import { renderChart } from "./charts.js";
@@ -64,6 +65,8 @@ export async function renderBackups() {
     `<li data-date="${esc(b.date)}">✓ ${esc(when.format(new Date(b.made_at)))} <span class="hint">· ${esc(size(b.size))}</span></li>`).join("");
 }
 
+let changelogAuto = true; // as stored when the settings were opened
+
 export function initSettings() {
   // Two columns on wide screens (#146): on unless turned off with the ▥ button, remembered in this browser
   const columns = $("#columns-btn");
@@ -89,6 +92,8 @@ export function initSettings() {
     renderLocaleOptions();
     renderTimeZoneOptions();
     $("#trend-select").value = state.trendMode;
+    changelogAuto = (await api("/api/changelog/state")).auto;
+    $("#changelog-auto-setting").checked = changelogAuto;
     renderBackups();
     openDialog($("#settings-dlg"));
   });
@@ -99,6 +104,9 @@ export function initSettings() {
     setLocale($("#locale-select").value);
     setTimeZone($("#tz-select").value);
     setTrendMode($("#trend-select").value);
+    if ($("#changelog-auto-setting").checked !== changelogAuto) { // kept with the user's data (#205)
+      await api("/api/changelog/state", { method: "PUT", json: { auto: $("#changelog-auto-setting").checked } });
+    }
     $("#settings-dlg").close();
     await initI18n();
     renderTimeZoneBadge();

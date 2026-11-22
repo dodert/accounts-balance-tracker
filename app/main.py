@@ -28,6 +28,7 @@ from .routes import (
     accounts,
     admin,
     balances,
+    changelog,
     contributions,
     info,
     login,
@@ -161,7 +162,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     middleware.install(app, ctx)
     app.add_middleware(LocalDateMiddleware)  # outermost: "today" is the browser's date (clock.py)
     for area in (info, demo_routes, accounts, balances, milestones, contributions, mortgages, rates, transfer, tour,
-                 login, admin):
+                 changelog, login, admin):
         app.include_router(area.router(ctx))
 
     # --- Pages ---

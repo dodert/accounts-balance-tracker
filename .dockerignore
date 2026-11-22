@@ -9,3 +9,5 @@ unraid
 *.md
 .env
 docs
+# The changelog shown in the app (#205)
+!CHANGELOG.md

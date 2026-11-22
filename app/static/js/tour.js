@@ -20,6 +20,7 @@ const STEPS = [
   ["#data-menu", "data"],
   ["#settings-btn", "settings"],
   ["#columns-btn", "columns"],
+  ["#changelog-btn", "changelog"],
   ["#tour-btn", "again"],
 ];
 
@@ -66,10 +67,12 @@ export function startTour() {
   active.drive();
 }
 
-// On its own the first time (or when the tour is newer than the one this user saw)
+// On its own the first time (or when the tour is newer than the one this user saw). True when it started.
 export async function maybeStartTour() {
   const { seen } = await api("/api/tour");
-  if (seen < TOUR_VERSION) startTour();
+  if (seen >= TOUR_VERSION) return false;
+  startTour();
+  return true;
 }
 
 export function initTour() {

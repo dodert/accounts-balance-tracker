@@ -973,3 +973,81 @@ def test_an_account_with_contributions_starts_at_its_first_contribution(page):
     mini.locator(".trend-bg:not(.trend-gain)").wait_for()
     assert "+€200.00" in mini.locator(".trend-text").text_content()  # the value from the same start
     assert mini.locator(".start-label").text_content() == "Start: €1k"  # the first contribution
+
+
+def changelog_state(page):
+    return page.evaluate("fetch('/api/changelog/state').then((r) => r.json())")
+
+
+def test_changelog_first_visit_only_marks_the_version_as_seen(page):
+    """The first visit (no version seen yet) shows no 'What's new', and takes the current version as seen."""
+    open_app(page)
+    page.locator("#empty").wait_for()
+    page.wait_for_function("fetch('/api/changelog/state').then((r) => r.json()).then((d) => d.seen !== null)")
+    version = page.locator("#version").text_content().removeprefix("v")
+    assert changelog_state(page) == {"seen": version, "auto": True}
+    assert not page.locator("#changelog-dlg").is_visible()
+
+
+def test_changelog_shows_a_new_versions_changes_once(page):
+    """After an update the new versions' changes show on their own, once; 'All versions' lists every release."""
+    from app.changelog import releases
+    page.request.put("/api/changelog/state", data={"seen": "0.0.1"})
+    open_app(page)
+    dlg = page.locator("#changelog-dlg")
+    dlg.wait_for()
+    version = page.locator("#version").text_content().removeprefix("v")
+    assert page.locator("#changelog-dlg-title").text_content() == f"What's new in version {version}"
+    shown = page.locator("#changelog-list .changelog-release")
+    assert shown.first.get_attribute("data-version") == version
+    assert page.locator("#changelog-auto").is_checked()
+    assert changelog_state(page)["seen"] == version
+    page.click("#changelog-all")
+    page.wait_for_function("() => document.querySelector('#changelog-dlg-title').textContent === \"What's new\"")
+    assert shown.count() == len(releases())
+    page.click("#changelog-dlg .cancel")
+    dlg.wait_for(state="hidden")
+    page.reload()
+    page.wait_for_selector("#version:not(:empty)")
+    page.locator("#empty").wait_for()
+    page.wait_for_timeout(300)
+    assert not dlg.is_visible()  # seen: not again
+
+
+def test_changelog_can_be_turned_off_in_its_dialog_and_in_settings(page):
+    """The dialog's checkbox and the one in ⚙ both keep 'show it on its own'; off, a new version is only marked."""
+    open_app(page)
+    page.click("#changelog-btn")
+    page.locator("#changelog-dlg").wait_for()
+    assert page.locator("#changelog-all").is_hidden()
+    page.uncheck("#changelog-auto")
+    page.wait_for_function("fetch('/api/changelog/state').then((r) => r.json()).then((d) => d.auto === false)")
+    page.keyboard.press("Escape")
+    page.click("#settings-btn")
+    page.locator("#settings-dlg").wait_for()
+    assert not page.locator("#changelog-auto-setting").is_checked()
+    page.check("#changelog-auto-setting")
+    page.click("#settings-form button[type=submit]")
+    page.wait_for_function("fetch('/api/changelog/state').then((r) => r.json()).then((d) => d.auto === true)")
+    page.click("#settings-btn")
+    page.uncheck("#changelog-auto-setting")
+    page.click("#settings-form button[type=submit]")
+    page.wait_for_function("fetch('/api/changelog/state').then((r) => r.json()).then((d) => d.auto === false)")
+    page.request.put("/api/changelog/state", data={"seen": "0.0.1"})
+    page.reload()
+    page.wait_for_selector("#version:not(:empty)")
+    page.wait_for_function("fetch('/api/changelog/state').then((r) => r.json()).then((d) => d.seen !== '0.0.1')")
+    assert not page.locator("#changelog-dlg").is_visible()
+
+
+def test_changelog_in_spanish_and_in_the_demo(page):
+    """In the demo the header's button shows the changelog too, with the page's language."""
+    page.context.add_init_script("localStorage.setItem('abt-lang', 'es')")
+    open_app(page)
+    page.click("#demo-try")
+    page.locator("#demo-banner").wait_for()
+    page.click("#changelog-btn")
+    page.locator("#changelog-dlg").wait_for()
+    assert page.locator("#changelog-dlg-title").text_content() == "Novedades"
+    assert page.locator("#changelog-list .changelog-release").count() > 0
+    assert page.locator("#changelog-auto + span").text_content() == "Mostrar los cambios cuando llegue una versión nueva"
