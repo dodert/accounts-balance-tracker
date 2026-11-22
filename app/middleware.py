@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .auth import COOKIE
+from .demo import COOKIE as DEMO_COOKIE
 from .deps import Context, is_https
 from .routes.transfer import MAX_CSV_BYTES, MAX_DEMO_CSV_BYTES
 from .users import USER_COOKIE
@@ -15,6 +16,9 @@ from .users import USER_COOKIE
 MULTI_USER_PUBLIC = {"/recover"}
 # Multi-user mode: these start the demo, also without an account
 DEMO_ENTRY = {"/demo", "/api/demo"}
+# Still answered for a browser whose demo has ended (the rest of /api is refused): the page loads and says it is
+# no longer in demo mode
+ENDED_DEMO_ALLOWED = {"/api/about", "/api/health"}
 # Scripts only from the app itself (no inline ones); inline style attributes are used by the charts
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
@@ -110,6 +114,24 @@ def install(app: FastAPI, ctx: Context) -> None:
         if request.method not in ("GET", "HEAD", "OPTIONS") and foreign_request(request):
             return Response("Cross-site request blocked", status_code=403)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def ended_demo(request: Request, call_next):
+        # Runs after the login check (an anonymous visitor gets its usual answer). A browser whose demo the server
+        # has forgotten (idle, or pushed out by newer ones) still sends its demo cookie: its requests must never fall
+        # through to the real data (#175), so the API refuses them and the page reloads out of demo mode
+        visitor = request.cookies.get(DEMO_COOKIE)
+        if not visitor or request.url.path in DEMO_ENTRY or ctx.visitor_demos.get(visitor) is not None:
+            return await call_next(request)
+        path = request.url.path
+        if path.startswith("/api/") and path not in ENDED_DEMO_ALLOWED:
+            response = JSONResponse({"detail": "The demo has ended: reload the page"}, status_code=409,
+                                    headers={"X-Demo-Ended": "1"})
+        else:
+            response = await call_next(request)
+        response.delete_cookie(DEMO_COOKIE)
+        response.delete_cookie(DEMO_COOKIE + "_lang")
+        return response
 
     @app.middleware("http")
     async def require_login(request: Request, call_next):

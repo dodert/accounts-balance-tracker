@@ -111,6 +111,25 @@ def test_leaving_the_demo_forgets_it(client):
     assert client.get("/api/about").json()["demo"] is False
 
 
+def test_an_ended_demo_never_reaches_the_real_data(client):
+    """Requests with the cookie of a demo the server forgot are refused and change no real data (#175)."""
+    real = client.post("/api/accounts", json={"name": "My real account", "currency": "EUR"}).json()
+    client.post("/api/demo")
+    visitor = client.cookies.get(COOKIE)
+    client.app.state.visitor_demos.stop(visitor)  # forgotten, as after an hour unused
+    client.cookies.set(COOKIE, visitor)
+    for method, path in (("get", "/api/accounts"), ("delete", f"/api/accounts/{real['id']}"),
+                         ("patch", f"/api/accounts/{real['id']}")):
+        res = client.request(method.upper(), path, json={"name": "Renamed"} if method == "patch" else None)
+        assert res.status_code == 409 and res.headers["X-Demo-Ended"] == "1"
+    about = client.get("/api/about")
+    assert about.status_code == 200 and about.json()["demo"] is False
+    # Cleared, so the reloaded page is out of demo mode
+    assert any(c.startswith(f'{COOKIE}=""') for c in about.headers.get_list("set-cookie"))
+    client.cookies.clear()
+    assert [a["name"] for a in client.get("/api/accounts").json()] == ["My real account"]
+
+
 def test_reset_needs_demo_mode(client):
     """Resetting the demo outside demo mode is refused."""
     assert client.post("/api/demo/reset").status_code == 409
