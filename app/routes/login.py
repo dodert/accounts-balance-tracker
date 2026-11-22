@@ -28,6 +28,8 @@ LOGIN_WINDOW = 15 * 60
 # Wrong passwords for one user name from all IPs together, so many addresses (e.g. an IPv6 /64) can't
 # guess one password between them. Recovery keys are not limited this way: they are too long to guess
 WRONG_PASSWORDS_PER_USER = 30
+# Failed sign-ups with one invitation link from all IPs together (the per-IP limit applies too)
+WRONG_SIGNUPS_PER_INVITATION = 20
 # Password checks (Argon2id: 64 MB and ~0.1 s each) running at once; the rest wait without taking a thread
 ARGON2_AT_ONCE = 4
 
@@ -42,6 +44,7 @@ def router(ctx: Context) -> APIRouter:
 
     password_tries = TryLimit(WRONG_PASSWORDS_PER_IP, LOGIN_WINDOW)
     user_password_tries = TryLimit(WRONG_PASSWORDS_PER_USER, LOGIN_WINDOW)
+    invitation_tries = TryLimit(WRONG_SIGNUPS_PER_INVITATION, LOGIN_WINDOW)
     argon2_slots = asyncio.Semaphore(ARGON2_AT_ONCE)
 
     async def with_password_check(function, *args):
@@ -222,14 +225,22 @@ def router(ctx: Context) -> APIRouter:
                       password: str = Form(""), password2: str = Form("")):
         if password != password2:
             return signup_page(request, token, message("register.error.mismatch"), username, email)
+        ip = client_ip(request)
+        # Limited like a login (#178): per IP and per invitation, one at a time, with the same delay after a failure
         try:
-            ip = client_ip(request)
-            session, recovery = await with_password_check(users.sign_up, token, username, email, password, ip,
-                                                          countries.country(ip, request.headers))
-        except SignupError as error:
-            if error.code == "invitation":
-                return signup_page(request, token)
-            return signup_page(request, token, message(f"register.error.{error.code}"), username, email)
+            with password_tries.attempt(limit_key(ip)) as attempt, invitation_tries.attempt(token) as invite_attempt:
+                try:
+                    session, recovery = await with_password_check(users.sign_up, token, username, email, password,
+                                                                  ip, countries.country(ip, request.headers))
+                except SignupError as error:
+                    attempt.wrong()
+                    invite_attempt.wrong()
+                    await asyncio.sleep(WRONG_PASSWORD_DELAY)
+                    if error.code == "invitation":
+                        return signup_page(request, token)
+                    return signup_page(request, token, message(f"register.error.{error.code}"), username, email)
+        except TooManyTries as error:
+            return too_many(error)
         # Whoever was logged in in this browser is logged out for good (the page said so)
         await run_in_threadpool(users.revoke, request.cookies.get(USER_COOKIE))
         return set_user_cookie(fill(recovery_html, KEY=html.escape(recovery)), request, session)
@@ -299,10 +310,12 @@ def router(ctx: Context) -> APIRouter:
     async def turn_totp_on(request: Request, secret: str = Form(""), code: str = Form(""), current: str = Form("")):
         ip = limit_key(client_ip(request))
         try:
-            with password_tries.attempt(ip) as attempt:
+            with (password_tries.attempt(ip) as attempt,
+                  user_password_tries.attempt(request.state.user.username) as user_attempt):
                 problem = await with_password_check(users.set_totp, request.state.user.user_id, current, secret, code)
                 if problem == "password":
                     attempt.wrong()
+                    user_attempt.wrong()  # like /login: many IPs can't guess one password between them (#174)
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return account_page(request, totp_note=message("account.error"))
         except TooManyTries as error:
@@ -315,9 +328,11 @@ def router(ctx: Context) -> APIRouter:
     async def turn_totp_off(request: Request, current: str = Form("")):
         ip = limit_key(client_ip(request))
         try:
-            with password_tries.attempt(ip) as attempt:
+            with (password_tries.attempt(ip) as attempt,
+                  user_password_tries.attempt(request.state.user.username) as user_attempt):
                 if not await with_password_check(users.remove_totp, request.state.user.user_id, current):
                     attempt.wrong()
+                    user_attempt.wrong()  # like /login: many IPs can't guess one password between them (#174)
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return account_page(request, totp_note=message("account.error"))
         except TooManyTries as error:
@@ -331,7 +346,8 @@ def router(ctx: Context) -> APIRouter:
             return account_page(request, message("register.error.mismatch"))
         ip = limit_key(client_ip(request))
         try:
-            with password_tries.attempt(ip) as attempt:
+            with (password_tries.attempt(ip) as attempt,
+                  user_password_tries.attempt(request.state.user.username) as user_attempt):
                 try:
                     session = await with_password_check(users.change_password, request.state.user.user_id, current,
                                                         password)
@@ -339,6 +355,7 @@ def router(ctx: Context) -> APIRouter:
                     return account_page(request, message("register.error.password"))
                 if session is None:
                     attempt.wrong()
+                    user_attempt.wrong()  # like /login: many IPs can't guess one password between them (#174)
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return account_page(request, message("account.error"))
         except TooManyTries as error:
