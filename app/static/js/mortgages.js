@@ -1,7 +1,7 @@
 // Mortgages: the list, the mortgage dialog (details, summary, chart, prepayments, simulator, schedule).
 // The schedule is computed by the server (app/mortgage.py); the simulator asks it too, and nothing is saved.
 import { api } from "./api.js";
-import { drawChart, lineLegend, ttRow } from "./charts.js";
+import { drawChart, hideTooltip, lineLegend, ttRow } from "./charts.js";
 import { setError } from "./dialogs.js";
 import { $, $$, esc } from "./dom.js";
 import { markClean, openDialog } from "./modal.js";
@@ -76,7 +76,7 @@ export async function openMortgage(id) {
   setError($("#mortgage-error"), null);
   rateHint();
   const dlg = $("#mortgage-dlg");
-  dlg.appendChild($("#tooltip")); // so the chart's tooltip shows above the dialog
+  hideTooltip(); // shown again later, it goes above the dialog
   openDialog(dlg);
   if (m) {
     resetPrepaymentForm();
@@ -138,10 +138,10 @@ function monthBefore(iso) {
 // and the simulated outstanding dashed
 function drawMortgageChart() {
   const box = $("#mortgage-chart");
-  box.innerHTML = "";
+  box.replaceChildren();
   const { rows, prepayments } = view.schedule;
   const m = view.mortgage, cur = m.currency;
-  if (!rows.length) { $("#mortgage-legend").innerHTML = ""; return; }
+  if (!rows.length) { $("#mortgage-legend").replaceChildren(); return; }
   const dates = [monthBefore(rows[0].date), ...rows.map((r) => r.date)];
   const outstanding = [m.principal, ...rows.map((r) => r.outstanding)];
   let interest = 0;
@@ -175,7 +175,7 @@ function drawMortgageChart() {
 
 function renderPrepayments() {
   const cur = view.mortgage.currency;
-  const list = [...view.schedule.prepayments].reverse(); // newest first
+  const list = view.schedule.prepayments.toReversed(); // newest first
   $("#prepayments-table thead").hidden = !list.length;
   $("#prepayments-table tbody").innerHTML = list.length ? list.map((p) => `
     <tr>
@@ -257,7 +257,7 @@ function renderSimulation() {
       <td class="actions"><button type="button" data-save="${i}">${esc(t("mortgages.make_real"))}</button> <button type="button" class="icon danger" data-remove="${i}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("");
   const s = view.simulation;
-  if (!s) { $("#simulation-result").innerHTML = ""; return; }
+  if (!s) { $("#simulation-result").replaceChildren(); return; }
   const cols = [["as_entered", t("mortgages.as_entered")], ["reduce_term", t("mortgages.all_reduce_term")], ["reduce_payment", t("mortgages.all_reduce_payment")]];
   const row = (label, cell) => `<tr><th>${esc(label)}</th>${cols.map(([key]) => `<td class="num">${cell(s[key].compared, s[key].totals)}</td>`).join("")}</tr>`;
   $("#simulation-result").innerHTML = `<thead><tr><th></th>${cols.map(([, label]) => `<th class="num">${esc(label)}</th>`).join("")}</tr></thead><tbody>` +
@@ -335,8 +335,7 @@ export function initMortgages() {
     // The event comes after a task: a new mortgage's dialog may be open again by then, showing it
     if ($("#mortgage-dlg").open) return;
     view.mortgage = null;
-    $("#tooltip").hidden = true;
-    document.body.appendChild($("#tooltip"));
+    hideTooltip();
   });
 
   $("#np-add").addEventListener("click", async () => {
