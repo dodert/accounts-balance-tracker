@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.backups import days, make_daily_backup
 from app.config import Settings
 from app.main import create_app
+from app.users import USER_COOKIE
 from tests.test_multi_user import admin_client, fast_argon2, invite, make_app, sign_up  # noqa: F401 (fixture)
 
 
@@ -132,3 +133,38 @@ def test_a_deleted_user_is_also_deleted_from_the_daily_users_db_copies(tmp_path)
     restored = TestClient(make_app(tmp_path))
     res = restored.post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
     assert res.headers["location"] == "/login?error=1"
+
+
+def test_after_restoring_an_older_users_db_new_users_get_new_ids(tmp_path):
+    """After restoring an older users.db, a new user gets an id never used, and old cookies don't match them (#176)."""
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    sign_up(app, invite(admin))
+    folder = app.state.backup_now()
+    eva, _ = sign_up(app, invite(admin), "eva", "eva@example.com", "eva-password")
+    assert eva.get("/api/about").json()["user"] == "eva"
+    # The README's restore: that day's users.db over the current one (eva's file stays in users/)
+    app.state.users.Session.kw["bind"].dispose()
+    for name in ("users.db-wal", "users.db-shm"):
+        (tmp_path / name).unlink(missing_ok=True)
+    (tmp_path / "users.db").write_bytes((folder / "users.db").read_bytes())
+    restored = make_app(tmp_path)
+    restored_admin = TestClient(restored, cookies=admin.cookies)  # the admin's session still works
+    zoe, _ = sign_up(restored, invite(restored_admin), "zoe", "zoe@example.com", "zoe-password")
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        ids = dict(db.execute("SELECT username, id FROM users").fetchall())
+    assert ids["zoe"] == 3  # not eva's 2
+    old = TestClient(restored)
+    old.cookies.set(USER_COOKIE, eva.cookies.get(USER_COOKIE))
+    assert old.get("/api/accounts").status_code == 401 and old.get("/api/about").json().get("user") is None
+
+
+def test_a_cookie_only_works_for_the_user_it_was_made_for(tmp_path):
+    """A session cookie is refused when its id now belongs to a user created at another time (#176)."""
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    ana, _ = sign_up(app, invite(admin))
+    assert ana.get("/api/accounts").status_code == 200
+    with sqlite3.connect(tmp_path / "users.db") as db:
+        db.execute("UPDATE users SET created_at = '2020-01-01 00:00:00.000000'")  # as another user with that id
+    assert ana.get("/api/accounts").status_code == 401

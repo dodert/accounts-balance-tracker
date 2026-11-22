@@ -224,6 +224,8 @@ The database schema is migrated automatically on start, keeping all the data.
 3. Delete `balances.db-wal` and `balances.db-shm` (or `users.db-wal` and `users.db-shm`) if there are any.
 4. Start the container again.
 
+With several users, the users who signed up after that day are no longer there: their sessions stop working, and new users never get their ids (a new id is always above every id in `/data/users` and the backups).
+
 These backups sit in the same folder as the data. Keep a copy somewhere else too, for example with Unraid's *Appdata Backup* plugin or by copying `/data/backups`.
 
 **Updating from 0.21 or older**: the app now listens on port **80** inside the container (it was 8000). After updating, change the container side of the port mapping, or the web page will not open: in Unraid, edit the container and set the *WebUI port*'s **Container Port** to `80` (the host port can stay as it was); with Compose, change `"8000:8000"` to `"8000:80"` (or `"8085:80"`); with `docker run`, `-p 8000:80`.
