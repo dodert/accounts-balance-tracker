@@ -123,3 +123,30 @@ def test_the_recovery_key_logs_in_without_the_code(setup):
                                       "password2": "new-password-1"}, follow_redirects=False)
     assert ok.headers["location"] == "/" and other.get("/api/accounts").status_code == 200
     assert app.state.users.totp_on(1)
+
+
+def test_wrong_codes_of_one_account_do_not_block_others(setup, tmp_path):
+    """Wrong codes for one user's account lock out that account only, not the admin's (#164)."""
+    import json
+
+    import app.routes.login as main
+    app, admin = setup
+    client, _ = sign_up(app, invite(admin))
+    secret = turn_on(client, step())
+    for n in range(main.WRONG_CODES_PER_ACCOUNT // main.WRONG_CODES_PER_IP):  # from several IPs, under each IP's limit
+        guesser = TestClient(app, client=(f"203.0.113.{n + 1}", 50000))
+        guesser.post("/login", data={"username": "ana", "password": PASSWORD})
+        for _ in range(main.WRONG_CODES_PER_IP):
+            guesser.post("/login/totp", data={"code": "000000"}, follow_redirects=False)
+    # The admin, from another IP, still logs in with the right code
+    other = TestClient(app, client=("198.51.100.7", 50000))
+    assert other.post("/login", data={"username": "admin", "password": "admin-pass"},
+                      follow_redirects=False).headers["location"] == "/login/totp"
+    admin_secret = json.loads((tmp_path / ".totp_secret").read_text())["secret"]
+    res = other.post("/login/totp", data={"code": code_at(admin_secret, step() + 1)}, follow_redirects=False)
+    assert res.headers["location"] == "/"
+    # That user's account waits, even from a new IP and with the right code
+    fresh = TestClient(app, client=("198.51.100.8", 50000))
+    fresh.post("/login", data={"username": "ana", "password": PASSWORD})
+    res = fresh.post("/login/totp", data={"code": code_at(secret, step() + 1)}, follow_redirects=False)
+    assert res.status_code == 429 and USER_COOKIE not in fresh.cookies

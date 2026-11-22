@@ -20,9 +20,10 @@ WRONG_PASSWORD_DELAY = 1  # seconds
 # Wrong tries allowed per client IP in LOGIN_WINDOW seconds; then that IP waits (others don't)
 WRONG_PASSWORDS_PER_IP = 10
 WRONG_CODES_PER_IP = 10
-# Wrong one-time codes from all IPs together (only reachable with the right password), so that many
-# IPs can't guess the 6 digits between them
-WRONG_CODES_TOTAL = 30
+# Wrong one-time codes for one account (the admin, or a user) from all IPs together (only reachable with that
+# account's password), so that many IPs can't guess its 6 digits between them. Per account: a user who sends wrong
+# codes for their own account must not block the admin's or anybody else's (#164)
+WRONG_CODES_PER_ACCOUNT = 30
 LOGIN_WINDOW = 15 * 60
 # Wrong passwords for one user name from all IPs together, so many addresses (e.g. an IPv6 /64) can't
 # guess one password between them. Recovery keys are not limited this way: they are too long to guess
@@ -47,7 +48,8 @@ def router(ctx: Context) -> APIRouter:
         """Run a function that derives a key from a password (Argon2id), a few at a time."""
         async with argon2_slots:
             return await run_in_threadpool(function, *args)
-    code_tries = TryLimit(WRONG_CODES_PER_IP, LOGIN_WINDOW, allowed_total=WRONG_CODES_TOTAL)
+    code_tries = TryLimit(WRONG_CODES_PER_IP, LOGIN_WINDOW)
+    account_code_tries = TryLimit(WRONG_CODES_PER_ACCOUNT, LOGIN_WINDOW)
 
     def logged_in(request: Request) -> RedirectResponse:
         response = RedirectResponse("/", status_code=303)
@@ -143,9 +145,11 @@ def router(ctx: Context) -> APIRouter:
         if pending is not None:
             ip = limit_key(client_ip(request))
             try:
-                with code_tries.attempt(ip) as attempt:
+                account = f"user:{pending.user_id}"
+                with code_tries.attempt(ip) as attempt, account_code_tries.attempt(account) as account_attempt:
                     if not await run_in_threadpool(users.verify_totp, pending.user_id, code):
                         attempt.wrong()
+                        account_attempt.wrong()
                         await asyncio.sleep(WRONG_PASSWORD_DELAY)
                         return RedirectResponse("/login/totp?error=1", status_code=303)
             except TooManyTries as error:
@@ -158,9 +162,10 @@ def router(ctx: Context) -> APIRouter:
             return RedirectResponse("/login", status_code=303)
         ip = limit_key(client_ip(request))
         try:
-            with code_tries.attempt(ip) as attempt:
+            with code_tries.attempt(ip) as attempt, account_code_tries.attempt("admin") as account_attempt:
                 if not totp.verify(code):
                     attempt.wrong()
+                    account_attempt.wrong()
                     await asyncio.sleep(WRONG_PASSWORD_DELAY)
                     return RedirectResponse("/login/totp?error=1", status_code=303)
         except TooManyTries as error:
