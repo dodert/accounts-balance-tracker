@@ -884,7 +884,9 @@ def test_guided_tour_on_first_visit_then_from_its_button(page):
     open_app(page)
     popover = page.locator(".driver-popover")
     popover.wait_for()
-    assert popover.locator(".driver-popover-title").text_content() == "Welcome"
+    assert popover.locator(".driver-popover-title").text_content() == "What this app is (and is not)"
+    assert "history of your balances" in popover.locator(".driver-popover-description").text_content()
+    assert popover.locator(".driver-popover-description li").count() == 4  # what it is not
     page.click(".driver-popover-next-btn")
     page.locator(".driver-popover-title", has_text="Chart").wait_for()  # no totals yet: that step is skipped
     page.keyboard.press("Escape")
@@ -897,7 +899,7 @@ def test_guided_tour_on_first_visit_then_from_its_button(page):
     assert popover.count() == 0  # seen: not again on its own
     page.click("#tour-btn")
     popover.wait_for()
-    assert popover.locator(".driver-popover-title").text_content() == "Welcome"
+    assert popover.locator(".driver-popover-title").text_content() == "What this app is (and is not)"
 
 
 @pytest.mark.tour
@@ -928,7 +930,7 @@ def test_guided_tour_in_spanish_and_in_the_demo(page):
     page.locator("#demo-banner").wait_for()
     title = page.locator(".driver-popover-title")
     title.wait_for()
-    assert title.text_content() == "Bienvenido"
+    assert title.text_content() == "Qué es (y qué no es) esta app"
     while page.locator(".driver-popover-next-btn", has_text="Siguiente").count():
         page.click(".driver-popover-next-btn")
     assert title.text_content() == "¿La quieres otra vez?"

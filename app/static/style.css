@@ -357,6 +357,9 @@ form .row label.narrow { flex: 0 0 6rem; min-width: 5rem; }
 /* Guided tour (#156): driver.js's popover in the app's colours */
 .driver-popover.abt-tour { background: var(--surface); color: var(--text); border: 1px solid var(--border); max-width: min(360px, calc(100vw - 32px)); font-family: inherit; }
 .driver-popover.abt-tour .driver-popover-title { font-size: 1.05rem; }
+.driver-popover.abt-tour-intro { max-width: min(480px, calc(100vw - 32px)); }
+.driver-popover.abt-tour-intro .driver-popover-description p { margin: 0 0 .5rem; }
+.driver-popover.abt-tour-intro .driver-popover-description ul { margin: 0 0 .5rem; padding-left: 1.2rem; }
 .driver-popover.abt-tour .driver-popover-description, .driver-popover.abt-tour .driver-popover-progress-text { color: var(--muted); }
 .driver-popover.abt-tour .driver-popover-footer button { background: var(--surface); color: var(--text); border: 1px solid var(--border); text-shadow: none; font: inherit; }
 .driver-popover.abt-tour .driver-popover-next-btn { background: var(--accent); color: #fff; border-color: var(--accent); }
