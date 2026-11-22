@@ -138,10 +138,10 @@ function monthBefore(iso) {
 // and the simulated outstanding dashed
 function drawMortgageChart() {
   const box = $("#mortgage-chart");
-  box.innerHTML = "";
+  box.replaceChildren();
   const { rows, prepayments } = view.schedule;
   const m = view.mortgage, cur = m.currency;
-  if (!rows.length) { $("#mortgage-legend").innerHTML = ""; return; }
+  if (!rows.length) { $("#mortgage-legend").replaceChildren(); return; }
   const dates = [monthBefore(rows[0].date), ...rows.map((r) => r.date)];
   const outstanding = [m.principal, ...rows.map((r) => r.outstanding)];
   let interest = 0;
@@ -175,7 +175,7 @@ function drawMortgageChart() {
 
 function renderPrepayments() {
   const cur = view.mortgage.currency;
-  const list = [...view.schedule.prepayments].reverse(); // newest first
+  const list = view.schedule.prepayments.toReversed(); // newest first
   $("#prepayments-table thead").hidden = !list.length;
   $("#prepayments-table tbody").innerHTML = list.length ? list.map((p) => `
     <tr>
@@ -257,7 +257,7 @@ function renderSimulation() {
       <td class="actions"><button type="button" data-save="${i}">${esc(t("mortgages.make_real"))}</button> <button type="button" class="icon danger" data-remove="${i}" title="${esc(t("common.delete"))}" aria-label="${esc(t("common.delete"))}">✕</button></td>
     </tr>`).join("");
   const s = view.simulation;
-  if (!s) { $("#simulation-result").innerHTML = ""; return; }
+  if (!s) { $("#simulation-result").replaceChildren(); return; }
   const cols = [["as_entered", t("mortgages.as_entered")], ["reduce_term", t("mortgages.all_reduce_term")], ["reduce_payment", t("mortgages.all_reduce_payment")]];
   const row = (label, cell) => `<tr><th>${esc(label)}</th>${cols.map(([key]) => `<td class="num">${cell(s[key].compared, s[key].totals)}</td>`).join("")}</tr>`;
   $("#simulation-result").innerHTML = `<thead><tr><th></th>${cols.map(([, label]) => `<th class="num">${esc(label)}</th>`).join("")}</tr></thead><tbody>` +
