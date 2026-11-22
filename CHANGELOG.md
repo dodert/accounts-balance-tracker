@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.51.0](https://github.com/dodert/accounts-balance-tracker/compare/v0.50.0...v0.51.0) (2026-11-22)
+
+
+### Features
+
+* show what changed in each version inside the app ([6300ed4](https://github.com/dodert/accounts-balance-tracker/commit/6300ed49e63b436e335ad5f0660907d9da83c979))
+* show what changed in each version inside the app ([#205](https://github.com/dodert/accounts-balance-tracker/issues/205)) ([1720303](https://github.com/dodert/accounts-balance-tracker/commit/172030343871f518bb0493000922de40374f61c6))
+
 ## [0.50.0](https://github.com/dodert/accounts-balance-tracker/compare/v0.49.11...v0.50.0) (2026-11-22)
 
 
