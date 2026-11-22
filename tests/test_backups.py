@@ -111,3 +111,24 @@ def test_multi_user_backups_keep_the_files_encrypted_and_forget_deleted_users(tm
     assert other.get("/api/backups").json()["backups"] == []  # no copy of eva's data yet
     app.state.users.delete_user(int(original.name.removesuffix(".db.enc")))
     assert not copy.exists()  # gone from the backups too
+
+
+def test_a_deleted_user_is_also_deleted_from_the_daily_users_db_copies(tmp_path):
+    """Deleting a user removes their row from every daily users.db copy, and keeps the blocked email there (#177)."""
+    app = make_app(tmp_path)
+    admin = admin_client(app, tmp_path)
+    sign_up(app, invite(admin))
+    sign_up(app, invite(admin), "eva", "eva@example.com", "eva-password")
+    folder = app.state.backup_now()
+    with sqlite3.connect(folder / "users.db") as db:
+        ana = db.execute("SELECT id FROM users WHERE username = 'ana'").fetchone()[0]
+    admin.post(f"/admin/users/{ana}/delete?block_email=1")
+    with sqlite3.connect(folder / "users.db") as db:
+        assert db.execute("SELECT username FROM users").fetchall() == [("eva",)]  # nobody else is touched
+        assert db.execute("SELECT email FROM blocked_emails").fetchall() == [("ana@example.com",)]
+    assert (folder / "users.db").stat().st_mode & 0o777 == 0o600
+    # Restored, the deleted user can't log in again
+    (tmp_path / "users.db").write_bytes((folder / "users.db").read_bytes())
+    restored = TestClient(make_app(tmp_path))
+    res = restored.post("/login", data={"username": "ana", "password": "ana-password"}, follow_redirects=False)
+    assert res.headers["location"] == "/login?error=1"

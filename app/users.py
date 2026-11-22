@@ -23,7 +23,7 @@ import shutil
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -717,6 +717,20 @@ class Users:
             db.commit()
         with self.databases._lock(user_id):
             self.databases.delete(user_id)
+        self._delete_from_daily_backups(user_id, user.email if block_email else None)
+
+    def _delete_from_daily_backups(self, user_id: int, blocked_email: str | None) -> None:
+        """The user's row in every daily copy of users.db too (their encrypted file there is deleted with the rest), so
+        restoring a backup doesn't bring a deleted user back (#177); a blocked email stays blocked there."""
+        for copy in backups_dir(self.system_db.parent).glob(f"*/{self.system_db.name}"):
+            try:
+                with closing(sqlite3.connect(copy)) as db, db:  # committed, then closed
+                    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                    if blocked_email:
+                        db.execute("INSERT OR IGNORE INTO blocked_emails (email, created_at) VALUES (?, ?)",
+                                   (blocked_email, str(now())))
+            except sqlite3.Error:
+                log.exception("Could not delete user %s from the backup %s", user_id, copy)
 
     def extend(self, user_id: int, days: int | None) -> None:
         """`days` more (from today if it already expired), or no expiry with None. An account blocked because it
