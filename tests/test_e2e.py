@@ -830,12 +830,18 @@ def test_an_account_with_contributions_starts_at_its_first_contribution(page):
     assert "+€200.00 (+20%)" in mini.locator(".trend-text").text_content(), mini.locator(".trend-text").text_content()
     row = page.locator("#accounts-table tbody tr", has_text="Fund")
     assert "+€200.00" in row.locator(".trend-text").text_content()
-    # Its chart starts on its own start, not on the bank account's first balance
-    assert mini.locator("svg text.axis:not([dominant-baseline])").first.text_content() == "Mar 26"
+    # Its chart starts on its first contribution, not on the bank account's first balance
+    assert mini.locator("svg text.axis:not([dominant-baseline])").first.text_content() == "Jan 26"
     mini.locator(".mini-max").click()
     page.wait_for_selector("#chart-dlg[open] #chart-dlg-chart svg")
-    assert page.locator("#chart-dlg-chart svg text.axis:not([dominant-baseline])").first.text_content() == "Mar 26"
+    assert page.locator("#chart-dlg-chart svg text.axis:not([dominant-baseline])").first.text_content() == "Jan 26"
     assert "first contribution" in page.locator("#chart-dlg-legend").text_content()
+    page.keyboard.press("Escape")
+    # Its window's balances count from the first contribution too
+    row.click()
+    page.locator("#balances-table tbody tr").first.wait_for()
+    assert "+€200.00" in page.locator("#balances-table tbody tr").first.text_content()
+    assert "+€300.00" in page.locator("#balances-table tbody tr").nth(1).text_content()
     page.keyboard.press("Escape")
     page.click("#settings-btn")
     page.select_option("#trend-select", "value")

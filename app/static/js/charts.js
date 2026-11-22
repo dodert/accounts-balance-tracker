@@ -628,14 +628,25 @@ export const accountLineLegend = (drawn, color = "var(--muted)", single = false)
 ].filter(Boolean));
 
 // An account's chart starts on its own start day (its first contribution or balance, #179), not on the first date of
-// every account of the currency; a balance older than that (a contribution missing, #153) is still shown
+// every account of the currency; a balance older than that (a contribution missing, #153) is still shown. When the
+// first contribution is older than every balance shown, the chart's first point is that contribution: worth what was
+// put in. Only with the whole range: a shorter one starts where it starts.
 function fromStart(a, h) {
-  const firstValue = h.dates[a.values.findIndex((v) => v !== null)];
-  const day = [a.startDay, firstValue].filter(Boolean).sort()[0];
-  const from = day ? h.dates.findIndex((d) => d >= day) : 0;
-  if (from <= 0) return [a, h];
+  const firstAt = a.values.findIndex((v) => v !== null);
+  const day = [a.startDay, h.dates[firstAt]].filter(Boolean).sort()[0];
+  const from = Math.max(0, day ? h.dates.findIndex((d) => d >= day) : 0);
   const cut = (list) => list?.slice(from);
-  return [{ ...a, values: cut(a.values) }, { ...h, dates: cut(h.dates), total: cut(h.total), available: cut(h.available) }];
+  let values = cut(a.values), dates = cut(h.dates), total = cut(h.total), available = cut(h.available);
+  if (a.startDay && a.start !== null && a.start !== undefined && firstAt >= 0 && a.startDay < h.dates[firstAt] && !sinceDate()) {
+    if (dates[0] === a.startDay) values = [a.start, ...values.slice(1)];
+    else {
+      dates = [a.startDay, ...dates];
+      values = [a.start, ...values];
+      total = total && [null, ...total];
+      available = available && [null, ...available];
+    }
+  }
+  return [{ ...a, values }, { ...h, dates, total, available }];
 }
 
 // Returns which kinds of line it drew (drawChart's, plus `contributed`)
