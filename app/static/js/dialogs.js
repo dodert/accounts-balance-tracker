@@ -46,6 +46,13 @@ export async function openAccount(id) {
   openDialog($("#account-dlg"));
 }
 
+// From an account's chart (#171): its dialog, scrolled to "add a balance", with the amount ready to type
+export async function addBalanceFrom(id) {
+  await openAccount(id);
+  $("#balances-section").scrollIntoView({ block: "start" });
+  $("#nb-amount").focus();
+}
+
 export async function loadBalances() {
   const account = state.editing;
   const balances = await api(`/api/accounts/${account.id}/balances`);

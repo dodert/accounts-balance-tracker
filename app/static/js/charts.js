@@ -1,6 +1,7 @@
 // The charts: total, one small chart per account, percent view and the maximized dialog.
 import { api, localDate } from "./api.js";
 import { $, $$, esc, showError } from "./dom.js";
+import { addBalanceFrom } from "./dialogs.js";
 import { openDialog } from "./modal.js";
 import { axisLabels, changeCell, compactMoney, exactMoney, fmtDate, fmtPct, lockBadge, money, uncoveredBadge } from "./format.js";
 import { ALL_CURRENCIES, CONVERTED, state } from "./state.js";
@@ -546,10 +547,14 @@ export function renderBlock(h, el) {
     for (const a of accounts) {
       const card = document.createElement("div");
       card.className = "mini";
+      // One account (not an institution's group): a balance can be added from its card (#171)
+      const one = typeof a.account_id === "number";
+      const add = one ? `<button type="button" class="icon mini-add" title="${esc(t("chart.add_balance"))}" aria-label="${esc(t("chart.add_balance"))}: ${esc(a.name)}">＋</button>` : "";
       const max = `<button type="button" class="icon mini-max" title="${esc(t("chart.maximize"))}" aria-label="${esc(t("chart.maximize"))}: ${esc(a.name)}">⤢</button>`;
-      card.innerHTML = accountHead(a, h, max, true) + `<div class="chart mini-chart"></div>`;
+      card.innerHTML = accountHead(a, h, add + max, true) + `<div class="chart mini-chart"></div>`;
       grid.appendChild(card);
       $(".mini-max", card).addEventListener("click", () => openMaximized(a.account_id, cur));
+      if (one) $(".mini-add", card).addEventListener("click", () => addBalanceFrom(a.account_id).catch(showError));
       const drawnHere = drawAccountChart($(".mini-chart", card), a, h, true);
       for (const kind in kinds) kinds[kind] ||= !!drawnHere?.[kind];
     }
@@ -684,6 +689,7 @@ export function drawMaximized() {
   const a = h && chartSeries(h).find((s) => s.account_id === state.maximized.id);
   if (!a) { $("#chart-dlg").close(); return; }
   $("#chart-dlg-head").innerHTML = accountHead(a, h);
+  $("#chart-dlg-add").hidden = typeof a.account_id !== "number";
   const box = $("#chart-dlg-chart");
   box.innerHTML = "";
   const drawn = drawAccountChart(box, a, h, false);
@@ -706,6 +712,8 @@ export function initCharts() {
   });
   let resizeTimer;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderChart, 150); });
+  // The account's dialog opens above the maximized chart, which is redrawn with the new balance when it is saved
+  $("#chart-dlg-add").addEventListener("click", () => addBalanceFrom(state.maximized.id).catch(showError));
   $("#chart-dlg").addEventListener("close", () => {
     state.maximized = null;
     $("#tooltip").hidden = true;

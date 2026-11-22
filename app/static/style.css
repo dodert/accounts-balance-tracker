@@ -132,7 +132,7 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .mini-contributed { margin-left: 0; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
 .contributions-summary { margin: .2rem 0 .5rem; }
 .mini-chart { width: 100%; }
-.mini-max { margin-left: .2rem; line-height: 1.2; }
+.mini-max, .mini-add { margin-left: .2rem; line-height: 1.2; }
 .detail { color: var(--muted); font-weight: normal; }
 :is(.chart, .legend-sample) .line.dashed { stroke-dasharray: 6 4; stroke-width: 2; }
 :is(.chart, .legend-sample) .milestone-line { stroke-width: 1.5; stroke-dasharray: 2 3; opacity: .9; }

@@ -110,6 +110,7 @@
   "chart.percent": "% desde el inicio",
   "chart.start_pct": "Inicio",
   "chart.maximize": "Ampliar",
+  "chart.add_balance": "Añadir saldo",
   "chart.group": "Agrupar por",
   "chart.by_account": "Por cuenta",
   "chart.by_institution": "Por entidad",

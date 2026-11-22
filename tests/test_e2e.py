@@ -533,6 +533,39 @@ def test_the_legend_explains_each_kind_of_line_drawn(page):
     page.click("#chart-panel .views button[data-mode=percent]")
     page.wait_for_selector("#chart-legend .legend-line")
     check("#chart-legend", "#chart svg")
+def test_a_balance_can_be_added_from_an_account_chart(page):
+    """The ＋ of an account's small chart, and the button of its maximized chart, open that account ready to add a balance."""
+    open_app(page)
+    page.click("#demo-try")
+    cash = page.locator("#multiples .mini", has_text="Cash")
+    cash.locator(".mini-add").click()
+    page.wait_for_selector("#account-dlg[open]")
+    assert page.locator("#account-dlg-title").text_content() == cash.locator(".mini-name").evaluate("e => e.firstChild.textContent")
+    assert page.evaluate("document.activeElement.id") == "nb-amount"
+    page.fill("#nb-amount", "1234")
+    page.click("#nb-add")
+    cash.locator(".mini-value", has_text="1,234").wait_for()
+    page.locator("#account-dlg .cancel").click()
+    page.wait_for_selector("#account-dlg:not([open])", state="attached")
+    # From the maximized chart: the account opens above it, and closing it goes back to the chart
+    cash.locator(".mini-max").click()
+    page.wait_for_selector("#chart-dlg[open]")
+    page.click("#chart-dlg-add")
+    page.wait_for_selector("#account-dlg[open]")
+    assert page.evaluate("document.activeElement.id") == "nb-amount"
+    page.keyboard.press("Escape")
+    page.wait_for_selector("#account-dlg:not([open])", state="attached")
+    assert page.locator("#chart-dlg[open]").count() == 1
+    page.keyboard.press("Escape")
+    # Grouped by institution, a series is several accounts: no button
+    page.select_option("#chart-group", "institution")
+    page.wait_for_selector("#multiples .mini")
+    assert page.locator("#multiples .mini-add").count() == 0
+    page.locator("#multiples .mini-max").first.click()
+    page.wait_for_selector("#chart-dlg[open]")
+    assert page.locator("#chart-dlg-add").is_hidden()
+
+
 @pytest.mark.settings(multi_user=True, auth_username="admin", auth_password="admin-password-1", country_db=False)
 def test_the_login_page_says_when_the_account_expired(page, request, tmp_path):
     """With the right password of an expired account, the login page says it expired; with a wrong one, the usual error."""
