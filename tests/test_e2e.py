@@ -828,6 +828,22 @@ def test_the_page_uses_the_whole_width_with_two_columns_that_can_be_turned_off(p
     assert beside()
 
 
+def test_the_accounts_table_adapts_to_its_own_width_not_the_screen(page):
+    """In a narrow panel on a wide screen the accounts table goes compact, as it does on a phone (container queries)."""
+    page.goto("/")
+    page.click("#demo-try")
+    page.wait_for_selector("#demo-banner:not([hidden])")
+    page.locator("#accounts-table tbody tr .arrow").first.wait_for(state="attached")
+    arrow = page.locator("#accounts-table tbody tr .arrow").first
+    pct = page.locator("#accounts-table tbody tr .pct").first
+    style = lambda loc: loc.evaluate("e => getComputedStyle(e).display")  # noqa: E731
+    assert style(arrow) != "none" and style(pct) == "inline"  # 1280px wide: the full table
+    page.evaluate("document.querySelector('#accounts-panel').style.width = '420px'")
+    page.wait_for_function("getComputedStyle(document.querySelector('#accounts-table .arrow')).display === 'none'")
+    assert style(pct) == "block"
+    assert page.locator("#accounts-table th").nth(1).evaluate("e => getComputedStyle(e).display") == "none"  # Type
+
+
 def test_a_slow_converted_chart_says_it_is_getting_the_rates(page):
     """While "All in EUR" waits for the exchange rates, a notice says so; it goes when the chart is drawn."""
     for name, currency in (("Euros", "EUR"), ("Dollars", "USD")):

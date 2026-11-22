@@ -102,6 +102,9 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .tile, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
 .tile-label { color: var(--muted); font-size: .85rem; }
 .tile-value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: .2rem 0; }
+/* The big figure is smaller in a narrow tile (#185): a phone's, or one of many side by side */
+.tile { container-type: inline-size; }
+@container (max-width: 360px) { .tile-value { font-size: 1.6rem; } }
 .tile-sub { font-size: .85rem; color: var(--muted); }
 /* Available now (main colour) and the total with what is not available yet (secondary colour) */
 .tile-figures { display: flex; flex-wrap: wrap; gap: .2rem 2.5rem; margin-bottom: .3rem; }
@@ -206,7 +209,7 @@ dialog.chart-dlg { width: min(1000px, 95vw); }
 #chart-table-wrap .table-wrap, .chart-block .table-wrap { max-height: 320px; overflow-y: auto; margin-top: .5rem; }
 
 /* Tables */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; container: table / inline-size; }
 table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.data th { text-align: left; font-weight: 600; color: var(--muted); padding: .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
 table.data td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -264,7 +267,7 @@ menu { display: flex; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 .update-row .cur { color: var(--muted); font-size: .8rem; }
 .update-group { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: .9rem 0 .1rem; }
 .update-group:first-child { margin-top: .25rem; }
-#update-rows { margin-bottom: .5rem; }
+#update-rows { margin-bottom: .5rem; container: update-rows / inline-size; }
 #csv-result, #json-result { white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 
 footer { padding: .6rem 1rem; text-align: center; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
@@ -312,16 +315,21 @@ footer a { color: inherit; }
 .login-ok { color: var(--muted); font-size: .85rem; margin: 0 0 .4rem; }
 .totp-back { text-align: center; margin-top: .8rem; font-size: .85rem; color: var(--muted); }
 
+/* The page header follows the screen; every other part follows its own width (container queries, #185), so it also
+   adapts in a narrow column or dialog. 540px is what a part gets on a 600px-wide screen. */
 @media (max-width: 600px) {
   header h1 { font-size: 1.2rem; width: 100%; }
   header .spacer { display: none; }
-  .tile-value { font-size: 1.6rem; }
-  .update-row .u-input { width: 9rem; }
+}
+@container table (max-width: 540px) {
   table.data .pct { display: block; }
-  #accounts-table .arrow { display: none; }
-  #accounts-table td.num { font-size: .8rem; }
   table.data td, table.data th { padding: .45rem .3rem; }
 }
+@container accounts (max-width: 540px) {
+  #accounts-table .arrow { display: none; }
+  #accounts-table td.num { font-size: .8rem; }
+}
+@container update-rows (max-width: 540px) { .update-row .u-input { width: 9rem; } }
 
 /* Demo mode */
 .demo-banner { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; max-width: 2400px; width: calc(100% - 2rem); margin: 0 auto .5rem;
