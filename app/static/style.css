@@ -1,24 +1,56 @@
+/* Colours (#183): each token has a light and a dark value, picked by the colour scheme with light-dark(). The page
+   follows the system (color-scheme: light dark, also in each page's <meta name="color-scheme">). Browsers without
+   light-dark() get the same values from the media query. Chart series: fixed order, past 16 the colours repeat; the
+   total is drawn in ink, not in a series colour. */
 :root {
-  color-scheme: light;
-  --bg: #f5f5f7; --surface: #fff; --text: #1c1c1e; --muted: #6e6e73;
-  --border: #d2d2d7; --grid: #e8e8ed; --accent: #0a66c2; --danger: #c62828; --ok: #2e7d32; --warn: #e07b00;
-  /* Chart series: fixed order; past 16 the colours repeat */
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
-  --s9: #0e8f9e; --s10: #8c5a2b; --s11: #b0309c; --s12: #7a8b00;
-  --s13: #1f3f8f; --s14: #46a8d8; --s15: #7d3c98; --s16: #b07a6a;
-  --total: #1c1c1e; /* the total is drawn in ink, not in a series colour */
+  color-scheme: light dark;
+  --bg-light: #f5f5f7; --bg-dark: #111214; --surface-light: #fff; --surface-dark: #1c1d21;
+  --text-light: #1c1c1e; --text-dark: #f2f2f2; --muted-light: #6e6e73; --muted-dark: #9a9aa0;
+  --border-light: #d2d2d7; --border-dark: #33343a; --grid-light: #e8e8ed; --grid-dark: #2a2b30;
+  --accent-light: #0a66c2; --accent-dark: #4d9cf0; --danger-light: #c62828; --danger-dark: #ef5350;
+  --ok-light: #2e7d32; --ok-dark: #66bb6a; --warn-light: #e07b00; --warn-dark: #ffa726;
+  --s1-light: #2a78d6; --s1-dark: #3987e5; --s2-light: #eb6834; --s2-dark: #d95926;
+  --s3-light: #1baf7a; --s3-dark: #199e70; --s4-light: #eda100; --s4-dark: #c98500;
+  --s5-light: #e87ba4; --s5-dark: #d55181; --s6-light: #008300; --s6-dark: #008300;
+  --s7-light: #6250d6; --s7-dark: #9085e9; --s8-light: #e34948; --s8-dark: #e66767;
+  --s9-light: #0e8f9e; --s9-dark: #22a9b8; --s10-light: #8c5a2b; --s10-dark: #b07a45;
+  --s11-light: #b0309c; --s11-dark: #cf55bc; --s12-light: #7a8b00; --s12-dark: #9fb32a;
+  --s13-light: #1f3f8f; --s13-dark: #6f8fe0; --s14-light: #46a8d8; --s14-dark: #6cc3ee;
+  --s15-light: #7d3c98; --s15-dark: #a666c4; --s16-light: #b07a6a; --s16-dark: #c99a8c;
+  --total-light: #1c1c1e; --total-dark: #f2f2f2;
+  --bg: var(--bg-light); --surface: var(--surface-light); --text: var(--text-light); --muted: var(--muted-light); --border: var(--border-light);
+  --grid: var(--grid-light); --accent: var(--accent-light); --danger: var(--danger-light); --ok: var(--ok-light); --warn: var(--warn-light);
+  --s1: var(--s1-light); --s2: var(--s2-light); --s3: var(--s3-light); --s4: var(--s4-light); --s5: var(--s5-light);
+  --s6: var(--s6-light); --s7: var(--s7-light); --s8: var(--s8-light); --s9: var(--s9-light); --s10: var(--s10-light);
+  --s11: var(--s11-light); --s12: var(--s12-light); --s13: var(--s13-light); --s14: var(--s14-light); --s15: var(--s15-light);
+  --s16: var(--s16-light); --total: var(--total-light);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    color-scheme: dark;
-    --bg: #111214; --surface: #1c1d21; --text: #f2f2f2; --muted: #9a9aa0; --border: #33343a; --grid: #2a2b30;
-    --accent: #4d9cf0; --danger: #ef5350; --ok: #66bb6a; --warn: #ffa726;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
-    --s9: #22a9b8; --s10: #b07a45; --s11: #cf55bc; --s12: #9fb32a;
-    --s13: #6f8fe0; --s14: #6cc3ee; --s15: #a666c4; --s16: #c99a8c;
-    --total: #f2f2f2;
+    --bg: var(--bg-dark); --surface: var(--surface-dark); --text: var(--text-dark); --muted: var(--muted-dark); --border: var(--border-dark);
+    --grid: var(--grid-dark); --accent: var(--accent-dark); --danger: var(--danger-dark); --ok: var(--ok-dark); --warn: var(--warn-dark);
+    --s1: var(--s1-dark); --s2: var(--s2-dark); --s3: var(--s3-dark); --s4: var(--s4-dark); --s5: var(--s5-dark);
+    --s6: var(--s6-dark); --s7: var(--s7-dark); --s8: var(--s8-dark); --s9: var(--s9-dark); --s10: var(--s10-dark);
+    --s11: var(--s11-dark); --s12: var(--s12-dark); --s13: var(--s13-dark); --s14: var(--s14-dark); --s15: var(--s15-dark);
+    --s16: var(--s16-dark); --total: var(--total-dark);
+  }
+}
+@supports (color: light-dark(#000, #fff)) {
+  :root {
+    --bg: light-dark(var(--bg-light), var(--bg-dark)); --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --text: light-dark(var(--text-light), var(--text-dark)); --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --border: light-dark(var(--border-light), var(--border-dark)); --grid: light-dark(var(--grid-light), var(--grid-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark)); --danger: light-dark(var(--danger-light), var(--danger-dark));
+    --ok: light-dark(var(--ok-light), var(--ok-dark)); --warn: light-dark(var(--warn-light), var(--warn-dark));
+    --s1: light-dark(var(--s1-light), var(--s1-dark)); --s2: light-dark(var(--s2-light), var(--s2-dark));
+    --s3: light-dark(var(--s3-light), var(--s3-dark)); --s4: light-dark(var(--s4-light), var(--s4-dark));
+    --s5: light-dark(var(--s5-light), var(--s5-dark)); --s6: light-dark(var(--s6-light), var(--s6-dark));
+    --s7: light-dark(var(--s7-light), var(--s7-dark)); --s8: light-dark(var(--s8-light), var(--s8-dark));
+    --s9: light-dark(var(--s9-light), var(--s9-dark)); --s10: light-dark(var(--s10-light), var(--s10-dark));
+    --s11: light-dark(var(--s11-light), var(--s11-dark)); --s12: light-dark(var(--s12-light), var(--s12-dark));
+    --s13: light-dark(var(--s13-light), var(--s13-dark)); --s14: light-dark(var(--s14-light), var(--s14-dark));
+    --s15: light-dark(var(--s15-light), var(--s15-dark)); --s16: light-dark(var(--s16-light), var(--s16-dark));
+    --total: light-dark(var(--total-light), var(--total-dark));
   }
 }
 * { box-sizing: border-box; }
@@ -70,6 +102,9 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .tile, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
 .tile-label { color: var(--muted); font-size: .85rem; }
 .tile-value { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: .2rem 0; }
+/* The big figure is smaller in a narrow tile (#185): a phone's, or one of many side by side */
+.tile { container-type: inline-size; }
+@container (max-width: 360px) { .tile-value { font-size: 1.6rem; } }
 .tile-sub { font-size: .85rem; color: var(--muted); }
 /* Available now (main colour) and the total with what is not available yet (secondary colour) */
 .tile-figures { display: flex; flex-wrap: wrap; gap: .2rem 2.5rem; margin-bottom: .3rem; }
@@ -82,6 +117,8 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .fx-refresh { margin-left: auto; }
 .fx-refresh.spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Less motion when the system asks for it (#184): the spinners still turn, slowly */
+@media (prefers-reduced-motion: reduce) { .fx-refresh.spinning, .chart-loading::before { animation-duration: 3s; } }
 .fx-date { font-size: .78rem; }
 .panel-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
 
@@ -154,7 +191,8 @@ dialog.chart-dlg { width: min(1000px, 95vw); }
 .chart-dlg .mini-sub { font-size: .85rem; margin-bottom: .6rem; }
 .mini-chart svg { display: block; max-width: 100%; height: auto; touch-action: pan-y; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.tooltip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); padding: .5rem .65rem; font-size: .82rem; min-width: 10rem; }
+/* A manual popover (#182): in the top layer, so it shows above any open dialog; charts.js places it */
+.tooltip { position: fixed; inset: auto; margin: 0; overflow: visible; color: var(--text); z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); padding: .5rem .65rem; font-size: .82rem; min-width: 10rem; }
 .tt-date { color: var(--muted); margin-bottom: .3rem; }
 .tt-row { display: flex; align-items: center; gap: .4rem; padding: .1rem 0; }
 .tt-name { flex: 1; }
@@ -171,7 +209,7 @@ dialog.chart-dlg { width: min(1000px, 95vw); }
 #chart-table-wrap .table-wrap, .chart-block .table-wrap { max-height: 320px; overflow-y: auto; margin-top: .5rem; }
 
 /* Tables */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; container: table / inline-size; }
 table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.data th { text-align: left; font-weight: 600; color: var(--muted); padding: .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; background: var(--surface); }
 table.data td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -199,7 +237,9 @@ mark { background: color-mix(in srgb, var(--s4) 45%, transparent); color: inheri
 /* Dialogs and forms */
 dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); width: min(640px, 95vw);
   padding: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
-dialog::backdrop { background: rgba(0,0,0,.5); }
+/* Scrolling over the backdrop doesn't scroll the page behind (#184): the backdrop becomes a scroll container that
+   contains the gesture. Browsers that don't apply it to non-scrolling containers yet ignore it. */
+dialog::backdrop { background: rgba(0,0,0,.5); overflow: hidden; overscroll-behavior: contain; }
 dialog h2 { margin-bottom: .75rem; }
 /* Only the content scrolls: the title stays at the top and the buttons at the bottom, always in view. They cover
    the dialog's padding, with its background, so nothing shows through around them. */
@@ -212,6 +252,8 @@ form .row { display: flex; gap: .6rem; flex-wrap: wrap; }
 form .row label { flex: 1 1 0; min-width: 120px; }
 form input, form select, form textarea { width: 100%; min-width: 0; }
 form input[type=file], form input[type=checkbox] { width: auto; }
+/* A field that is wrong once the user has touched it (or tried to save) shows it, not before (#184) */
+form :is(input, select, textarea):user-invalid { border-color: var(--danger); }
 label.radio { flex-direction: row; align-items: center; gap: .5rem; color: var(--text); font-size: .9rem; margin: 0; flex: 0 0 auto; }
 form label.radio { margin-bottom: .6rem; }
 label.radio input { width: auto; }
@@ -225,19 +267,21 @@ menu { display: flex; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 .update-row .cur { color: var(--muted); font-size: .8rem; }
 .update-group { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: .9rem 0 .1rem; }
 .update-group:first-child { margin-top: .25rem; }
-#update-rows { margin-bottom: .5rem; }
+#update-rows { margin-bottom: .5rem; container: update-rows / inline-size; }
 #csv-result, #json-result { white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
 
 footer { padding: .6rem 1rem; text-align: center; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
 footer a { color: inherit; }
 
-/* Header drop-down menu (import / export) */
-.menu { position: relative; }
-.menu summary { list-style: none; cursor: pointer; user-select: none; }
-.menu summary::-webkit-details-marker { display: none; }
-.menu summary::after { content: " ▾"; }
-.menu[open] summary { border-color: var(--accent); }
-.menu-items { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 12rem; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); }
+/* Header drop-down menu (import / export, #182): a popover, so Esc and a click outside close it. It opens under its
+   button, aligned to its right edge: with anchor positioning where the browser has it, else placed by menu.js. */
+.menu-btn::after { content: " ▾"; }
+.menu:has(:popover-open) .menu-btn { border-color: var(--accent); }
+.menu-items { position: fixed; inset: auto; margin: 0; z-index: 20; min-width: 12rem; flex-direction: column; gap: 2px; padding: 4px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgb(0 0 0 / .18); }
+.menu-items:popover-open { display: flex; }
+@supports (position-area: bottom) {
+  .menu-items { position-area: bottom span-left; margin-top: 4px; position-try-fallbacks: flip-block; }
+}
 .menu-items button, .menu-items .button { border: none; text-align: left; white-space: nowrap; border-radius: 4px; }
 .menu-items button:hover, .menu-items .button:hover { background: var(--bg); }
 
@@ -271,16 +315,21 @@ footer a { color: inherit; }
 .login-ok { color: var(--muted); font-size: .85rem; margin: 0 0 .4rem; }
 .totp-back { text-align: center; margin-top: .8rem; font-size: .85rem; color: var(--muted); }
 
+/* The page header follows the screen; every other part follows its own width (container queries, #185), so it also
+   adapts in a narrow column or dialog. 540px is what a part gets on a 600px-wide screen. */
 @media (max-width: 600px) {
   header h1 { font-size: 1.2rem; width: 100%; }
   header .spacer { display: none; }
-  .tile-value { font-size: 1.6rem; }
-  .update-row .u-input { width: 9rem; }
+}
+@container table (max-width: 540px) {
   table.data .pct { display: block; }
-  #accounts-table .arrow { display: none; }
-  #accounts-table td.num { font-size: .8rem; }
   table.data td, table.data th { padding: .45rem .3rem; }
 }
+@container accounts (max-width: 540px) {
+  #accounts-table .arrow { display: none; }
+  #accounts-table td.num { font-size: .8rem; }
+}
+@container update-rows (max-width: 540px) { .update-row .u-input { width: 9rem; } }
 
 /* Demo mode */
 .demo-banner { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; max-width: 2400px; width: calc(100% - 2rem); margin: 0 auto .5rem;
