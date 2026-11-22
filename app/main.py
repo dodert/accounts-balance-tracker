@@ -1,8 +1,10 @@
 """The app: create_app builds the state shared by the routers (deps.Context) and puts the pieces together.
 The routes are in app/routes, one module per area; what runs around every request is in middleware.py."""
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -10,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import OperationalError
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, middleware
+from . import middleware
 from .auth import Auth
 from .backups import make_daily_backup
 from .clock import LocalDateMiddleware, use_utc
@@ -43,6 +45,18 @@ PURGE_EVERY = 3600  # seconds between checks for expired accounts
 BACKUP_EVERY = 3600  # seconds between checks for today's backup (backups.py)
 
 use_utc()  # the server's own clock is UTC; the user's dates come from the browser (clock.py)
+
+
+# The release version, kept by release-please (#196); the image doesn't have it and gets APP_VERSION instead
+MANIFEST = Path(__file__).resolve().parent.parent / ".release-please-manifest.json"
+
+
+def repository_version() -> str:
+    """The version in .release-please-manifest.json when run from the repository, else "dev"."""
+    try:
+        return str(json.loads(MANIFEST.read_text())["."])
+    except (OSError, ValueError, KeyError, TypeError):
+        return "dev"
 
 
 def log_to_console() -> None:
@@ -83,7 +97,7 @@ def create_app(settings: Settings = default_settings, fx_fetcher: Fetcher | None
     # Multi-user: one store of rates for everybody, with a daily limit of requests to the service
     shared_rates = SharedRates(settings.data_dir / "rates.db", fetch_rate, settings.fx_daily_limit) if multi else None
 
-    version = settings.app_version if settings.app_version and settings.app_version != "dev" else __version__
+    version = settings.app_version if settings.app_version and settings.app_version != "dev" else repository_version()
 
     async def purge_expired_accounts():
         """Multi-user: delete the database of expired accounts (and block them), now and every hour."""

@@ -1,9 +1,13 @@
 # Weekly PRs to keep Python packages, GitHub Actions and the Docker base image up to date.
 # One grouped PR per ecosystem, so updates don't pile up as separate PRs that conflict.
+# Conventional Commits prefixes for release-please (#196): packages and the base image are a fix release,
+# the CI's actions change no release.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
+    commit-message:
+      prefix: "fix(deps)"
     schedule:
       interval: weekly
     groups:
@@ -11,6 +15,8 @@ updates:
         patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
+    commit-message:
+      prefix: "ci"
     schedule:
       interval: weekly
     groups:
@@ -18,5 +24,7 @@ updates:
         patterns: ["*"]
   - package-ecosystem: docker
     directory: /
+    commit-message:
+      prefix: "fix(deps)"
     schedule:
       interval: weekly
