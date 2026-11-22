@@ -358,6 +358,12 @@ class UserDatabases:
                      *daily]:
             path.unlink(missing_ok=True)
 
+    def highest_id(self) -> int:
+        """The highest user id with a file here or in the daily backups (0 if none): users.db may have been restored
+        from an older day, and it alone doesn't know them (#176)."""
+        files = [*self.folder.glob("*.db.enc*"), *backups_dir(self.folder.parent).glob(f"*/{self.folder.name}/*.db.enc")]
+        return max((int(name) for path in files if (name := path.name.split(".", 1)[0]).isdigit()), default=0)
+
     def backup_into(self, folder: Path) -> None:
         """A copy of every user's encrypted file (as it is: still encrypted) in `folder`, each taken under that
         user's lock, so never while it is being written."""
@@ -467,6 +473,10 @@ class Users:
                         key_by_password=b"", recovery_salt=recovery_salt, key_by_recovery=b"",
                         last_login_at=now(), last_ip=ip, last_country=country,
                         expires_at=now() + timedelta(days=self.account_days) if self.account_days else None)
+            # Above every id used before, also by users missing from a restored users.db, so their cookies and files
+            # never match this user (#176)
+            last = db.scalar(text("SELECT seq FROM sqlite_sequence WHERE name = 'users'")) or 0
+            user.id = max(last, db.scalar(select(func.max(User.id))) or 0, self.databases.highest_id()) + 1
             db.add(user)
             db.flush()  # the id ties the wrapped keys and the database to this user
             user.key_by_password = crypto.seal(by_password_key, account_key, key_aad(user.id))
@@ -640,8 +650,10 @@ class Users:
         """The session cookie; `pending`: the short-lived one that waits for the one-time code, which never works as
         a session (sealed for another purpose)."""
         with self.Session() as db:
-            epoch = db.get(User, session.user_id).session_epoch
-        payload = {"u": session.user_id, "g": epoch, "e": int(time.time()) + (PENDING_SECONDS if pending else SESSION_SECONDS),
+            user = db.get(User, session.user_id)
+            epoch, created = user.session_epoch, user.created_at.isoformat()
+        # "c": the user's creation time, so a cookie never works for another user with the same id (#176)
+        payload = {"u": session.user_id, "g": epoch, "c": created, "e": int(time.time()) + (PENDING_SECONDS if pending else SESSION_SECONDS),
                    "n": session.nonce, "k": base64.b64encode(session.key).decode()}
         sealed = crypto.seal(self._session_key, json.dumps(payload).encode(), self._cookie_aad(pending))
         return base64.urlsafe_b64encode(sealed).decode()
@@ -663,7 +675,9 @@ class Users:
             return None
         with self.Session() as db:
             user = db.get(User, payload["u"])
+            # An older cookie has no "c": still accepted until it expires (no need to log everybody out)
             if (user is None or user.blocked or expired(user) or user.session_epoch != payload["g"]
+                    or payload.get("c", user.created_at.isoformat()) != user.created_at.isoformat()
                     or db.get(RevokedSession, payload["n"])):
                 return None
             return LoggedIn(user.id, user.username, base64.b64decode(payload["k"]), payload["n"])
