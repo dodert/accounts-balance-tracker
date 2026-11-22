@@ -117,6 +117,8 @@ button.icon { padding: .1rem .45rem; font-size: .8rem; }
 .fx-refresh { margin-left: auto; }
 .fx-refresh.spinning { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Less motion when the system asks for it (#184): the spinners still turn, slowly */
+@media (prefers-reduced-motion: reduce) { .fx-refresh.spinning, .chart-loading::before { animation-duration: 3s; } }
 .fx-date { font-size: .78rem; }
 .panel-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
 
@@ -234,7 +236,9 @@ mark { background: color-mix(in srgb, var(--s4) 45%, transparent); color: inheri
 /* Dialogs and forms */
 dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); width: min(640px, 95vw);
   padding: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
-dialog::backdrop { background: rgba(0,0,0,.5); }
+/* Scrolling over the backdrop doesn't scroll the page behind (#184): the backdrop becomes a scroll container that
+   contains the gesture. Browsers that don't apply it to non-scrolling containers yet ignore it. */
+dialog::backdrop { background: rgba(0,0,0,.5); overflow: hidden; overscroll-behavior: contain; }
 dialog h2 { margin-bottom: .75rem; }
 /* Only the content scrolls: the title stays at the top and the buttons at the bottom, always in view. They cover
    the dialog's padding, with its background, so nothing shows through around them. */
@@ -247,6 +251,8 @@ form .row { display: flex; gap: .6rem; flex-wrap: wrap; }
 form .row label { flex: 1 1 0; min-width: 120px; }
 form input, form select, form textarea { width: 100%; min-width: 0; }
 form input[type=file], form input[type=checkbox] { width: auto; }
+/* A field that is wrong once the user has touched it (or tried to save) shows it, not before (#184) */
+form :is(input, select, textarea):user-invalid { border-color: var(--danger); }
 label.radio { flex-direction: row; align-items: center; gap: .5rem; color: var(--text); font-size: .9rem; margin: 0; flex: 0 0 auto; }
 form label.radio { margin-bottom: .6rem; }
 label.radio input { width: auto; }
