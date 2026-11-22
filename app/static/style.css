@@ -1,24 +1,56 @@
+/* Colours (#183): each token has a light and a dark value, picked by the colour scheme with light-dark(). The page
+   follows the system (color-scheme: light dark, also in each page's <meta name="color-scheme">). Browsers without
+   light-dark() get the same values from the media query. Chart series: fixed order, past 16 the colours repeat; the
+   total is drawn in ink, not in a series colour. */
 :root {
-  color-scheme: light;
-  --bg: #f5f5f7; --surface: #fff; --text: #1c1c1e; --muted: #6e6e73;
-  --border: #d2d2d7; --grid: #e8e8ed; --accent: #0a66c2; --danger: #c62828; --ok: #2e7d32; --warn: #e07b00;
-  /* Chart series: fixed order; past 16 the colours repeat */
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
-  --s9: #0e8f9e; --s10: #8c5a2b; --s11: #b0309c; --s12: #7a8b00;
-  --s13: #1f3f8f; --s14: #46a8d8; --s15: #7d3c98; --s16: #b07a6a;
-  --total: #1c1c1e; /* the total is drawn in ink, not in a series colour */
+  color-scheme: light dark;
+  --bg-light: #f5f5f7; --bg-dark: #111214; --surface-light: #fff; --surface-dark: #1c1d21;
+  --text-light: #1c1c1e; --text-dark: #f2f2f2; --muted-light: #6e6e73; --muted-dark: #9a9aa0;
+  --border-light: #d2d2d7; --border-dark: #33343a; --grid-light: #e8e8ed; --grid-dark: #2a2b30;
+  --accent-light: #0a66c2; --accent-dark: #4d9cf0; --danger-light: #c62828; --danger-dark: #ef5350;
+  --ok-light: #2e7d32; --ok-dark: #66bb6a; --warn-light: #e07b00; --warn-dark: #ffa726;
+  --s1-light: #2a78d6; --s1-dark: #3987e5; --s2-light: #eb6834; --s2-dark: #d95926;
+  --s3-light: #1baf7a; --s3-dark: #199e70; --s4-light: #eda100; --s4-dark: #c98500;
+  --s5-light: #e87ba4; --s5-dark: #d55181; --s6-light: #008300; --s6-dark: #008300;
+  --s7-light: #6250d6; --s7-dark: #9085e9; --s8-light: #e34948; --s8-dark: #e66767;
+  --s9-light: #0e8f9e; --s9-dark: #22a9b8; --s10-light: #8c5a2b; --s10-dark: #b07a45;
+  --s11-light: #b0309c; --s11-dark: #cf55bc; --s12-light: #7a8b00; --s12-dark: #9fb32a;
+  --s13-light: #1f3f8f; --s13-dark: #6f8fe0; --s14-light: #46a8d8; --s14-dark: #6cc3ee;
+  --s15-light: #7d3c98; --s15-dark: #a666c4; --s16-light: #b07a6a; --s16-dark: #c99a8c;
+  --total-light: #1c1c1e; --total-dark: #f2f2f2;
+  --bg: var(--bg-light); --surface: var(--surface-light); --text: var(--text-light); --muted: var(--muted-light); --border: var(--border-light);
+  --grid: var(--grid-light); --accent: var(--accent-light); --danger: var(--danger-light); --ok: var(--ok-light); --warn: var(--warn-light);
+  --s1: var(--s1-light); --s2: var(--s2-light); --s3: var(--s3-light); --s4: var(--s4-light); --s5: var(--s5-light);
+  --s6: var(--s6-light); --s7: var(--s7-light); --s8: var(--s8-light); --s9: var(--s9-light); --s10: var(--s10-light);
+  --s11: var(--s11-light); --s12: var(--s12-light); --s13: var(--s13-light); --s14: var(--s14-light); --s15: var(--s15-light);
+  --s16: var(--s16-light); --total: var(--total-light);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    color-scheme: dark;
-    --bg: #111214; --surface: #1c1d21; --text: #f2f2f2; --muted: #9a9aa0; --border: #33343a; --grid: #2a2b30;
-    --accent: #4d9cf0; --danger: #ef5350; --ok: #66bb6a; --warn: #ffa726;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
-    --s9: #22a9b8; --s10: #b07a45; --s11: #cf55bc; --s12: #9fb32a;
-    --s13: #6f8fe0; --s14: #6cc3ee; --s15: #a666c4; --s16: #c99a8c;
-    --total: #f2f2f2;
+    --bg: var(--bg-dark); --surface: var(--surface-dark); --text: var(--text-dark); --muted: var(--muted-dark); --border: var(--border-dark);
+    --grid: var(--grid-dark); --accent: var(--accent-dark); --danger: var(--danger-dark); --ok: var(--ok-dark); --warn: var(--warn-dark);
+    --s1: var(--s1-dark); --s2: var(--s2-dark); --s3: var(--s3-dark); --s4: var(--s4-dark); --s5: var(--s5-dark);
+    --s6: var(--s6-dark); --s7: var(--s7-dark); --s8: var(--s8-dark); --s9: var(--s9-dark); --s10: var(--s10-dark);
+    --s11: var(--s11-dark); --s12: var(--s12-dark); --s13: var(--s13-dark); --s14: var(--s14-dark); --s15: var(--s15-dark);
+    --s16: var(--s16-dark); --total: var(--total-dark);
+  }
+}
+@supports (color: light-dark(#000, #fff)) {
+  :root {
+    --bg: light-dark(var(--bg-light), var(--bg-dark)); --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --text: light-dark(var(--text-light), var(--text-dark)); --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --border: light-dark(var(--border-light), var(--border-dark)); --grid: light-dark(var(--grid-light), var(--grid-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark)); --danger: light-dark(var(--danger-light), var(--danger-dark));
+    --ok: light-dark(var(--ok-light), var(--ok-dark)); --warn: light-dark(var(--warn-light), var(--warn-dark));
+    --s1: light-dark(var(--s1-light), var(--s1-dark)); --s2: light-dark(var(--s2-light), var(--s2-dark));
+    --s3: light-dark(var(--s3-light), var(--s3-dark)); --s4: light-dark(var(--s4-light), var(--s4-dark));
+    --s5: light-dark(var(--s5-light), var(--s5-dark)); --s6: light-dark(var(--s6-light), var(--s6-dark));
+    --s7: light-dark(var(--s7-light), var(--s7-dark)); --s8: light-dark(var(--s8-light), var(--s8-dark));
+    --s9: light-dark(var(--s9-light), var(--s9-dark)); --s10: light-dark(var(--s10-light), var(--s10-dark));
+    --s11: light-dark(var(--s11-light), var(--s11-dark)); --s12: light-dark(var(--s12-light), var(--s12-dark));
+    --s13: light-dark(var(--s13-light), var(--s13-dark)); --s14: light-dark(var(--s14-light), var(--s14-dark));
+    --s15: light-dark(var(--s15-light), var(--s15-dark)); --s16: light-dark(var(--s16-light), var(--s16-dark));
+    --total: light-dark(var(--total-light), var(--total-dark));
   }
 }
 * { box-sizing: border-box; }
